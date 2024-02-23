@@ -1,0 +1,62 @@
+use serde::{Deserialize, Serialize};
+
+pub use crate::{_private_action as private, _public_action as public};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub enum PublicAction {
+    Increment,
+    Decrement,
+    NetworkRequestAndThenIncrement,
+    NetworkRequestAndThenDecrement,
+    Close,
+    Exit,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum PrivateAction {
+    Tick,
+    Render,
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Action {
+    Public(PublicAction),
+    Private(PrivateAction),
+    None,
+}
+
+impl From<Option<Action>> for Action {
+    fn from(value: Option<Action>) -> Self {
+        value.unwrap_or(Action::None)
+    }
+}
+
+impl From<Public> for Action {
+    fn from(value: Public) -> Self {
+        Action::Public(value)
+    }    
+}
+
+impl From<Private> for Action {
+    fn from(value: Private) -> Self {
+        Action::Private(value)
+    }
+}
+
+#[macro_export]
+macro_rules! _public_action {
+        ($action: ident) => {
+            crate::action::Action::Public(crate::action::PublicAction::$action)
+        };
+    }
+#[macro_export]
+macro_rules! _private_action {
+        ($action: ident) => {
+            crate::action::Action::Private(crate::action::PrivateAction::$action)
+        };
+    }
+
+pub type Private = PrivateAction;
+pub type Public = PublicAction;
+
+pub const NONE: Action = Action::None;

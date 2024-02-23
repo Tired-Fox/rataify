@@ -1,0 +1,31 @@
+[package]
+name = "rataify"
+version = "0.1.0"
+edition = "2021"
+
+# Optimized backtrace for color_eyre in debug mode
+[profile.dev.package.backtrace]
+opt-level = 3
+
+[dependencies]
+# Image support
+image = { version = "0.24.8", features = ["jpeg", "png"] }
+ratatui-image = { version = "0.8.1", features = ["crossterm", "serde", "rustix"] }
+
+# Terminal Interaction
+crossterm = { version = "0.27.0", features = ["event-stream", "serde"] }
+ratatui = "0.26.1"
+
+# Error handling
+color-eyre = "0.6.2"
+
+# Async
+tokio = { version = "1.36.0", features = ["full"] }
+tokio-util = "0.7.10"
+futures = "0.3.30"
+
+# Data management
+lazy_static = "1.4.0"
+regex = "1.10.3"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_yaml = "0.9.32"

@@ -1,0 +1,11 @@
+override:
+  overwrite_duplicate_keymap: true
+
+keymaps:
+  l: Increment
+  h: Decrement
+  left: Decrement
+  right: Increment
+  +: Increment
+  "-": Decrement
+  q: Exit

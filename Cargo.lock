@@ -793,6 +793,8 @@ dependencies = [
  "futures",
  "image",
  "lazy_static",
+ "rand",
+ "rand_chacha",
  "ratatui",
  "ratatui-image",
  "regex",

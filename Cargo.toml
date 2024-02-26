@@ -10,7 +10,11 @@ opt-level = 3
 [dependencies]
 # Image support
 image = { version = "0.24.8", features = ["jpeg", "png"] }
-ratatui-image = { version = "0.8.1", features = ["crossterm", "serde", "rustix"] }
+ratatui-image = { version = "0.8.1", features = [
+    "crossterm",
+    "serde",
+    "rustix",
+] }
 
 # Terminal Interaction
 crossterm = { version = "0.27.0", features = ["event-stream", "serde"] }
@@ -29,3 +33,5 @@ lazy_static = "1.4.0"
 regex = "1.10.3"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_yaml = "0.9.32"
+rand_chacha = "0.3.1"
+rand = "0.8.5"

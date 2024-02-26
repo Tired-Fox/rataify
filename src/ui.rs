@@ -1,61 +1,74 @@
-use ratatui::Frame;
+use crate::state::State;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, Borders, BorderType, Paragraph};
-use crate::state::State;
+use ratatui::text::Span;
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use ratatui::Frame;
 
 pub fn counter(state: &State, frame: &mut Frame) {
-    frame.render_widget(Paragraph::new(format!("Counter: {}", state.counter)), frame.size());
+    frame.render_widget(
+        Paragraph::new(format!("Counter: {}", state.counter)),
+        frame.size(),
+    );
 }
 
-
 pub fn mock_player(state: &State, frame: &mut Frame) {
-    let main= Layout::default()
+    let main = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(3)
-        ])
+        .constraints([Constraint::Min(1), Constraint::Length(3)])
         .split(frame.size());
 
     let main_center = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Max(40),
-            Constraint::Min(1)
-        ])
+        .constraints([Constraint::Min(1), Constraint::Max(40), Constraint::Min(1)])
         .split(main[0]);
 
     match state.now_playing {
         Some(ref now_playing) => {
-            let np_layout = Layout::default()
+            let npl = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(1),
-                    Constraint::Percentage(90),
-                    Constraint::Percentage(10),
-                    Constraint::Length(1),
+                    Constraint::Min(1),
+                    Constraint::Length(17),
+                    Constraint::Min(1),
                 ])
                 .split(main_center[1]);
-            match now_playing.cover {
-                Some(ref cover) => {
-                    cover.render(frame, centered_rect(np_layout[1], 26, 13));
-                },
-                None => {}
-            }
+
+            let now_playing_layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(14),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .split(npl[1]);
+
+            frame.render_widget(
+                Paragraph::new(now_playing.cover(14)),
+                centered_rect(now_playing_layout[0], (14.0 * 2.5) as u16),
+            );
+
             frame.render_widget(
                 Paragraph::new(now_playing.name.clone())
-                    .alignment(Alignment::Center)
-                    .style(Style::default().bold()),
-                np_layout[2]
+                    .style(Style::default().bold())
+                    .alignment(Alignment::Center),
+                now_playing_layout[2],
+            );
+            frame.render_widget(
+                Paragraph::new(now_playing.artist.clone())
+                    .style(Style::default().italic().dark_gray())
+                    .alignment(Alignment::Center),
+                now_playing_layout[3],
             );
         }
         None => {
             // Help message to get user going with starting music
-            frame.render_widget(Paragraph::new("Main Center").alignment(Alignment::Center), main_center[1]);
+            frame.render_widget(
+                Paragraph::new("Main Center").alignment(Alignment::Center),
+                main_center[1],
+            );
         }
-
     }
     let block = Block::default()
         .borders(Borders::ALL)
@@ -64,20 +77,11 @@ pub fn mock_player(state: &State, frame: &mut Frame) {
         Paragraph::new("Progress")
             .alignment(Alignment::Center)
             .block(block),
-        main[1]
+        main[1],
     );
 }
 
-fn centered_rect(r: Rect, width: u16, height: u16) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(height),
-            Constraint::Min(1),
-        ])
-        .split(r);
-
+fn centered_rect(r: Rect, width: u16) -> Rect {
     Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -85,5 +89,6 @@ fn centered_rect(r: Rect, width: u16, height: u16) -> Rect {
             Constraint::Length(width),
             Constraint::Min(1),
         ])
-        .split(popup_layout[1])[1]
+        .split(r)[1]
 }
+

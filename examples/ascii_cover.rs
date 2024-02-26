@@ -15,8 +15,6 @@ lazy_static::lazy_static! {
     ];
 }
 
-static PATTERN_NAMES: [&str; 3] = ["morse", "checker", "triangle"];
-
 fn main() {
     let artist = "Creepy Nuts";
     let name = "Bling-Bang-Bang-Born";
@@ -52,7 +50,11 @@ fn main() {
 
     // Infinite wrapping pattern
     let size = pattern.len();
-    let mut pattern = pattern.iter().cycle().step_by(step);
+    let mut pattern = pattern
+        .iter()
+        .cycle()
+        .skip(rng_name.gen_range(0..245))
+        .step_by(step);
     album.hash(&mut hasher);
     let mut rng_album = StdRng::seed_from_u64(hasher.finish());
 
@@ -75,8 +77,10 @@ fn main() {
     // println!("{}", sample.join("\n"));
     println!("{:?}", terminal::size());
 
-    let print_pattern = |width: usize| {
-        let height: usize = (width as f32 / 2.5) as usize;
+    let print_pattern = |height: usize| {
+        let height = height - 2;
+        let width: usize = (height as f32 * 2.5) as usize;
+        println!("{width}");
         println!("┌{}┐", "─".repeat(width));
         println!(
             "{}",
@@ -97,7 +101,7 @@ fn main() {
         println!("└{}┘", "─".repeat(width));
     };
 
-    print_pattern(50);
     print_pattern(20);
-    print_pattern(12);
+    print_pattern(8);
+    print_pattern(5);
 }

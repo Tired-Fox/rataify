@@ -8,3 +8,4 @@ pub mod app;
 mod event;
 mod state;
 pub mod ui;
+pub mod spotify;

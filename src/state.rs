@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -25,7 +26,7 @@ lazy_static::lazy_static! {
     };
 
     static ref PATTERNS: [Vec<char>; 3] = [
-        vec!['-', '•'],
+        vec!['…', '.'],
         vec!['▘', '▝', '▖', '▗'],
         vec!['◢', '◣', '◤', '◥'],
     ];
@@ -81,93 +82,137 @@ pub struct NowPlayingState {
     pub name: String,
     pub artist: String,
     pub album: String,
+
+    corners: Flag, // 1 = tl + br, 2 = tr + bl
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
+struct Flag(u8);
+impl BitAnd for Flag {
+    type Output = Flag;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Flag(self.0 & rhs.0)
+    }
+}
+impl BitOr for Flag {
+    type Output = Flag;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Flag(self.0 | rhs.0)
+    }
+}
+impl BitOrAssign for Flag {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0
+    }
+}
+impl BitAndAssign for Flag {
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 &= rhs.0
+    }
+}
+const TLBR: Flag = Flag(1);
+const TRBL: Flag = Flag(2);
+
 impl NowPlayingState {
-    pub fn now_playing<P, S1, S2, S3>(&mut self, path: P, name: S1, artist: S2, album: S3)
+    pub fn now_playing<S1, S2, S3>(&mut self, name: S1, artist: S2, album: S3)
     where
-        P: AsRef<Path>,
         S1: Display,
         S2: Display,
         S3: Display,
     {
+        self.corners = Flag::default();
+
         self.name = name.to_string();
         self.album = album.to_string();
         self.artist = artist.to_string();
-        self.cover = self.generate_cover();
+        self.generate_cover();
     }
 
+    // TODO: Randomize border based on title and artist.
+    //  Corners based on artist, sides based on title
     pub fn cover(&self, height: usize) -> String {
         let height = height - 2;
         let width: usize = (height as f32 * 2.5) as usize;
-        let mut output = format!("┌{}┐\n", "─".repeat(width));
+        let mut output = format!(
+            "{}{}{}\n",
+            if self.corners & TLBR == TLBR { "┌─" } else { "  " },
+            " ".repeat(width-2),
+            if self.corners & TRBL == TRBL { "─┐" } else { "  " },
+        );
         output.push_str(
             format!(
                 "{}",
                 self.cover
                     .iter()
-                    .skip((245 - height) / 2)
+                    .skip((50 - height) / 2)
                     .take(height)
                     .map(|r| format!(
-                        "│{}│",
+                        " {} ",
                         r.chars()
-                            .skip((245 - width) / 2)
+                            .skip((50 - width) / 2)
                             .take(width)
-                            .collect::<String>()
+                            .collect::<String>(),
                     ))
                     .collect::<Vec<String>>()
                     .join("\n")
             )
             .as_str(),
         );
-        output.push_str(format!("\n└{}┘", "─".repeat(width)).as_str());
+        output.push_str(format!(
+            "\n{}{}{}",
+            //'┌', '┐', '└', '┘'
+            if self.corners & TRBL == TRBL { "└─" } else { "  " },
+            " ".repeat(width-2),
+            if self.corners & TLBR == TLBR { "─┘" } else { "  " },
+        ).as_str());
         output
     }
 
-    fn generate_cover(&self) -> Vec<String> {
-        // TODO: Better algorithms based on pseudo random seeds from title, artist, and album
+    fn generate_cover(&mut self) {
         let mut hasher = DefaultHasher::default();
-        self.artist.hash(&mut hasher);
+        self.album.hash(&mut hasher);
 
-        let first = hasher.finish();
-        let mut rng_artist = StdRng::seed_from_u64(first);
-        let pattern: usize = rng_artist.gen_range(0..PATTERNS.len());
+        let mut rng = StdRng::seed_from_u64(hasher.finish());
+        let pattern: usize = rng.gen_range(0..PATTERNS.len());
         let mut pattern = PATTERNS[pattern].clone();
-        if rng_artist.gen() {
+        if rng.gen() {
             pattern.push(' ')
         }
 
-        let scale = rng_artist.gen_range(0..pattern.len() * 12);
+        let scale = rng.gen_range(pattern.len()..pattern.len() * 12);
         // Pick random characters from pattern
-        let picks = rng_artist.gen_range(0..(pattern.len() * scale));
+        let picks = rng.gen_range(pattern.len()..pattern.len()+(pattern.len() * scale));
 
-        self.name.hash(&mut hasher);
-        let mut rng_name = StdRng::seed_from_u64(hasher.finish());
         let pattern: Vec<char> = (0..picks)
-            .map(|_| pattern[rng_name.gen_range(0..pattern.len())])
+            .map(|_| pattern[rng.gen_range(0..pattern.len())])
             .collect();
 
-        let step = rng_name.gen_range(1..(PATTERNS.len() / 2).max(2));
+        let step = rng.gen_range(1..(PATTERNS.len() / 2).max(2));
 
         // Infinite wrapping pattern
         let size = pattern.len();
         let mut pattern = pattern.iter().cycle().step_by(step);
-        self.album.hash(&mut hasher);
-        let mut rng_album = StdRng::seed_from_u64(hasher.finish());
 
-        // 245x245 random char sample
-        (0..245)
+        // 50x50 random char sample
+        self.cover = (0..50)
             .map(|_| {
-                (0..245)
-                    .map(|_| pattern.nth(rng_album.gen_range(0..size)).unwrap())
+                (0..50)
+                    .map(|_| pattern.nth(rng.gen_range(0..size)).unwrap())
                     .collect::<String>()
             })
-            .collect::<Vec<String>>()
+            .collect::<Vec<String>>();
+
+        if rng.gen() {
+            self.corners |= TLBR;
+        }
+        if rng.gen() {
+            self.corners |= TRBL
+        }
     }
 }
 
 pub struct State {
-    pub counter: i64,
+    pub counter: u8,
     pub now_playing: Option<NowPlayingState>,
 }
 
@@ -177,12 +222,8 @@ impl Default for State {
 
         // FIXME: Temp default song information
         let mut now_playing = NowPlayingState::default();
-        now_playing.now_playing(
-            path,
-            "Bling-Bang-Bang-Born",
-            "Creepy Nuts",
-            "Bling-Bang-Bang-Born",
-        );
+        let song = SONGS[0];
+        now_playing.now_playing(song.0, song.1, song.2);
 
         Self {
             counter: 0,
@@ -191,16 +232,33 @@ impl Default for State {
     }
 }
 
+static SONGS: [(&str, &str, &str);3] = [
+    ("Bling-Bang-Bang-Born", "Creepy Nuts", "Bling-Bang-Bang-Born"),
+    ("Time for two", "RADWIMPS", "Susume (Motion Picture Soundtrack)"),
+    ("Tamaki", "RADWIMPS, Toaka", "Susume (Motion Picture Soundtrack)"),
+];
+
 impl State {
-    pub(crate) fn increment(&mut self) {
-        if let Some(counter) = self.counter.checked_add(1) {
-            self.counter = counter;
+    fn update_song(&mut self) {
+        if let Some(now_playing) = &mut self.now_playing {
+            let song = SONGS[self.counter as usize];
+            now_playing.now_playing(song.0, song.1, song.2);
         }
     }
 
-    pub(crate) fn decrement(&mut self) {
-        if let Some(counter) = self.counter.checked_sub(1) {
-            self.counter = counter;
+    pub(crate) fn next(&mut self) {
+        self.counter = (self.counter + 1) % 3;
+        self.update_song();
+    }
+
+    pub(crate) fn previous(&mut self) {
+        let counter = self.counter as i8 - 1;
+        if counter < 0 {
+            self.counter = 3_i8.saturating_add(counter) as u8;
+        } else {
+            self.counter = counter as u8;
         }
+
+        self.update_song();
     }
 }

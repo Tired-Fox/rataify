@@ -3,7 +3,7 @@ use color_eyre::Result;
 use rataify::{config::Config, keymaps};
 use rataify::action::Public;
 use rataify::app::App;
-use rataify::ui::{counter, mock_player};
+use rataify::ui::{mock_player};
 
 #[tokio::main]
 async fn main() -> Result<()> {

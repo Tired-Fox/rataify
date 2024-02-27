@@ -1,9 +1,10 @@
 use crate::state::State;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Style, Stylize};
-use ratatui::text::Span;
+
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
+use ratatui::text::Span;
 
 pub fn counter(state: &State, frame: &mut Frame) {
     frame.render_widget(
@@ -15,9 +16,13 @@ pub fn counter(state: &State, frame: &mut Frame) {
 pub fn mock_player(state: &State, frame: &mut Frame) {
     let main = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .constraints([Constraint::Min(1), Constraint::Length(5)])
         .split(frame.size());
 
+    frame.render_widget(
+        Paragraph::new("").block(Block::default().borders(Borders::ALL)),
+        main[0]
+    );
     let main_center = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Max(40), Constraint::Min(1)])
@@ -70,15 +75,47 @@ pub fn mock_player(state: &State, frame: &mut Frame) {
             );
         }
     }
+
+    let footer = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(12), Constraint::Min(1)])
+        .split(main[1]);
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded);
-    frame.render_widget(
-        Paragraph::new("Progress")
-            .alignment(Alignment::Center)
-            .block(block),
-        main[1],
-    );
+
+    let progress = Paragraph::new("")
+        .block(block);
+
+    if let Some(now_playing) = &state.now_playing {
+        frame.render_widget(
+            Paragraph::new(now_playing.cover(5)),
+            footer[0],
+        );
+
+        let footer_details = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
+            .split(footer[1]);
+
+        frame.render_widget(Paragraph::new(now_playing.name.clone()).style(Style::default().bold()), footer_details[1]);
+        frame.render_widget(Paragraph::new(now_playing.artist.clone()).style(Style::default().italic().dark_gray()), footer_details[2]);
+        frame.render_widget(
+            progress,
+            footer_details[3],
+        );
+    } else {
+        frame.render_widget(
+            progress,
+            footer[1],
+        );
+    }
 }
 
 fn centered_rect(r: Rect, width: u16) -> Rect {

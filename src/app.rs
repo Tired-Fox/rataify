@@ -42,8 +42,8 @@ impl App {
     fn update(&mut self, action: Action) {
         match action {
             Action::Public(public) => match public {
-                Public::Increment => self.state.increment(),
-                Public::Decrement => self.state.decrement(),
+                Public::Next => self.state.next(),
+                Public::Previous => self.state.previous(),
                 Public::Close => {}
                 Public::Exit => self.should_quit = true,
                 _ => unimplemented!()
@@ -75,7 +75,7 @@ impl App {
     pub async fn run(&mut self, config: Config) -> crate::error::Result<()> {
         let keymaps = &config.keymaps;
 
-        let mut terminal = Tui::new()?.title("Async Counter");
+        let mut terminal = Tui::new()?.title("Rataify");
         terminal.enter()?;
 
         loop {

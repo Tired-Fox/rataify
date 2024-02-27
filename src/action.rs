@@ -4,10 +4,18 @@ pub use crate::{_private_action as private, _public_action as public};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub enum PublicAction {
-    Increment,
-    Decrement,
-    NetworkRequestAndThenIncrement,
-    NetworkRequestAndThenDecrement,
+    Next,
+    Previous,
+    Pause,
+    Play,
+    Stop,
+    VolumeUp,
+    VolumeDown,
+    Select,
+    Down,
+    Up,
+    Left,
+    Right,
     Close,
     Exit,
 }

@@ -2,10 +2,10 @@ override:
   overwrite_duplicate_keymap: true
 
 keymaps:
-  l: Increment
-  h: Decrement
-  left: Decrement
-  right: Increment
-  +: Increment
-  "-": Decrement
+  L: Next
+  H: Previous
+  ">": Next
+  "<": Previous
+  +: VolumeUp
+  "-": VolumeDown
   q: Exit

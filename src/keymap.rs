@@ -5,7 +5,7 @@ use std::str::FromStr;
 use color_eyre::Report;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::{Error, MapAccess, SeqAccess, Visitor};
+use serde::de::{Error, Visitor};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd)]
 pub struct KeyMap {
@@ -228,4 +228,3 @@ macro_rules! keymaps {
     };
 }
 
-pub use crate::keymaps;

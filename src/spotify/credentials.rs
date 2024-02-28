@@ -1,5 +1,6 @@
 use base64::Engine;
 use serde::Deserialize;
+use crate::CONFIG_PATH;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Credentials {
@@ -16,10 +17,13 @@ impl Credentials {
     }
 
     pub fn from_env() -> Option<Self> {
+        let old = std::env::current_dir().unwrap();
+        std::env::set_current_dir(CONFIG_PATH.as_path()).ok()?;
         if dotenvy::dotenv().is_err() {
             return None;
         }
         let value = envy::prefixed("RATAIFY_").from_env();
+        std::env::set_current_dir(old).ok()?;
         value.ok()
     }
 

@@ -1,21 +1,13 @@
 use std::collections::HashSet;
-use std::convert::Infallible;
-use std::env::home_dir;
 use std::future::Future;
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::str::FromStr;
 
 use base64::Engine;
-use chrono::{DateTime, Duration, Local, Timelike};
-use color_eyre::eyre::OptionExt;
-use color_eyre::owo_colors::OwoColorize;
+use chrono::{DateTime, Duration, Local};
+use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Report;
-use http_body_util::{BodyExt, Full};
-use hyper::{Method, Request, Response};
-use hyper::body::{Bytes, Incoming};
 use hyper::server::conn::http1;
-use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -23,36 +15,31 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use uuid::Uuid;
 
-use crate::browser;
+pub use callback::Callback;
 
-use super::{Credentials, SendRequest};
+use crate::{browser, CONFIG_PATH};
 
-mod cache;
+use super::Credentials;
 
-#[derive(Debug, Deserialize)]
-struct AuthCodeResponse {
-    code: Option<String>,
-    error: Option<String>,
-    state: String,
-}
+mod callback;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthToken {
     token_type: String,
-    scope: HashSet<String>,
+    scopes: HashSet<String>,
     expires: DateTime<Local>,
     access_token: String,
-    refresh_token: String,
+    refresh_token: Option<String>,
 }
 
 impl Default for AuthToken {
     fn default() -> Self {
         Self {
             token_type: String::from("Bearer"),
-            scope: HashSet::new(),
+            scopes: HashSet::new(),
             expires: Local::now() - Duration::seconds(12),
             access_token: String::new(),
-            refresh_token: String::new(),
+            refresh_token: None,
         }
     }
 }
@@ -64,32 +51,46 @@ impl AuthToken {
     }
 
     /// Get the auth header for the token
+    ///
+    /// # Example
+    ///
+    /// `Bearer 1POdFZRZbvb...qqillRxMr2z`
     pub fn to_header(&self) -> String {
         format!("{} {}", self.token_type, self.access_token)
     }
 
     pub fn save(&self) -> color_eyre::Result<()> {
-        #[cfg(windows)]
-        return {
-            let path = home::home_dir().unwrap().join(".rataify/cache.json");
-            std::fs::create_dir_all(path.parent().unwrap())?;
-            Ok(std::fs::write(path, serde_json::to_string(self)?)?)
-        };
-        #[cfg(not(windows))]
-        return {
-            let path = home::home_dir().unwrap().join(".config/rataify/cache.json");
-            std::fs::create_dir_all(path.parent().unwrap())?;
-            Ok(std::fs::write(path, serde_json::to_string(self)?)?);
-        };
+        let path = CONFIG_PATH.join("cache/token.json");
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        Ok(std::fs::write(path, serde_json::to_string(self)?)?)
     }
 
     pub fn load() -> Option<Self> {
-        #[cfg(windows)]
-        let token = std::fs::read_to_string(home::home_dir().unwrap().join(".rataify/cache.json")).unwrap_or(String::new());
-        #[cfg(not(windows))]
-        let token = std::fs::read_to_string(home::home_dir().unwrap().join(".config/rataify/cache.json")).unwrap_or(String::new());
-
+        let token = std::fs::read_to_string(CONFIG_PATH.join("cache/token.json")).ok()?;
         serde_json::from_str(&token).ok()
+    }
+
+    /// Parse a new authentication token from a string
+    pub fn parse_new(value: &str) -> color_eyre::Result<Self> {
+        let token: AuthToken = AuthToken::from_str(value)?;
+        match token.refresh_token {
+            Some(_) => {}
+            None => {
+                return Err(eyre!("failed to parse AuthToken::refresh_token: missing"));
+            }
+        }
+
+        Ok(token)
+    }
+
+    /// Parse and refresh the token in place
+    pub fn parse_refresh(&mut self, value: &str) -> color_eyre::Result<()> {
+        let token: AuthToken = AuthToken::from_str(value)?;
+        self.access_token = token.access_token;
+        self.scopes = token.scopes;
+        self.token_type = token.token_type;
+        self.expires = token.expires;
+        Ok(())
     }
 }
 
@@ -98,28 +99,41 @@ impl FromStr for AuthToken {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let object: Value = serde_json::from_str(s)?;
-        let msg = "Failed to parse AuthToken from response";
 
         Ok(Self {
-            token_type: object.get("token_type").ok_or_eyre(msg)?.as_str().ok_or_eyre(msg)?.to_string(),
-            scope: object.get("scope").ok_or_eyre(msg)?.as_str().ok_or_eyre(msg)?.split(" ").map(|v| v.to_string()).collect(),
+            token_type: object.get("token_type").ok_or_eyre("failed to parse AuthToken::token_type: missing")?
+                .as_str().ok_or_eyre("failed to parse AuthToken::token_type: not a string")?
+                .to_string(),
+            scopes: object.get("scope").ok_or_eyre("failed to parse AuthToken::scope: missing")?
+                .as_str().ok_or_eyre("failed to parse AuthToken::scope: not a space seperated string list")?
+                .split(" ").map(|v| v.to_string()).collect(),
             expires: {
-                let seconds = object.get("expires_in").ok_or_eyre(msg)?;
-                let seconds = seconds.as_i64().ok_or_eyre(msg)?;
+                let seconds = object.get("expires_in").ok_or_eyre("failed to parse AuthToken::expires: missing")?;
+                let seconds = seconds.as_i64().ok_or_eyre("failed to parse AuthToken::expires: not an integer")?;
                 Local::now() + Duration::seconds(seconds)
             },
-            access_token: object.get("access_token").ok_or_eyre(msg)?.as_str().ok_or_eyre(msg)?.to_string(),
-            refresh_token: object.get("refresh_token").ok_or_eyre(msg)?.as_str().ok_or_eyre(msg)?.to_string(),
+            access_token: object.get("access_token").ok_or_eyre("failed to parse AuthToken::access_token: missing")?
+                .as_str().ok_or_eyre("failed to parse AuthToken::access_token: not a string")?
+                .to_string(),
+            refresh_token: match object.get("refresh_token") {
+                Some(token) => {
+                    match token.as_str() {
+                        Some(token) => Some(token.to_string()),
+                        None => None
+                    }
+                }
+                None => None
+            },
         })
     }
 }
 
 #[derive(Debug)]
 pub struct OAuth {
-    creds: Credentials,
+    pub credentials: Credentials,
     state: Uuid,
-    scopes: HashSet<String>,
-    token: Option<AuthToken>,
+    pub scopes: HashSet<String>,
+    pub token: Option<AuthToken>,
     tx: UnboundedSender<String>,
     rx: UnboundedReceiver<String>,
 }
@@ -128,7 +142,7 @@ impl OAuth {
     pub fn new(credentials: Credentials, scopes: HashSet<String>) -> Self {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
-            creds: credentials,
+            credentials,
             state: Uuid::new_v4(),
             token: AuthToken::load(),
             scopes,
@@ -141,85 +155,23 @@ impl OAuth {
         self.token.as_ref()
     }
 
-    async fn handler(req: Request<Incoming>, uuid: Uuid, result: UnboundedSender<String>) -> color_eyre::Result<Response<Full<Bytes>>> {
-        match (req.method().clone(), req.uri().path().clone()) {
-            (Method::GET, "/Rataify/auth") => {
-                match req.uri().query() {
-                    Some(query) => {
-                        let response: AuthCodeResponse = serde_qs::from_str(query)?;
-                        if let Some(err) = response.error {
-                            return Err(Report::msg(err));
-                        }
-                        // Validate State for cross-site request forgery
-                        match response.state == uuid.to_string() {
-                            false => {
-                                result.send(String::new()).unwrap();
-                                return Err(Report::msg("Invalid response state"));
-                            }
-                            true => {
-                                result.send(response.code.unwrap()).unwrap();
-                                Ok(
-                                    Response::builder()
-                                        .body(Full::new(Bytes::from("<h1>Successfully Logged In to Rataify</h1>")))
-                                        .unwrap()
-                                )
-                            }
-                        }
-                    }
-                    None => {
-                        result.send(String::new()).unwrap();
-                        return Err(Report::msg("Spotify did not send a response"));
-                    }
-                }
-            }
-            _ => {
-                result.send(String::new()).unwrap();
-                Ok(
-                    Response::builder()
-                        .status(404)
-                        .body(Full::new(Bytes::from("<h1>404 Page not found<h1>")))
-                        .unwrap()
-                )
-            }
-        }
-    }
-
+    /// Get a new authentication code by starting a http server to handle the spotify callback
+    /// with the code, and opening the browser to the spotify login/authentication path.
     async fn new_authentication_code(&mut self) -> color_eyre::Result<String> {
+        // Mini http server to serve callback and parse auth code from spotify
         let addr = SocketAddr::from(([127, 0, 0, 1], 8888));
         let listener = TcpListener::bind(addr).await?;
 
-        let state = self.state.clone();
-        let tx2 = self.tx.clone();
-
+        let callback = Callback::new(self.state.clone(), self.tx.clone());
         let handle = tokio::task::spawn(async move {
-            let tx = tx2.clone();
-            let uuid = state.clone();
             loop {
                 let (stream, _) = listener.accept().await.unwrap();
                 let io = TokioIo::new(stream);
 
-                let tx = tx.clone();
-                let uuid = uuid.clone();
-                let callback = move |req: Request<Incoming>| -> Pin<Box<dyn Future<Output=Result<Response<Full<Bytes>>, Infallible>> + Send + 'static>> {
-                    let tx = tx.clone();
-                    let uuid = uuid.clone();
-                    Box::pin(async move {
-                        match OAuth::handler(req, uuid, tx).await {
-                            Err(err) => {
-                                Ok(Response::builder()
-                                    .status(500)
-                                    .body(Full::new(Bytes::from(format!("<h1>500 Internal Server Error</h1>\n<h3>{err}</h3>"))))
-                                    .unwrap()
-                                )
-                            }
-                            Ok(res) => Ok(res)
-                        }
-                    })
-                };
-
+                let handler = callback.clone();
                 tokio::task::spawn(async move {
                     if let Err(err) = http1::Builder::new()
-                        .serve_connection(io, service_fn(callback))
+                        .serve_connection(io, handler)
                         .await
                     {
                         eprintln!("Error serving connection to spotify callback: {:?}", err);
@@ -228,9 +180,11 @@ impl OAuth {
             }
         });
 
+        // Open the default browser to the spotify login/authentication page.
+        // When it is successful, the callback will be triggered and the result is returned
         browser!(
             "https://accounts.spotify.com/authorize" ?
-            client_id=self.creds.client_id,
+            client_id=self.credentials.client_id,
             response_type="code",
             redirect_uri=urlencoding::encode("http://localhost:8888/Rataify/auth"),
             scope=format!("{}", self.scopes.iter().map(|v| v.clone()).collect::<Vec<_>>().join("%20")),
@@ -243,6 +197,7 @@ impl OAuth {
         Ok(result)
     }
 
+    /// Get a new access token starting from getting a new authentication code
     async fn new_token(&mut self) -> color_eyre::Result<AuthToken> {
         let authentication_code = self.new_authentication_code().await?;
 
@@ -254,7 +209,7 @@ impl OAuth {
 
         let client = reqwest::Client::new();
         let result = client.post("https://accounts.spotify.com/api/token")
-            .header("Authorization", format!("Basic {}", self.creds.auth()))
+            .header("Authorization", format!("Basic {}", self.credentials.auth()))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .send()
@@ -264,6 +219,9 @@ impl OAuth {
         AuthToken::from_str(&body)
     }
 
+    /// Authenticate the spotify user.
+    ///
+    /// Fetch a new access token and cache it
     pub async fn authenticate(&mut self) -> color_eyre::Result<()> {
         let token = self.new_token().await?;
         token.save()?;
@@ -272,26 +230,49 @@ impl OAuth {
     }
 
     pub async fn refresh(&mut self) -> color_eyre::Result<()> {
-        // Check for expired token with 10 second grace period
-        if let Some(token) = &self.token {
-            if token.expires < (Local::now() - Duration::seconds(10)) {
-                println!("REFRESHED");
+        if let Some(token) = &mut self.token {
+            if let Some(refresh_token) = &token.refresh_token {
                 let client = reqwest::Client::new();
                 let response = client.post("https://accounts.spotify.com/api/token")
                     .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("Authorization", format!("Basic {}", self.credentials.auth()))
                     .body(serde_urlencoded::to_string(&[
                         ("grant_type", "refresh_token".to_string()),
-                        ("refresh_token", token.refresh_token.clone()),
-                        ("client_id", self.creds.client_id.clone()),
+                        ("refresh_token", refresh_token.clone()),
+                        ("client_id", self.credentials.client_id.clone()),
                     ])?)
                     .send()
                     .await?;
 
                 let body = String::from_utf8(response.bytes().await?.to_vec())?;
-                self.token = Some(AuthToken::from_str(&body)?);
+                token.parse_refresh(&body)?;
+                token.save()?;
+            } else {
+                eprintln!("Missing refresh token, re-authenticating...");
+                self.authenticate().await?;
             }
         } else {
-            println!("CREATED");
+            eprintln!("Missing access token, re-authenticating...");
+            self.authenticate().await?;
+        }
+        Ok(())
+    }
+
+    /// Refresh the access token if it has expired, or authenticate the user if the token is
+    /// invalid or missing.
+    pub async fn update(&mut self) -> color_eyre::Result<()> {
+        // Check for expired token with 10-second grace period
+        if let Some(token) = &mut self.token {
+            // if scopes changed re-authenticate
+            if !self.scopes.is_subset(&token.scopes) {
+                self.authenticate().await?;
+                return Ok(());
+            }
+
+            if token.expires < (Local::now() - Duration::seconds(10)) {
+                self.refresh().await?;
+            }
+        } else {
             self.authenticate().await?;
         }
         Ok(())

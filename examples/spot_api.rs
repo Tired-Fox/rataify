@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-
 use color_eyre::Result;
 use dialoguer::{Confirm, Input, Password};
-use serde_json::Value;
-use rataify::spotify::{Credentials, OAuth, scopes};
+
+use rataify::CONFIG_PATH;
+use rataify::spotify::Spotify;
 
 static BEFORE_ID: [&str; 6] = [
     "Click 'Create app' button",
@@ -26,8 +25,7 @@ async fn main() -> Result<()> {
 
     // println!("{:?}", std::env::current_dir());
     // return;
-    let dotenv = PathBuf::from(".env");
-    if !dotenv.exists() {
+    if !CONFIG_PATH.join(".env").exists() {
         println!("Missing id and secret for spotify app. Setup cli activating...");
         if Confirm::new()
             .with_prompt("Auto open spotify dashboard \x1b[36mhttps://developer.spotify.com/dashboard\x1b[39m")
@@ -51,22 +49,22 @@ async fn main() -> Result<()> {
             .with_prompt(format!("{}. Copy and paste Spotify client secret here (hidden)", BEFORE_ID.len() + BEFORE_SECRET.len() + 2))
             .interact()
             .unwrap();
-        std::fs::write(dotenv, format!("RATAIFY_CLIENT_ID={client_id}\nRATAIFY_CLIENT_SECRET={client_secret}").as_bytes())?;
+        std::fs::write(CONFIG_PATH.join(".env"), format!("RATAIFY_CLIENT_ID={client_id}\nRATAIFY_CLIENT_SECRET={client_secret}").as_bytes())?;
     }
 
-    let creds = Credentials::from_env().unwrap();
-    let mut oauth = OAuth::new(creds, scopes!("user-follow-read user-follow-modify"));
+    let mut spotify = Spotify::new().await?;
 
-    oauth.refresh().await?;
-    println!("{:?}", oauth.token());
-
-    let client = reqwest::Client::new();
-    let response = client.get("https://api.spotify.com/v1/me")
-        .header("Authorization", oauth.token().unwrap().to_header())
-        .send()
-        .await?;
-
-    let body = String::from_utf8(response.bytes().await?.to_vec())?;
-    println!("{:#?}", serde_json::from_str::<Value>(&body)?);
+    // let devices = spotify.devices().await?;
+    // let names = devices.iter().map(|d| &d.name).collect::<Vec<&String>>();
+    //
+    // let device = Select::with_theme(&ColorfulTheme::default())
+    //     .with_prompt("Select a Device")
+    //     .items(names.as_slice())
+    //     .interact()
+    //     .unwrap();
+    //
+    // spotify.device.select(device);
+    // spotify.play().await?;
+    println!("{:#?}", spotify.playback().await?);
     Ok(())
 }

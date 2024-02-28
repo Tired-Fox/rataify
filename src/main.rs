@@ -15,9 +15,10 @@ async fn main() -> Result<()> {
         })
         .compile();
 
-    App::new()?
+    App::new().await?
         .with_ui(mock_player)
-        .run(config).await?;
+        .run(config)
+        .await?;
 
     Ok(())
 }

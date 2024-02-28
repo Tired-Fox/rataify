@@ -20,14 +20,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> crate::error::Result<Self> {
+    /// Async app setup to also initialize the spotify api interactions.
+    ///
+    /// The interactions require an access token so http requests may run on init.
+    pub async fn new() -> crate::error::Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         Ok(Self {
             should_quit: false,
             ui: None,
             actions: tx,
             input: rx,
-            state: State::default(),
+            state: State::new().await,
         })
     }
 
@@ -39,11 +42,11 @@ impl App {
         self
     }
 
-    fn update(&mut self, action: Action) {
+    async fn update(&mut self, action: Action) {
         match action {
             Action::Public(public) => match public {
-                Public::Next => self.state.next(),
-                Public::Previous => self.state.previous(),
+                Public::Next => self.state.next().await,
+                Public::Previous => self.state.previous().await,
                 Public::Close => {}
                 Public::Exit => self.should_quit = true,
                 _ => unimplemented!()
@@ -90,7 +93,7 @@ impl App {
                         terminal.draw(|frame: &mut Frame| ui(&self.state, frame)).unwrap();
                     }
                 } else {
-                    self.update(action);
+                    self.update(action).await;
                 }
             }
 

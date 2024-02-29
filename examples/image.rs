@@ -53,7 +53,7 @@ fn size() -> Rect {
 
 impl<'a> App<'a> {
     pub fn new<B: Backend>(title: &'a str, _: &mut Terminal<B>) -> App<'a> {
-        let source = "compass.png";
+        let source = "examples/compass.png";
         let dyn_img = image::io::Reader::open(source).unwrap().decode().unwrap();
 
         // TODO: GetConsoleWindow -> GetClientRect -> (w / cols, h / rows)
@@ -128,8 +128,8 @@ impl<'a> App<'a> {
             }
             'o' => {
                 let path = match self.image_source_path.to_str() {
-                    Some("compass.png") => "birb.jpg",
-                    _ => "compass.png",
+                    Some("examples/compass.png") => "examples/birb.jpg",
+                    _ => "examples/compass.png",
                 };
                 let dyn_img = image::io::Reader::open(path).unwrap().decode().unwrap();
                 self.image_source = ImageSource::new(dyn_img.clone(), self.picker.font_size);

@@ -7,6 +7,8 @@ use rataify::ui::{mock_player};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let config: Config = Config::load_with_fallback(["config.yml", "config.yaml"])?
         .reserved_keys(keymaps! {
             "ctrl+c" => Public::Exit,
@@ -15,10 +17,10 @@ async fn main() -> Result<()> {
         })
         .compile();
 
-    App::new().await?
+    let result = App::new().await?
         .with_ui(mock_player)
         .run(config)
-        .await?;
+        .await;
 
-    Ok(())
+    result
 }

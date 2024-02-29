@@ -1,31 +1,44 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use color_eyre::{Report, Section};
-pub use color_eyre::Result;
+use color_eyre::eyre::eyre;
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
-pub struct Error {
-    message: String,
+pub enum Error {
+    Custom(Report),
+    NoDevice,
 }
 
 impl Error {
-    pub fn new<S: Display>(message: S) -> Self {
-        Self { message: message.to_string() }
-    }
-
-    pub fn setup() -> Result<()> {
-        color_eyre::install()
+    pub fn custom<S: Display + Debug + Send + Sync + 'static>(message: S) -> Self {
+        Self::Custom(Report::msg(message.to_string()))
     }
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UNKOWN: {}", self.message)
+        write!(f, "Error: {}", match self {
+            Self::Custom(msg) => msg.to_string(),
+            Self::NoDevice => "No device found".to_string(),
+        })
     }
 }
 
 impl From<Error> for Report {
     fn from(error: Error) -> Self {
-        Report::msg(error.to_string())
-            .suggestion("Try again later")
+        match error {
+            Error::Custom(report) => report,
+            Error::NoDevice => Report::msg("No device found")
+                .suggestion("Try again later")
+                .suggestion("Make sure the device is active")
+                .suggestion("For mobile devices, this means they have to be unlocked or playing"),
+        }
+    }
+}
+
+impl From<Report> for Error {
+    fn from(error: Report) -> Self {
+        Error::Custom(error)
     }
 }

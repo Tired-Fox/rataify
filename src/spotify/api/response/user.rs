@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use serde::{Deserialize, Serialize};
-use crate::spotify::api::Image;
+use crate::spotify::response::Image;
 
 /// Spotify's representation of a users explicit content settings
 #[derive(Debug, Deserialize)]
@@ -37,8 +37,13 @@ pub struct User {
     pub uri: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Devices {
+    pub devices: Vec<Device>
+}
+
 /// Spotify's representation of a device that can be streamed to
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Device {
     pub id: String,
     /// If this is the currently active device
@@ -58,6 +63,14 @@ pub struct Device {
     /// If this device can be used to set the volume
     pub supports_volume: bool,
 }
+
+impl PartialEq for Device {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Device {}
 
 impl Hash for Device {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {

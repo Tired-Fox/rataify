@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde::de::{Error, MapAccess, Visitor};
 use serde_json::{Deserializer, Value};
 
-use crate::spotify::api::{Device, Followers, Image};
+use crate::spotify::response::{Device, Followers, Image};
 
 fn ms_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where D: serde::Deserializer<'de> {
@@ -237,7 +237,8 @@ pub struct Playback {
     pub timestamp: NaiveDateTime,
     #[serde(rename = "progress_ms", deserialize_with = "ms_to_duration_optional")]
     pub progress: Option<Duration>,
-    pub is_playing: bool,
+    #[serde(rename = "is_playing")]
+    pub playing: bool,
     currently_playing_type: CurrentlyPlayingType,
     pub item: Option<Item>,
     pub actions: HashMap<String, HashMap<String, bool>>,

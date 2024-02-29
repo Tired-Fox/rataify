@@ -21,14 +21,63 @@ use crate::{browser, CONFIG_PATH};
 
 use super::Credentials;
 
+fn to_base64<S>(data: &String, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(data.as_bytes()))
+}
+
+fn from_base64<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    match base64::engine::general_purpose::STANDARD.decode(s.as_bytes()) {
+        Ok(base) => Ok(String::from_utf8(base).map_err(serde::de::Error::custom)?),
+        Err(err) => Err(serde::de::Error::custom(err))
+    }
+}
+
+fn to_base64_option<S>(data: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+{
+    let data = data.as_ref().and_then(|v| {
+        Some(String::from(base64::engine::general_purpose::STANDARD.encode(v.as_bytes()).as_str()))
+    });
+    Option::<String>::serialize(&data, serializer)
+}
+
+fn from_base64_option<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+{
+    Ok(match String::deserialize(deserializer) {
+        Ok(s) => {
+            match base64::engine::general_purpose::STANDARD.decode(s.as_bytes()) {
+                Ok(base) => Some(String::from_utf8(base).map_err(serde::de::Error::custom)?),
+                Err(_) => None
+            }
+        },
+        Err(_) => None
+    })
+}
+
 mod callback;
 
+/// Authentication token information for spotify
+///
+/// `access_token` and `refresh_token` are stored as base64 strings to prevent data being stored in
+/// plaintext
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthToken {
     token_type: String,
     scopes: HashSet<String>,
     expires: DateTime<Local>,
+    #[serde(serialize_with = "to_base64", deserialize_with = "from_base64")]
     access_token: String,
+    #[serde(serialize_with = "to_base64_option", deserialize_with = "from_base64_option")]
     refresh_token: Option<String>,
 }
 

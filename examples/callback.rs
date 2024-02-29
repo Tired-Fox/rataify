@@ -1,6 +1,6 @@
 extern crate rataify;
 
-use rataify::spotify::api::{Item, Track};
+use rataify::spotify::response::{Item, Track};
 
 const source: &'static str = r#"{
   "album": {

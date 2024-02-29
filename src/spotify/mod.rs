@@ -1,24 +1,28 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Display;
+
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Report;
-use http_body_util::{Empty, Full};
-use hyper::{Request, Response};
-use hyper::body::{Body, Bytes, Incoming};
-use hyper_util::rt::TokioIo;
+use hyper::body::Body;
 use reqwest::{IntoUrl, RequestBuilder, StatusCode};
 use serde::Deserialize;
-use serde_json::{json, Value};
-use tokio::net::TcpStream;
-
-pub mod auth;
-mod credentials;
-pub mod api;
-mod cache;
 
 pub use auth::{Callback, OAuth};
 pub use credentials::Credentials;
 
+pub use crate::browser;
+use crate::error::Error;
+pub use crate::query;
+pub use crate::scopes;
+pub use crate::spotify::api::{body, response};
+use crate::spotify::api::SpotifyRequest;
+use crate::spotify::cache::DeviceCache;
+use crate::spotify::response::Devices;
+
+pub mod auth;
+mod credentials;
+mod cache;
+pub mod api;
 
 #[macro_export]
 macro_rules! scopes {
@@ -57,42 +61,49 @@ macro_rules! query {
         $base.to_string()
     };
 }
-pub use crate::browser;
-use crate::CONFIG_PATH;
-pub use crate::scopes;
-pub use crate::query;
-use crate::spotify::api::{Device, Playback, User};
-use crate::spotify::cache::DeviceCache;
-
 /// Helper wrapper around reqwest::Client to prefix urls with base spotify api url
-struct Client(reqwest::Client);
+struct Client {
+    client: reqwest::Client,
+    oauth: OAuth,
+}
 
 impl Client {
-    pub fn get<S: Display>(&self, url: S) -> RequestBuilder {
-        self.0.get(format!("https://api.spotify.com/v1{}", url))
+    pub fn new(oauth: OAuth) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            oauth,
+        }
     }
 
-    pub fn post<S: Display>(&self, url: S) -> RequestBuilder {
-        self.0.get(format!("https://api.spotify.com/v1{}", url))
+    pub async fn get<S: Display>(&mut self, url: S) -> RequestBuilder {
+        self.oauth.update().await.unwrap();
+        self.client.get(format!("https://api.spotify.com/v1{}", url))
+            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
     }
 
-    pub fn put<S: Display>(&self, url: S) -> RequestBuilder {
-        self.0.put(format!("https://api.spotify.com/v1{}", url))
+    pub async fn post<S: Display>(&mut self, url: S) -> RequestBuilder {
+        self.oauth.update().await.unwrap();
+        self.client.get(format!("https://api.spotify.com/v1{}", url))
+            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+    }
+
+    pub async fn put<S: Display>(&mut self, url: S) -> RequestBuilder {
+        self.oauth.update().await.unwrap();
+        self.client.put(format!("https://api.spotify.com/v1{}", url))
+            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
     }
 }
 
 pub struct Spotify {
-    http_client: Client,
-    oauth: OAuth,
-    pub device: DeviceCache,
-    pub user: User,
+    pub oauth: OAuth,
+    pub user: response::User,
 }
 
 impl Spotify {
-    pub async fn new() -> color_eyre::Result<Self> {
+    pub async fn new() -> crate::error::Result<Self> {
         // Setup OAuth and ensure that the access token is ready
         let mut oauth = OAuth::new(
-            Credentials::from_env().ok_or_eyre("Missing spotify id and secret environment variables")?,
+            Credentials::from_env().ok_or_eyre("Missing spotify id and secret environment variables").map_err(Error::custom)?,
             scopes!(
                 // User information permissions
                 user_read_private,
@@ -109,129 +120,130 @@ impl Spotify {
                 playlist_modify_private,
             ),
         );
-        oauth.update().await?;
 
-        let client = Client(reqwest::Client::new());
-
-        let mut spotify = Self {
-            user: fetch_user_profile(&oauth, &client).await?,
-            device: DeviceCache::load().unwrap_or_default(),
+        Ok(Self {
+            user: fetch_user_profile(&mut oauth).await?,
             oauth,
-            http_client: client,
-        };
-
-        Ok(spotify)
-    }
-
-    /// Helper to create a `GET` request, prefixing the url with spotify api base url and
-    /// automatically refreshing and adding the access token to the headers.
-    fn get<S: Display>(&self, url: S) -> RequestBuilder {
-        self.http_client.get(url)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
-    }
-
-    /// Helper to create a `POST` request, prefixing the url with spotify api base url and
-    /// automatically refreshing and adding the access token to the headers.
-    fn post<S: Display>(&self, url: S) -> RequestBuilder {
-        self.http_client.post(url)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
-    }
-
-    /// Helper to create a `POST` request, prefixing the url with spotify api base url and
-    /// automatically refreshing and adding the access token to the headers.
-    fn put<S: Display>(&self, url: S) -> RequestBuilder {
-        self.http_client.put(url)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+        })
     }
 }
 
-async fn fetch_user_profile(oauth: &OAuth, client: &Client) -> color_eyre::Result<User> {
-    let response = client.get("/me")
-        .header("Authorization", oauth.token.as_ref().unwrap().to_header())
-        .send()
-        .await?;
+async fn fetch_user_profile(oauth: &mut OAuth) -> crate::error::Result<response::User> {
+    let response = SpotifyRequest::get("/me")
+        .send(oauth)
+        .await.map_err(Error::from)?;
 
     if !response.status().is_success() {
-        return Err(Report::msg("Failed to fetch user profile"));
+        return Err(Error::custom("Failed to fetch user profile"));
     }
 
-    Ok(response.json().await?)
+    Ok(response.json().await.map_err(Error::custom)?)
 }
 
 impl Spotify {
-    pub async fn devices(&mut self) -> color_eyre::Result<&Vec<Device>> {
-        let response = self.get("/me/player/devices").send().await?;
-        let devices: DeviceCache = response.json().await?;
-        println!("{devices:#?}");
-
-        // load devices cache and update with spotify known devices
-        self.device.update(devices.drain());
-
-        Ok(self.device.devices())
+    /// Get list of available devices
+    pub async fn devices(&mut self) -> crate::error::Result<Vec<response::Device>> {
+        let response = SpotifyRequest::get("/me/player/devices")
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
+        Ok(response.json::<Devices>().await.map_err(Error::custom)?.devices)
     }
 
-    pub async fn playback(&self) -> color_eyre::Result<Playback> {
-        let response = self.get("/me/player?additional_types=track,episode")
-            .send().await?;
+    /// Get current playback state
+    ///
+    /// Also update device in cache based on response
+    pub async fn playback(&mut self) -> crate::error::Result<response::Playback> {
+        let response = SpotifyRequest::get("/me/player")
+            .param("additional_types", "track,episode")
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
 
-        if !response.status().is_success() {
-            return Err(Report::msg("Failed to fetch playback state"));
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if !response.status().is_success() {
+            return Err(Error::custom("Failed to fetch playback state"));
         }
 
-        let body = response.text().await?;
+        let body = response.text().await.map_err(Error::custom)?;
 
         let jd = &mut serde_json::Deserializer::from_str(&body);
-        let result = serde_path_to_error::deserialize(jd);
-        match result {
-            Ok(playback) => Ok(playback),
-            Err(error) => {
-                Err(eyre!("Failed to parse playback state: {}", error))
-            }
-        }
+        Ok(serde_path_to_error::deserialize(jd).map_err(Error::custom)?)
     }
 
-    pub async fn transfer_playback<S: ToString>(&self, device_id: S, play: bool) -> color_eyre::Result<()> {
-        let result = self.put("/me/player")
-            .header("Content-Type", "application/json")
-            .body(
-                serde_json::to_string(&json!({
-                    "device_ids": [ device_id.to_string() ],
-                    "play": play
-                }))?
-            )
-            .send().await?;
+    /// Transfer playback to a different device
+    pub async fn transfer_playback(&mut self, body: &body::TransferPlayback) -> crate::error::Result<()> {
+        let response = SpotifyRequest::put("/me/player")
+            .with_json(body).map_err(Error::from)?
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
 
-        if !result.status().is_success() {
-            return Err(Report::msg("Failed to transfer playback to different device"));
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if !response.status().is_success() {
+            return Err(Error::custom("Failed to transfer playback to different device"));
         }
 
         Ok(())
     }
 
-    pub async fn play(&self) -> color_eyre::Result<()> {
-        match self.device.device() {
-            Some(device) => {
-                let response = self.put(format!("/me/player/play?device_id={}", device.id))
-                    .header("Content-Type", "application/json")
-                    .body(
-                        serde_json::to_string(&json!({
-                            "position_ms": 0,
-                        }))?
-                    )
-                    .send().await?;
+    /// Skip to next
+    pub async fn next(&mut self) -> crate::error::Result<()> {
+        let response = SpotifyRequest::post("/me/player/next")
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
 
-                if response.status().is_success() {
-                    Ok(())
-                } else if response.status() == StatusCode::FORBIDDEN {
-                    let result = response.json::<HashMap<String, api::Error>>().await?.get("error").unwrap().clone();
-                    Err(Report::msg(result.message))
-                } else {
-                    Err(eyre!("Failed to start playback on device {}", device.name))
-                }
-            }
-            None => {
-                Err(eyre!("No device selected"))
-            }
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if response.status().is_client_error() {
+            return Err(Error::custom("Failed to skip to next"));
         }
+        Ok(())
+    }
+
+    /// Skip to previous
+    pub async fn previous(&mut self) -> crate::error::Result<()> {
+        let response = SpotifyRequest::post("/me/player/previous")
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if !response.status().is_success() {
+            return Err(Error::custom("Failed to skip to next"));
+        }
+        Ok(())
+    }
+
+    pub async fn pause(&mut self) -> crate::error::Result<()> {
+        let response = SpotifyRequest::put("/me/player/pause")
+            .send(&mut self.oauth)
+            .await?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if !response.status().is_success() {
+            return Err(Error::custom("Failed to pause playback"));
+        }
+        Ok(())
+    }
+
+    // TODO: Update to play from currently cached device or make the user select a device
+    pub async fn play(&mut self, body: &body::StartPlayback) -> crate::error::Result<()> {
+        let response = SpotifyRequest::put("/me/player/play")
+            // Start playback at
+            .with_json(body).map_err(Error::custom)?
+            .send(&mut self.oauth)
+            .await.map_err(Error::from)?;
+
+        if response.status() == StatusCode::FORBIDDEN {
+            let result = response.json::<HashMap<String, response::Error>>().await.map_err(Error::custom)?.get("error").unwrap().clone();
+            return Err(Error::custom(result.message));
+        } else if response.status() == StatusCode::NOT_FOUND {
+            return Err(Error::NoDevice);
+        } else if !response.status().is_success() {
+            return Err(Error::custom("Failed to start playback"));
+        }
+
+        Ok(())
     }
 }

@@ -1,7 +1,9 @@
 use color_eyre::Result;
-use dialoguer::{Confirm, Input, Password};
+use dialoguer::{Confirm, Input, Password, Select};
+use dialoguer::theme::ColorfulTheme;
 
 use rataify::CONFIG_PATH;
+use rataify::spotify::body::TransferPlayback;
 use rataify::spotify::Spotify;
 
 static BEFORE_ID: [&str; 6] = [
@@ -20,9 +22,6 @@ static BEFORE_SECRET: [&str; 1] = [
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
-
-
     // println!("{:?}", std::env::current_dir());
     // return;
     if !CONFIG_PATH.join(".env").exists() {
@@ -54,17 +53,26 @@ async fn main() -> Result<()> {
 
     let mut spotify = Spotify::new().await?;
 
-    // let devices = spotify.devices().await?;
-    // let names = devices.iter().map(|d| &d.name).collect::<Vec<&String>>();
-    //
-    // let device = Select::with_theme(&ColorfulTheme::default())
-    //     .with_prompt("Select a Device")
-    //     .items(names.as_slice())
-    //     .interact()
-    //     .unwrap();
-    //
-    // spotify.device.select(device);
+    let devices = spotify.devices().await?.clone();
+    let names = devices.iter().map(|d| &d.name).collect::<Vec<&String>>();
+
+    let device = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select a Device")
+        .items(names.as_slice())
+        .interact()
+        .unwrap();
+
+    spotify.device.select(device);
+    spotify.transfer_playback(&TransferPlayback {
+        device_ids: [devices.get(device).unwrap().id.clone()],
+        play: None,
+    }).await?;
     // spotify.play().await?;
-    println!("{:#?}", spotify.playback().await?);
+    // let response = rataify::spotify::api::SpotifyRequest::new()
+    //     .url("/me/player")
+    //     .send(&mut spotify.oauth)
+    //     .await?;
+    // println!("{:#?}", response.json::<Playback>().await?);
+    // println!("{:?}", spotify.next().await);
     Ok(())
 }

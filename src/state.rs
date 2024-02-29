@@ -1,29 +1,15 @@
 use std::fmt::{Debug, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
-use std::sync::Mutex;
-use chrono::Duration;
 
+use chrono::Duration;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use ratatui_image::picker::Picker;
+use crate::action::Action;
 
-use crate::spotify::api::{Episode, Item, Playback, Track};
-use crate::spotify::Spotify;
+use crate::spotify::response::{Album, Device, Episode, Item, Playback, Show, Track};
 
 lazy_static::lazy_static! {
-    pub static ref PICKER: Mutex<Picker> = {
-        #[cfg(windows)]
-        return Mutex::new(Picker::new((8, 16)));
-
-        #[cfg(not(windows))]
-        return Mutex::new({
-            let mut picker = Picker::from_termios().unwrap();
-            picker.guess_protocol().unwrap();
-            picker
-        });
-    };
-
     // TODO: Change to proper background algroithms instead
     static ref PATTERNS: [&'static str; 4] = [
         "…. ",
@@ -68,7 +54,8 @@ const TRBL: Flag = Flag(2);
 
 #[derive(Debug)]
 pub struct PlaybackState {
-    pub cover: Vec<String>,
+    pub cover: Vec<Vec<char>>,
+
     pub current: Option<Playback>,
 
     corners: Flag, // 1 = tl + br, 2 = tr + bl
@@ -87,6 +74,32 @@ impl Default for PlaybackState {
 }
 
 impl PlaybackState {
+    /// Current state of whether something is playing
+    pub fn playing(&self) -> bool {
+        if let Some(playback) = &self.current {
+            return playback.playing;
+        }
+        false
+    }
+
+    /// Get the name of the context, this could be an album, playlist, show, etc...
+    pub fn context_name(&mut self) -> String {
+        match &self.current {
+            Some(playback) => {
+               match &playback.item {
+                   Some(Item::Track(Track { album: Album { name, ..}, .. })) => {
+                       name.clone()
+                   },
+                   Some(Item::Episode(Episode { show: Some(Show { name, ..}), ..})) => {
+                       name.clone()
+                   },
+                   _ => String::new()
+               }
+            },
+            None => String::new()
+        }
+    }
+
     pub fn now_playing(&mut self, playback: Option<Playback>)
     {
         self.corners = Flag::default();
@@ -146,49 +159,9 @@ impl PlaybackState {
         }
     }
 
-    // TODO: Randomize border based on title and artist.
-    //  Corners based on artist, sides based on title
-    pub fn cover(&self, height: usize) -> String {
-        let height = height - 2;
-        let width: usize = (height as f32 * 2.5) as usize;
-        let mut output = format!(
-            "┌─{}─┐\n",
-            // if self.corners & TLBR == TLBR { "┌─" } else { "  " },
-            " ".repeat(width - 2),
-            // if self.corners & TRBL == TRBL { "─┐" } else { "  " },
-        );
-        output.push_str(
-            format!(
-                "{}",
-                self.cover
-                    .iter()
-                    .skip((50 - height) / 2)
-                    .take(height)
-                    .map(|r| format!(
-                        " {} ",
-                        r.chars()
-                            .skip((50 - width) / 2)
-                            .take(width)
-                            .collect::<String>(),
-                    ))
-                    .collect::<Vec<String>>()
-                    .join("\n")
-            )
-                .as_str(),
-        );
-        output.push_str(format!(
-            "\n└─{}─┘",
-            //'┌', '┐', '└', '┘'
-            // if self.corners & TRBL == TRBL { "└─" } else { "  " },
-            " ".repeat(width - 2),
-            // if self.corners & TLBR == TLBR { "─┘" } else { "  " },
-        ).as_str());
-        output
-    }
-
     fn generate_cover(&mut self) {
         if self.current.is_none() {
-            self.cover = (0..50).map(|_| " ".repeat(50)).collect();
+            self.cover = (0..50).map(|_| (0..50).map(|_| ' ').collect()).collect();
             return
         }
 
@@ -230,10 +203,10 @@ impl PlaybackState {
         self.cover = (0..50)
             .map(|_| {
                 (0..50)
-                    .map(|_| pattern.nth(rng.gen_range(0..size)).unwrap())
-                    .collect::<String>()
+                    .map(|_| *(pattern.nth(rng.gen_range(0..size)).unwrap()))
+                    .collect()
             })
-            .collect::<Vec<String>>();
+            .collect();
 
         if rng.gen() {
             self.corners |= TLBR;
@@ -244,26 +217,95 @@ impl PlaybackState {
     }
 }
 
+#[derive(Default)]
+pub struct DeviceState {
+    pub selection: u16,
+    pub devices: Vec<Device>,
+    pub end_action: Option<Action>,
+}
+
+impl DeviceState {
+    fn setup(&mut self, devices: Vec<Device>, action: Option<Action>) {
+        self.devices = devices;
+        self.end_action = action;
+    }
+
+    fn device(&self) -> Option<Device> {
+        if self.devices.is_empty() {
+            None
+        } else {
+            Some(self.devices[self.selection as usize].clone())
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.selection = 0;
+        self.devices.drain(..);
+        self.end_action = None;
+    }
+
+    pub fn next(&mut self) {
+        if self.selection < self.devices.len() as u16 - 1 {
+            self.selection += 1;
+        }
+    }
+
+    pub fn previous(&mut self) {
+        if self.selection > 0 {
+            self.selection -= 1;
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub enum ModalWindow {
+    #[default]
+    DeviceSelect,
+    Exit,
+    Error,
+}
+
+#[derive(Debug, Default)]
+pub enum MainWindow {
+    #[default]
+    Cover,
+    Browse,
+    Playlists,
+    Queue,
+    Library,
+    Album,
+    Artist,
+    Show,
+    AudioBook
+}
+
+/// State for what is currently focused
+#[derive(Debug)]
+pub enum Window {
+    Modal(ModalWindow),
+    Main(MainWindow),
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        Window::Main(MainWindow::default())
+    } 
+}
+
 pub struct State {
     pub counter: u8,
+    pub window: Window,
     pub playback: PlaybackState,
-    pub spotify: Spotify,
+    pub device_select: DeviceState
 }
 
 impl State {
     pub async fn new() -> Self {
         Self {
             counter: 0,
+            window: Window::default(),
+            device_select: DeviceState::default(),
             playback: PlaybackState::default(),
-            spotify: Spotify::new().await.unwrap(),
         }
-    }
-
-    pub(crate) async fn next(&mut self) {
-        self.playback.now_playing(self.spotify.playback().await.ok());
-    }
-
-    pub(crate) async fn previous(&mut self) {
-        self.playback.now_playing(self.spotify.playback().await.ok());
     }
 }

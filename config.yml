@@ -2,10 +2,9 @@ override:
   overwrite_duplicate_keymap: true
 
 keymaps:
-  L: Next
-  H: Previous
-  ">": Next
-  "<": Previous
-  +: VolumeUp
-  "-": VolumeDown
-  q: Exit
+  ">": next
+  "<": previous
+  +: volume_up
+  "-": volume_down
+  q: exit
+  space: toggle_playback

@@ -1,13 +1,17 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::{_private_action as private, _public_action as public};
+use crate::spotify::response::Playback;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum PublicAction {
     Next,
     Previous,
-    Pause,
     Play,
+    Pause,
+    TogglePlayback,
+    SelectDevice,
     Stop,
     VolumeUp,
     VolumeDown,
@@ -24,6 +28,7 @@ pub enum PublicAction {
 pub enum PrivateAction {
     Tick,
     Render,
+    UpdatePlayback,
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -65,6 +70,7 @@ macro_rules! _private_action {
     }
 
 pub type Private = PrivateAction;
+
 pub type Public = PublicAction;
 
 pub const NONE: Action = Action::None;

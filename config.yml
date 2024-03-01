@@ -1,10 +1,26 @@
-override:
-  overwrite_duplicate_keymap: true
+icons:
+  on: false
+  custom:
+    play: "▶"
+    pause: "⏸"
+    next: "⏭"
+    previous: "⏮"
+    shuffle: "🔀"
+    repeat: "🔁"
+    repeat_once: "🔂"
 
 keymaps:
-  ">": next
-  "<": previous
+  n: next
+  p: previous
+  h: left
+  l: right
+  j: down
+  k: up
+  d: select_device
+  q: exit
+  "ctrl+s": toggle_shuffle
+  "ctrl+r": toggle_repeat
+  "?": help
+  space: toggle_playback
   +: volume_up
   "-": volume_down
-  q: exit
-  space: toggle_playback

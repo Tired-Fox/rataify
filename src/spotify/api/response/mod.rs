@@ -7,7 +7,7 @@ pub use error::*;
 pub use playback::*;
 pub use user::*;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Image {
     pub url: String,
     pub width: Option<u32>,

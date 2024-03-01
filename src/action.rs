@@ -15,11 +15,14 @@ pub enum PublicAction {
     Stop,
     VolumeUp,
     VolumeDown,
+    ToggleShuffle,
+    ToggleRepeat,
     Select,
     Down,
     Up,
     Left,
     Right,
+    Help,
     Close,
     Exit,
 }
@@ -28,7 +31,7 @@ pub enum PublicAction {
 pub enum PrivateAction {
     Tick,
     Render,
-    UpdatePlayback,
+    FetchPlayback,
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]

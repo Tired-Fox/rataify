@@ -59,6 +59,7 @@ pub struct Device {
     /// The volume in percent
     ///
     /// Range: `0 - 100`
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub volume_percent: Option<u32>,
     /// If this device can be used to set the volume
     pub supports_volume: bool,

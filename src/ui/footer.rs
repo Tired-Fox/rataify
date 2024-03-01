@@ -1,5 +1,3 @@
-use std::fs::OpenOptions;
-use std::io::Write;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::prelude::Color;
@@ -28,9 +26,9 @@ impl StatefulWidget for Footer {
     }
 }
 
+// TODO: Move to generic location and implement set pattern algorithms
+// TODO: Add color randomness potential
 pub struct Cover;
-
-// TODO: Move cover generation to this render method
 impl StatefulWidget for Cover {
     type State = State;
 
@@ -64,15 +62,16 @@ impl StatefulWidget for PlaybackInfo {
         let playback_info = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(1),
                 Constraint::Length(2),
+                Constraint::Length(1),
                 Constraint::Length(1),
                 Constraint::Min(1),
             ])
             .split(rect);
 
-        NameArtist.render(playback_info[1], buf, state);
-        Progress.render(playback_info[2], buf, state);
+        NameArtist.render(playback_info[0], buf, state);
+        Progress.render(playback_info[1], buf, state);
+        PlayState.render(playback_info[2], buf, state);
     }
 }
 
@@ -99,8 +98,8 @@ pub struct Progress;
 impl StatefulWidget for Progress {
     type State = State;
     fn render(self, rect: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let p = state.playback.progress();
         let d = state.playback.duration();
+        let p = state.playback.progress();
         let color = match state.playback.playing() {
             true => Color::Rgb(29, 185, 84),
             false => Color::Rgb(221, 136, 17),
@@ -108,9 +107,34 @@ impl StatefulWidget for Progress {
 
         Gauge::default()
             .block(Block::default().borders(Borders::NONE))
-            .gauge_style(Style::default().italic().bold().fg(color).bg(Color::Rgb(25, 20, 20)))
+            .gauge_style(Style::default().bold().fg(color).bg(Color::Rgb(25, 20, 20)))
             .label(format!("{}:{:0>2} / {}:{:0>2}", p.num_minutes(), p.num_seconds() % 60, d.num_minutes(), d.num_seconds() % 60))
             .ratio(state.playback.percent())
             .render(rect, buf);
+    }
+}
+
+pub struct PlayState;
+impl StatefulWidget for PlayState {
+    type State = State;
+    
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(9),
+                Constraint::Fill(1),
+                Constraint::Length(1),
+            ])
+            .split(area);
+
+        let shuffle_style = match state.playback.shuffle() {
+            true => Style::default().bold(),
+            false => Style::default().fg(Color::DarkGray),
+        };
+
+        buf.set_string(layout[0].left(), layout[0].top(), "Shuffle ", shuffle_style);
+        buf.set_string(layout[1].left(), layout[1].top(), format!("Repeat: {}", state.playback.repeat()), Style::default());
+        buf.set_string(layout[2].left(), layout[2].top(), "?", Style::default());
     }
 }

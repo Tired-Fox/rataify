@@ -1,12 +1,16 @@
 use std::fmt::{Debug, Display, Formatter};
+
 use color_eyre::{Report, Section};
-use color_eyre::eyre::eyre;
+use crate::spotify::response;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
     Custom(Report),
+    Response(response::Error),
+    Reqwest(reqwest::Error),
+    Io(std::io::Error),
     NoDevice,
 }
 
@@ -21,7 +25,22 @@ impl Display for Error {
         write!(f, "Error: {}", match self {
             Self::Custom(msg) => msg.to_string(),
             Self::NoDevice => "No device found".to_string(),
+            Self::Response(err) => err.message.to_string(),
+            Self::Io(err) => err.to_string(),
+            Self::Reqwest(err) => err.to_string(),
         })
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Reqwest(error)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
     }
 }
 
@@ -29,6 +48,9 @@ impl From<Error> for Report {
     fn from(error: Error) -> Self {
         match error {
             Error::Custom(report) => report,
+            Error::Reqwest(err) => Report::from(err),
+            Error::Io(err) => Report::from(err),
+            Error::Response(err) => Report::msg(err.message),
             Error::NoDevice => Report::msg("No device found")
                 .suggestion("Try again later")
                 .suggestion("Make sure the device is active")

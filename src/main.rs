@@ -14,6 +14,11 @@ async fn main() -> Result<()> {
             "ctrl+c" => Public::Exit,
             "ctrl+shift+z" => Public::Exit,
             "q" => Public::Close,
+            "left" => Public::Left,
+            "right" => Public::Right,
+            "up" => Public::Up,
+            "down" => Public::Down,
+            "enter" => Public::Select,
         })
         .compile();
 

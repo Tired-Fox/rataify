@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 
 use chrono::{Duration, NaiveDateTime};
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ fn ms_to_datetime<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
     NaiveDateTime::from_timestamp_millis(ms).ok_or(Error::custom("Invalid timestamp"))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Repeat {
     Off,
@@ -39,23 +39,34 @@ pub enum Repeat {
     Context,
 }
 
-#[derive(Debug, Deserialize)]
+impl Display for Repeat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Repeat::Off => write!(f, "off"),
+            Repeat::Track => write!(f, "track"),
+            Repeat::Context => write!(f, "context"),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Shuffle {
     On,
     Off
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Context {
     #[serde(rename = "type")]
     pub _type: String,
     pub href: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub external_urls: HashMap<String, String>,
     pub uri: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AlbumType {
     Album,
@@ -63,7 +74,7 @@ pub enum AlbumType {
     Compilation
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DatePrecision {
     Year,
@@ -72,7 +83,7 @@ pub enum DatePrecision {
 }
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Album {
     pub album_type: AlbumType,
     pub total_tracks: u32,
@@ -106,7 +117,7 @@ pub struct Artist {
     pub uri: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SimplifiedArtist {
     pub external_urls: HashMap<String, String>,
     pub href: String,
@@ -117,7 +128,7 @@ pub struct SimplifiedArtist {
     pub uri: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RestrictionReason {
     Explicit,
@@ -125,7 +136,7 @@ pub enum RestrictionReason {
     Product,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Track {
     pub album: Album,
     pub artists: Vec<SimplifiedArtist>,
@@ -152,21 +163,21 @@ pub struct Track {
     pub is_local: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ResumePoint {
     pub fully_played: bool,
     #[serde(rename = "resume_position_ms", deserialize_with = "ms_to_duration")]
     pub resume_position: Duration,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Copyright {
     pub text: String,
     #[serde(rename = "type")]
     pub _type: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Show {
     pub available_markets: Vec<String>,
     pub copyrights: Vec<Copyright>,
@@ -188,7 +199,7 @@ pub struct Show {
     pub uri: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Episode {
     pub audio_preview_url: Option<String>,
     pub description: String,
@@ -216,7 +227,7 @@ pub struct Episode {
     pub show: Option<Show>
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Item {
     Track(Track),
@@ -224,7 +235,7 @@ pub enum Item {
 }
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Playback {
     /// Currently used device
     pub device: Device,
@@ -235,16 +246,17 @@ pub struct Playback {
     pub context: Option<Context>,
     #[serde(deserialize_with = "ms_to_datetime")]
     pub timestamp: NaiveDateTime,
-    #[serde(rename = "progress_ms", deserialize_with = "ms_to_duration_optional")]
+    #[serde(rename = "progress_ms", deserialize_with = "ms_to_duration_optional", skip_serializing_if = "Option::is_none")]
     pub progress: Option<Duration>,
     #[serde(rename = "is_playing")]
     pub playing: bool,
     currently_playing_type: CurrentlyPlayingType,
+
     pub item: Option<Item>,
     pub actions: HashMap<String, HashMap<String, bool>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CurrentlyPlayingType {
     Track,

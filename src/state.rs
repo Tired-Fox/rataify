@@ -1,13 +1,15 @@
 use std::fmt::{Debug, Display};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
+use std::time::Instant;
 
 use chrono::Duration;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use crate::action::Action;
 
-use crate::spotify::response::{Album, Device, Episode, Item, Playback, Show, Track};
+use crate::action::Action;
+use crate::config::IconsConfig;
+use crate::spotify::response::{Album, Device, Episode, Item, Playback, Repeat, Show, Track};
 
 lazy_static::lazy_static! {
     // TODO: Change to proper background algroithms instead
@@ -52,11 +54,12 @@ impl BitAndAssign for Flag {
 const TLBR: Flag = Flag(1);
 const TRBL: Flag = Flag(2);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PlaybackState {
     pub cover: Vec<Vec<char>>,
 
     pub current: Option<Playback>,
+    pub last_polled: Instant,
 
     corners: Flag, // 1 = tl + br, 2 = tr + bl
 }
@@ -66,6 +69,7 @@ impl Default for PlaybackState {
         let mut state = Self {
             cover: Vec::new(),
             current: None,
+            last_polled: Instant::now(),
             corners: Flag::default(),
         };
         state.generate_cover();
@@ -74,6 +78,20 @@ impl Default for PlaybackState {
 }
 
 impl PlaybackState {
+    pub fn shuffle(&self) -> bool {
+        if let Some(playback) = &self.current {
+            return playback.shuffle;
+        }
+        false
+    }
+
+    pub fn repeat(&self) -> Repeat {
+        if let Some(playback) = &self.current {
+            return playback.repeat;
+        }
+        Repeat::Off
+    }
+
     /// Current state of whether something is playing
     pub fn playing(&self) -> bool {
         if let Some(playback) = &self.current {
@@ -104,6 +122,7 @@ impl PlaybackState {
     {
         self.corners = Flag::default();
         self.current = playback;
+        self.last_polled = Instant::now();
 
         self.generate_cover();
     }
@@ -134,8 +153,8 @@ impl PlaybackState {
 
     /// Percent completed
     pub fn percent(&self) -> f64 {
-        let progress = self.progress().num_milliseconds();
         let duration = self.duration().num_milliseconds();
+        let progress = self.progress().num_milliseconds();
 
         if progress == 0 || duration == 0 {
             return 0.0;
@@ -144,9 +163,16 @@ impl PlaybackState {
         }
     }
 
+    pub fn elapsed(&self) -> Duration {
+        Duration::milliseconds(self.last_polled.elapsed().as_millis() as i64)
+    }
+
     pub fn progress(&self) -> Duration {
         match &self.current {
-            Some(Playback { progress, .. }) => progress.unwrap_or(Duration::zero()).clone(),
+            Some(Playback { progress, .. }) => match self.playing() {
+                true => (progress.unwrap_or(Duration::zero()).clone() + self.elapsed()).min(self.duration()),
+                false => progress.unwrap_or(Duration::zero()).clone()
+            },
             _ => Duration::zero()
         }
     }
@@ -217,20 +243,30 @@ impl PlaybackState {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct DeviceState {
-    pub selection: u16,
+    pub selection: usize,
     pub devices: Vec<Device>,
     pub end_action: Option<Action>,
 }
 
 impl DeviceState {
-    fn setup(&mut self, devices: Vec<Device>, action: Option<Action>) {
+    pub fn set_devices(&mut self, devices: Vec<Device>) {
         self.devices = devices;
-        self.end_action = action;
     }
 
-    fn device(&self) -> Option<Device> {
+    pub fn set_action(&mut self, action: Action) {
+        self.end_action = Some(action);
+    }
+
+    pub fn select(&mut self, device: Option<Device>) {
+        self.selection = 0;
+        if let Some(device) = device {
+            self.selection = self.devices.iter().position(|d| d == &device).unwrap_or(0);
+        }
+    }
+
+    pub fn device(&self) -> Option<Device> {
         if self.devices.is_empty() {
             None
         } else {
@@ -240,12 +276,11 @@ impl DeviceState {
 
     pub fn reset(&mut self) {
         self.selection = 0;
-        self.devices.drain(..);
         self.end_action = None;
     }
 
     pub fn next(&mut self) {
-        if self.selection < self.devices.len() as u16 - 1 {
+        if self.selection < self.devices.len().saturating_sub(1) {
             self.selection += 1;
         }
     }
@@ -257,15 +292,24 @@ impl DeviceState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+pub enum Move {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
 pub enum ModalWindow {
     #[default]
     DeviceSelect,
+    Help,
     Exit,
     Error,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub enum MainWindow {
     #[default]
     Cover,
@@ -280,32 +324,83 @@ pub enum MainWindow {
 }
 
 /// State for what is currently focused
-#[derive(Debug)]
-pub enum Window {
-    Modal(ModalWindow),
-    Main(MainWindow),
+#[derive(Debug, Clone, Copy)]
+pub struct Window {
+    pub modal: ModalWindow,
+    pub main: MainWindow,
 }
 
 impl Default for Window {
     fn default() -> Self {
-        Window::Main(MainWindow::default())
-    } 
+        Self {
+            modal: ModalWindow::default(),
+            main: MainWindow::default(),
+        }
+    }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+pub enum WindowState {
+    #[default]
+    Main,
+    Modal
+}
+
+#[derive(Debug, Clone)]
 pub struct State {
+    pub icons: IconsConfig,
     pub counter: u8,
     pub window: Window,
+    pub window_state: WindowState,
     pub playback: PlaybackState,
-    pub device_select: DeviceState
+    pub device_select: DeviceState,
 }
 
 impl State {
     pub async fn new() -> Self {
         Self {
+            icons: IconsConfig::default(),
             counter: 0,
             window: Window::default(),
+            window_state: WindowState::default(),
             device_select: DeviceState::default(),
             playback: PlaybackState::default(),
+        }
+    }
+
+    pub fn back(&mut self) -> bool {
+        match self.window_state {
+            WindowState::Main => {
+                match self.window.main {
+                    MainWindow::Cover => return true,
+                    _ => self.window.main = MainWindow::Cover,
+                }
+            },
+            WindowState::Modal => self.window_state = WindowState::Main
+        }
+        false
+    }
+
+    pub fn show_modal(&mut self, modal: ModalWindow) {
+        self.window.modal = modal;
+        self.window_state = WindowState::Modal;
+    }
+
+    pub fn move_with(&mut self, movement: Move) {
+        match self.window_state {
+            WindowState::Modal => {
+                match self.window.modal {
+                    ModalWindow::DeviceSelect => {
+                        match movement {
+                            Move::Up => self.device_select.previous(),
+                            Move::Down => self.device_select.next(),
+                            _ => {}
+                        }
+                    },
+                    _ => {}
+                }
+            },
+            _ => {}
         }
     }
 }

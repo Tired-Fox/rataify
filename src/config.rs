@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::action::{Action, Public};
 use crate::KeyMap;
+use crate::ui::icon::MediaIcon;
+
+fn true_default() -> bool { true }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Overrides {
@@ -15,12 +18,60 @@ pub struct Overrides {
 
 #[derive(Default, Debug)]
 pub struct Config {
+    pub icons: IconsConfig,
     pub keymaps: HashMap<KeyEvent, Action>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
+pub struct IconsConfig {
+    #[serde(default = "true_default")]
+    pub on: bool,
+    pub custom: HashMap<MediaIcon, String>,
+}
+
+impl IconsConfig {
+    pub fn shuffle(&self) -> &str {
+        self.custom.get(&MediaIcon::Shuffle).unwrap()
+    }
+
+    pub fn repeat(&self, repeat: crate::spotify::response::Repeat) -> &str {
+        match repeat {
+            crate::spotify::response::Repeat::Track => self.custom.get(&MediaIcon::Repeat).unwrap(),
+            crate::spotify::response::Repeat::Context => self.custom.get(&MediaIcon::RepeatOnce).unwrap(),
+            crate::spotify::response::Repeat::Off => self.custom.get(&MediaIcon::Repeat).unwrap(),
+        }
+    }
+
+    pub fn pause(&self) -> &str {
+        self.custom.get(&MediaIcon::Pause).unwrap()
+    }
+
+    pub fn play(&self) -> &str {
+        self.custom.get(&MediaIcon::Play).unwrap()
+    }
+
+    pub fn next(&self) -> &str {
+        self.custom.get(&MediaIcon::Next).unwrap()
+    }
+
+    pub fn previous(&self) -> &str {
+        self.custom.get(&MediaIcon::Previous).unwrap()
+    }
+}
+
+impl Default for IconsConfig {
+    fn default() -> Self {
+        Self {
+            on: true,
+            custom: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
 pub struct ConfigBuilder {
-    overrides: Option<Overrides>,
+    #[serde(default)]
+    icons: IconsConfig,
     keymaps: Option<HashMap<KeyMap, Public>>,
     #[serde(skip)]
     reserved: HashMap<KeyEvent, Action>,
@@ -54,9 +105,26 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn compile(self) -> Config {
+    pub fn compile(mut self) -> Config {
+        let mut default_icons = HashMap::from([
+            (MediaIcon::Pause, "▶".to_string()),
+            (MediaIcon::Play, "⏸".to_string()),
+            (MediaIcon::Next, "⏭".to_string()),
+            (MediaIcon::Previous, "⏮".to_string()),
+            (MediaIcon::Shuffle, "🔀".to_string()),
+            (MediaIcon::Repeat, "🔁".to_string()),
+            (MediaIcon::RepeatOnce, "🔂".to_string()),
+        ]);
+
+        for (key, icon) in default_icons.iter() {
+            if !self.icons.custom.contains_key(key) {
+                self.icons.custom.insert(*key, icon.to_string());
+            }
+        }
+
         Config {
             keymaps: self.keymaps(),
+            icons: self.icons,
         }
     }
 
@@ -85,25 +153,5 @@ impl ConfigBuilder {
 
         keymaps.extend(self.reserved.clone());
         keymaps
-    }
-}
-
-#[cfg(text)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_keymap_parse() {
-
-    }
-
-    #[test]
-    fn test_duplicate_keymap() {
-
-    }
-
-    #[test]
-    fn test_reserved_keymap() {
-
     }
 }

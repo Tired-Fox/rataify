@@ -1,9 +1,9 @@
 use color_eyre::Result;
 
-use rataify::{config::Config, keymaps};
 use rataify::action::Public;
 use rataify::app::App;
-use rataify::ui::{mock_player};
+use rataify::ui::player_ui;
+use rataify::{config::Config, keymaps};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -12,8 +12,9 @@ async fn main() -> Result<()> {
     let config: Config = Config::load_with_fallback(["config.yml", "config.yaml"])?
         .reserved_keys(keymaps! {
             "ctrl+c" => Public::Exit,
-            "ctrl+shift+z" => Public::Exit,
-            "q" => Public::Close,
+        })
+        .default_keys(keymaps! {
+            "q" => Public::Back,
             "left" => Public::Left,
             "right" => Public::Right,
             "up" => Public::Up,
@@ -22,10 +23,5 @@ async fn main() -> Result<()> {
         })
         .compile();
 
-    let result = App::new().await?
-        .with_ui(mock_player)
-        .run(config)
-        .await;
-
-    result
+    App::new().await?.with_ui(player_ui).run(config).await
 }

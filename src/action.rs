@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-pub use crate::{_private_action as private, _public_action as public};
 use crate::spotify::response::Playback;
+pub use crate::{_private_action as private, _public_action as public};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicAction {
     Next,
     Previous,
+    NextTab,
+    PreviousTab,
     Play,
     Pause,
     TogglePlayback,
@@ -23,7 +25,7 @@ pub enum PublicAction {
     Left,
     Right,
     Help,
-    Close,
+    Back,
     Exit,
 }
 
@@ -32,6 +34,8 @@ pub enum PrivateAction {
     Tick,
     Render,
     FetchPlayback,
+    Focus,
+    Unfocus,
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -50,7 +54,7 @@ impl From<Option<Action>> for Action {
 impl From<Public> for Action {
     fn from(value: Public) -> Self {
         Action::Public(value)
-    }    
+    }
 }
 
 impl From<Private> for Action {
@@ -61,16 +65,16 @@ impl From<Private> for Action {
 
 #[macro_export]
 macro_rules! _public_action {
-        ($action: ident) => {
-            crate::action::Action::Public(crate::action::PublicAction::$action)
-        };
-    }
+    ($action: ident) => {
+        crate::action::Action::Public(crate::action::PublicAction::$action)
+    };
+}
 #[macro_export]
 macro_rules! _private_action {
-        ($action: ident) => {
-            crate::action::Action::Private(crate::action::PrivateAction::$action)
-        };
-    }
+    ($action: ident) => {
+        crate::action::Action::Private(crate::action::PrivateAction::$action)
+    };
+}
 
 pub type Private = PrivateAction;
 

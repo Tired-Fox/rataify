@@ -2,9 +2,14 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use color_eyre::Result;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent};
+use crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    MouseEvent,
+};
 use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+};
 use futures::{FutureExt, StreamExt};
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Frame, Terminal};
@@ -35,7 +40,10 @@ pub struct Events {
 impl Events {
     pub fn new() -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        Self { output: tx, input: rx }
+        Self {
+            output: tx,
+            input: rx,
+        }
     }
 
     pub fn send(&self, event: Event) -> Result<()> {
@@ -43,7 +51,10 @@ impl Events {
     }
 
     pub async fn next(&mut self) -> Result<Event> {
-        self.input.recv().await.ok_or(color_eyre::eyre::eyre!("Event stream closed"))
+        self.input
+            .recv()
+            .await
+            .ok_or(color_eyre::eyre::eyre!("Event stream closed"))
     }
 }
 
@@ -83,8 +94,7 @@ impl Tui {
                                             if let KeyCode::Char(value) = key.code {
                                                 if !value.is_ascii_digit() && !value.is_alphabetic() {
                                                     key.modifiers &= !KeyModifiers::SHIFT;
-                                                }
-                                                if value.is_ascii_uppercase() {
+                                                } else if value.is_ascii_uppercase() {
                                                     key.modifiers |= KeyModifiers::SHIFT;
                                                 }
                                                 _event_tx.send(Event::Key(KeyEvent::new(
@@ -92,6 +102,7 @@ impl Tui {
                                                     key.modifiers
                                                 ))).unwrap()
                                             } else {
+                                                key.modifiers &= !KeyModifiers::SHIFT;
                                                 _event_tx.send(Event::Key(KeyEvent::new(key.code, key.modifiers))).unwrap()
                                             }
                                         }

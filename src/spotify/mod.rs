@@ -19,10 +19,10 @@ pub use crate::spotify::api::{body, response};
 use crate::spotify::api::{NoContent, SpotifyRequest, SpotifyResponse};
 use crate::spotify::response::Repeat;
 
-pub mod auth;
-mod credentials;
-mod cache;
 pub mod api;
+pub mod auth;
+mod cache;
+mod credentials;
 
 #[macro_export]
 macro_rules! scopes {
@@ -71,7 +71,9 @@ impl Spotify {
     pub async fn new() -> crate::error::Result<Self> {
         // Setup OAuth and ensure that the access token is ready
         let mut oauth = OAuth::new(
-            Credentials::from_env().ok_or_eyre("Missing spotify id and secret environment variables").map_err(Error::custom)?,
+            Credentials::from_env()
+                .ok_or_eyre("Missing spotify id and secret environment variables")
+                .map_err(Error::custom)?,
             scopes!(
                 // User information permissions
                 user_read_private,
@@ -82,7 +84,6 @@ impl Spotify {
                 user_read_currently_playing,
                 user_follow_read,
                 user_follow_modify,
-
                 // Playlist permissions
                 playlist_modify_public,
                 playlist_modify_private,
@@ -90,21 +91,14 @@ impl Spotify {
         );
 
         match fetch_user_profile(&mut oauth).await {
-            SpotifyResponse::Ok(user) => {
-                Ok(Self {
-                    user,
-                    oauth,
-                })
-            },
+            SpotifyResponse::Ok(user) => Ok(Self { user, oauth }),
             _ => Err(Error::custom("Failed to fetch user profile")),
         }
     }
 }
 
 async fn fetch_user_profile(oauth: &mut OAuth) -> SpotifyResponse<response::User> {
-    let response = SpotifyRequest::get("/me")
-        .send(oauth)
-        .await;
+    let response = SpotifyRequest::get("/me").send(oauth).await;
 
     SpotifyResponse::from_response(response).await
 }
@@ -132,7 +126,10 @@ impl Spotify {
     }
 
     /// Transfer playback to a different device
-    pub async fn transfer_playback(&mut self, body: &body::TransferPlayback) -> SpotifyResponse<NoContent> {
+    pub async fn transfer_playback(
+        &mut self,
+        body: &body::TransferPlayback,
+    ) -> SpotifyResponse<NoContent> {
         let response = SpotifyRequest::put("/me/player")
             .with_json(body)
             .send(&mut self.oauth)
@@ -177,7 +174,7 @@ impl Spotify {
         SpotifyResponse::from_response(response).await
     }
 
-    pub async fn shuffle(&mut self, shuffle: bool) -> SpotifyResponse<NoContent>{
+    pub async fn shuffle(&mut self, shuffle: bool) -> SpotifyResponse<NoContent> {
         let response = SpotifyRequest::put("/me/player/shuffle")
             .param("state", shuffle)
             .send(&mut self.oauth)
@@ -194,4 +191,13 @@ impl Spotify {
 
         SpotifyResponse::from_response(response).await
     }
+
+    pub async fn queue(&mut self) -> SpotifyResponse<response::Queue> {
+        let response = SpotifyRequest::get("/me/player/queue")
+            .send(&mut self.oauth)
+            .await;
+
+        SpotifyResponse::from_response(response).await
+    }
 }
+

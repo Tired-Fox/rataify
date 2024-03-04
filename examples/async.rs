@@ -1,9 +1,8 @@
 use color_eyre::Result;
 
-use rataify::{config::Config, keymaps};
 use rataify::action::Public;
 use rataify::app::App;
-use rataify::ui::counter;
+use rataify::{config::Config, keymaps};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -11,13 +10,11 @@ async fn main() -> Result<()> {
         .reserved_keys(keymaps! {
             "ctrl+c" => Public::Exit,
             "ctrl+shift+z" => Public::Exit,
-            "q" => Public::Close,
+            "q" => Public::Back,
         })
         .compile();
 
-    App::new()?
-        .with_ui(counter)
-        .run(config).await?;
+    App::new()?.with_ui(counter).run(config).await?;
 
     Ok(())
 }

@@ -6,10 +6,12 @@ use crossterm::event::KeyEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::action::{Action, Public};
-use crate::KeyMap;
 use crate::ui::icon::MediaIcon;
+use crate::KeyMap;
 
-fn true_default() -> bool { true }
+fn true_default() -> bool {
+    true
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Overrides {
@@ -37,7 +39,9 @@ impl IconsConfig {
     pub fn repeat(&self, repeat: crate::spotify::response::Repeat) -> &str {
         match repeat {
             crate::spotify::response::Repeat::Track => self.custom.get(&MediaIcon::Repeat).unwrap(),
-            crate::spotify::response::Repeat::Context => self.custom.get(&MediaIcon::RepeatOnce).unwrap(),
+            crate::spotify::response::Repeat::Context => {
+                self.custom.get(&MediaIcon::RepeatOnce).unwrap()
+            }
             crate::spotify::response::Repeat::Off => self.custom.get(&MediaIcon::Repeat).unwrap(),
         }
     }
@@ -74,7 +78,9 @@ pub struct ConfigBuilder {
     icons: IconsConfig,
     keymaps: Option<HashMap<KeyMap, Public>>,
     #[serde(skip)]
-    reserved: HashMap<KeyEvent, Action>,
+    reserved_keymaps: HashMap<KeyEvent, Action>,
+    #[serde(skip)]
+    default_keymaps: HashMap<KeyEvent, Action>,
 }
 
 impl Config {
@@ -101,12 +107,17 @@ impl Config {
 
 impl ConfigBuilder {
     pub fn reserved_keys(mut self, mappings: HashMap<KeyEvent, Action>) -> Self {
-        self.reserved.extend(mappings);
+        self.reserved_keymaps.extend(mappings);
+        self
+    }
+
+    pub fn default_keys(mut self, mappings: HashMap<KeyEvent, Action>) -> Self {
+        self.default_keymaps.extend(mappings);
         self
     }
 
     pub fn compile(mut self) -> Config {
-        let mut default_icons = HashMap::from([
+        let default_icons = HashMap::from([
             (MediaIcon::Pause, "▶".to_string()),
             (MediaIcon::Play, "⏸".to_string()),
             (MediaIcon::Next, "⏭".to_string()),
@@ -129,29 +140,26 @@ impl ConfigBuilder {
     }
 
     fn keymaps(&self) -> HashMap<KeyEvent, Action> {
-        let mut keymaps = HashMap::new();
+        let mut keymaps = self.default_keymaps.clone();
 
         if let Some(mappings) = &self.keymaps {
             for (key, action) in mappings.iter() {
                 let event = KeyEvent::from(*key);
 
                 // If keymapping exists and actions isn't the same, then skip because no overwrite
-                if self.reserved.contains_key(&event) {
-                    eprintln!("Reserved keymap `{key}`; skipping {key} -> {:?}", self.reserved.get(&event).unwrap());
-                } else if keymaps.contains_key(&event) {
-                    if &Action::from(*action) != keymaps.get(&event).unwrap() {
-                        eprintln!(
-                            "Duplicate keymap `{key}`: {key} -> {:?} conflicts with {key} -> {action:?}: Skipping",
-                            keymaps.get(&event).unwrap(),
-                        )
-                    }
+                if self.reserved_keymaps.contains_key(&event) {
+                    eprintln!(
+                        "Reserved keymap `{key}`; skipping {key} -> {:?}",
+                        self.reserved_keymaps.get(&event).unwrap()
+                    );
                 } else {
                     keymaps.insert(event, Action::Public(*action));
                 }
             }
         }
 
-        keymaps.extend(self.reserved.clone());
+        keymaps.extend(self.reserved_keymaps.clone());
         keymaps
     }
 }
+

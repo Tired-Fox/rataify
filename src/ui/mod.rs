@@ -1,109 +1,72 @@
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use lazy_static::lazy_static;
+use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, Borders, Paragraph, Widget};
+use ratatui::widgets::{Block, Borders, Tabs, Widget};
+use ratatui::Frame;
 
-use crate::state::{MainWindow, ModalWindow, State, WindowState};
-use crate::ui::footer::{Cover, Footer};
+use crate::state::{MainWindow, ModalWindow, State, WindowState, TABS};
+use crate::ui::footer::Footer;
 use crate::ui::modal::DeviceSelect;
 
-pub mod icon;
+use self::tabs::{Main, Queue};
+
 mod footer;
-mod header;
+pub mod icon;
 mod modal;
+mod tabs;
 
-pub fn counter(state: &State, frame: &mut Frame) {
-    frame.render_widget(
-        Paragraph::new(format!("Counter: {}", state.counter)),
-        frame.size(),
-    );
-}
+pub fn player_ui(state: &mut State, frame: &mut Frame) {
+    macro_rules! render_state {
+        ($widget: ident, $area: expr) => {
+            frame.render_stateful_widget($widget, $area, state)
+        };
+    }
 
-pub fn mock_player(state: &mut State, frame: &mut Frame) {
     let main = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            // Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(5)
+            Constraint::Length(5),
         ])
         .split(frame.size());
 
     // HEADER
     // frame.render_stateful_widget(Header, main[0], state);
+    let current_tab = TABS.iter().position(|t| t == &state.window.main);
+    let tabs = Tabs::new(
+        TABS.iter()
+            .map(|t| format!("{:?}", t))
+            .collect::<Vec<String>>(),
+    )
+    .highlight_style(if current_tab.is_some() {
+        Style::default().reversed()
+    } else {
+        Style::default()
+    })
+    .select(current_tab.unwrap_or(0));
+    frame.render_widget(tabs, main[0]);
 
     // MAIN CONTENT
 
     // Render border around main content
-    Block::default().borders(Borders::ALL)
-        .render(main[0], frame.buffer_mut());
+    let block = Block::default().borders(Borders::ALL);
+    let inner = block.inner(main[1]);
+    block.render(main[1], frame.buffer_mut());
 
     match state.window.main {
-        MainWindow::Cover => {
-            // Center content horizontally
-            let content_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Fill(1), Constraint::Fill(50), Constraint::Fill(1)])
-                .split(main[0]);
-
-            // Center content vertically, with room for album cover and album name
-            let npl = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(1),
-                    Constraint::Length(15),
-                    Constraint::Min(1),
-                ])
-                .split(content_layout[1]);
-
-            let now_playing_layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    // Cover
-                    Constraint::Length(14),
-                    // Album name
-                    Constraint::Length(1),
-                ])
-                .split(npl[1]);
-
-            // 35x14
-            let cover_rect = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Min(1), Constraint::Length(35), Constraint::Min(1)])
-                .split(now_playing_layout[0])[1];
-            frame.render_stateful_widget(Cover, cover_rect, state);
-
-            frame.render_widget(
-                Paragraph::new(state.playback.context_name())
-                    .style(Style::default().bold())
-                    .alignment(Alignment::Center),
-                now_playing_layout[1],
-            );
-        },
+        MainWindow::Cover => render_state!(Main, inner),
+        MainWindow::Queue => render_state!(Queue, inner),
         _ => {}
     }
 
     if let WindowState::Modal = state.window_state {
         match state.window.modal {
-            ModalWindow::DeviceSelect => {
-                frame.render_stateful_widget(DeviceSelect, main[0], state);
-            },
+            ModalWindow::DeviceSelect => render_state!(DeviceSelect, inner),
             _ => {}
         }
     }
 
     // FOOTER
-    frame.render_stateful_widget(Footer, main[1], state);
+    render_state!(Footer, main[2]);
 }
-
-fn centered_rect(r: Rect, width: u16) -> Rect {
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(width),
-            Constraint::Min(1),
-        ])
-        .split(r)[1]
-}
-

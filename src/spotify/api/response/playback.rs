@@ -2,36 +2,40 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use chrono::{Duration, NaiveDateTime};
-use serde::{Deserialize, Serialize};
 use serde::de::{Error, MapAccess, Visitor};
+use serde::{Deserialize, Serialize};
 use serde_json::{Deserializer, Value};
 
 use crate::spotify::response::{Device, Followers, Image};
 
 fn ms_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where D: serde::Deserializer<'de> {
+where
+    D: serde::Deserializer<'de>,
+{
     let ms: i64 = Deserialize::deserialize(deserializer)?;
     Ok(Duration::milliseconds(ms))
 }
 
 fn ms_to_duration_optional<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-    where D: serde::Deserializer<'de> {
-
+where
+    D: serde::Deserializer<'de>,
+{
     let ms: Option<i64> = Deserialize::deserialize(deserializer)?;
     match ms {
         Some(ms) => Ok(Some(Duration::milliseconds(ms))),
-        None => Ok(None)
+        None => Ok(None),
     }
 }
 
 fn ms_to_datetime<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
-    where D: serde::Deserializer<'de>
+where
+    D: serde::Deserializer<'de>,
 {
     let ms: i64 = Deserialize::deserialize(deserializer)?;
     NaiveDateTime::from_timestamp_millis(ms).ok_or(Error::custom("Invalid timestamp"))
 }
 
-#[derive(Debug, Deserialize, Copy, Clone)]
+#[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Repeat {
     Off,
@@ -49,14 +53,14 @@ impl Display for Repeat {
     }
 }
 
-#[derive(Debug, Deserialize, Copy, Clone)]
+#[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Shuffle {
     On,
-    Off
+    Off,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct Context {
     #[serde(rename = "type")]
     pub _type: String,
@@ -66,15 +70,15 @@ pub struct Context {
     pub uri: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AlbumType {
     Album,
     Single,
-    Compilation
+    Compilation,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum DatePrecision {
     Year,
@@ -82,8 +86,7 @@ pub enum DatePrecision {
     Day,
 }
 
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Album {
     pub album_type: AlbumType,
     pub total_tracks: u32,
@@ -102,7 +105,7 @@ pub struct Album {
     pub artists: Vec<SimplifiedArtist>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Artist {
     pub external_urls: HashMap<String, String>,
     pub followers: Followers,
@@ -117,7 +120,7 @@ pub struct Artist {
     pub uri: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct SimplifiedArtist {
     pub external_urls: HashMap<String, String>,
     pub href: String,
@@ -128,7 +131,7 @@ pub struct SimplifiedArtist {
     pub uri: String,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum RestrictionReason {
     Explicit,
@@ -136,7 +139,7 @@ pub enum RestrictionReason {
     Product,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Track {
     pub album: Album,
     pub artists: Vec<SimplifiedArtist>,
@@ -163,21 +166,21 @@ pub struct Track {
     pub is_local: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct ResumePoint {
     pub fully_played: bool,
     #[serde(rename = "resume_position_ms", deserialize_with = "ms_to_duration")]
     pub resume_position: Duration,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Copyright {
     pub text: String,
     #[serde(rename = "type")]
     pub _type: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Show {
     pub available_markets: Vec<String>,
     pub copyrights: Vec<Copyright>,
@@ -199,7 +202,7 @@ pub struct Show {
     pub uri: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Episode {
     pub audio_preview_url: Option<String>,
     pub description: String,
@@ -224,18 +227,17 @@ pub struct Episode {
     pub _type: String,
     pub uri: String,
     pub restrictions: Option<HashMap<String, RestrictionReason>>,
-    pub show: Option<Show>
+    pub show: Option<Show>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Item {
     Track(Track),
     Episode(Episode),
 }
 
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Playback {
     /// Currently used device
     pub device: Device,
@@ -246,7 +248,11 @@ pub struct Playback {
     pub context: Option<Context>,
     #[serde(deserialize_with = "ms_to_datetime")]
     pub timestamp: NaiveDateTime,
-    #[serde(rename = "progress_ms", deserialize_with = "ms_to_duration_optional", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "progress_ms",
+        deserialize_with = "ms_to_duration_optional",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub progress: Option<Duration>,
     #[serde(rename = "is_playing")]
     pub playing: bool,
@@ -256,7 +262,7 @@ pub struct Playback {
     pub actions: HashMap<String, HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum CurrentlyPlayingType {
     Track,
@@ -266,8 +272,9 @@ pub enum CurrentlyPlayingType {
     Unknown,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 pub enum AdditionalType {
     Track,
-    Episode
+    Episode,
 }
+

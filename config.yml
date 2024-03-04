@@ -17,9 +17,10 @@ keymaps:
   j: down
   k: up
   d: select_device
-  q: exit
-  "ctrl+s": toggle_shuffle
-  "ctrl+r": toggle_repeat
+  tab: next_tab
+  backtab: previous_tab
+  "s": toggle_shuffle
+  "x": toggle_repeat
   "?": help
   space: toggle_playback
   +: volume_up

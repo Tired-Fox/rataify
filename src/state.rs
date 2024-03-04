@@ -4,12 +4,15 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign};
 use std::time::Instant;
 
 use chrono::Duration;
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use ratatui::widgets::TableState;
 
 use crate::action::Action;
 use crate::config::IconsConfig;
-use crate::spotify::response::{Album, Device, Episode, Item, Playback, Repeat, Show, Track};
+use crate::spotify::response::{
+    Album, Device, Episode, Item, Playback, Queue, Repeat, Show, Track,
+};
 
 lazy_static::lazy_static! {
     // TODO: Change to proper background algroithms instead
@@ -19,6 +22,14 @@ lazy_static::lazy_static! {
         "▗▖▝▘▚▞▙▛▜▟ ",
         "◢◣◥◤ ",
         // "▁▂▃▄▅▆▇█▋▌▍▎▏",
+    ];
+
+    pub static ref TABS: [MainWindow; 5] = [
+        MainWindow::Library,
+        MainWindow::Playlists,
+        MainWindow::Browse,
+        MainWindow::Context,
+        MainWindow::Queue,
     ];
 }
 
@@ -103,23 +114,22 @@ impl PlaybackState {
     /// Get the name of the context, this could be an album, playlist, show, etc...
     pub fn context_name(&mut self) -> String {
         match &self.current {
-            Some(playback) => {
-               match &playback.item {
-                   Some(Item::Track(Track { album: Album { name, ..}, .. })) => {
-                       name.clone()
-                   },
-                   Some(Item::Episode(Episode { show: Some(Show { name, ..}), ..})) => {
-                       name.clone()
-                   },
-                   _ => String::new()
-               }
+            Some(playback) => match &playback.item {
+                Some(Item::Track(Track {
+                    album: Album { name, .. },
+                    ..
+                })) => name.clone(),
+                Some(Item::Episode(Episode {
+                    show: Some(Show { name, .. }),
+                    ..
+                })) => name.clone(),
+                _ => String::new(),
             },
-            None => String::new()
+            None => String::new(),
         }
     }
 
-    pub fn now_playing(&mut self, playback: Option<Playback>)
-    {
+    pub fn now_playing(&mut self, playback: Option<Playback>) {
         self.corners = Flag::default();
         self.current = playback;
         self.last_polled = Instant::now();
@@ -132,7 +142,7 @@ impl PlaybackState {
             match &playback.item {
                 Some(Item::Track(track)) => track.name.clone(),
                 Some(Item::Episode(episode)) => episode.name.clone(),
-                _ => String::new()
+                _ => String::new(),
             }
         } else {
             String::new()
@@ -143,8 +153,11 @@ impl PlaybackState {
         if let Some(playback) = &self.current {
             match &playback.item {
                 Some(Item::Track(track)) => track.artists.iter().map(|a| a.name.clone()).collect(),
-                Some(Item::Episode(episode)) => episode.show.as_ref().map_or(vec![], |e| vec![e.name.clone()]),
-                _ => Vec::new()
+                Some(Item::Episode(episode)) => episode
+                    .show
+                    .as_ref()
+                    .map_or(vec![], |e| vec![e.name.clone()]),
+                _ => Vec::new(),
             }
         } else {
             Vec::new()
@@ -157,7 +170,7 @@ impl PlaybackState {
         let progress = self.progress().num_milliseconds();
 
         if progress == 0 || duration == 0 {
-            return 0.0;
+            0.0
         } else {
             progress as f64 / duration as f64
         }
@@ -170,46 +183,55 @@ impl PlaybackState {
     pub fn progress(&self) -> Duration {
         match &self.current {
             Some(Playback { progress, .. }) => match self.playing() {
-                true => (progress.unwrap_or(Duration::zero()).clone() + self.elapsed()).min(self.duration()),
-                false => progress.unwrap_or(Duration::zero()).clone()
+                true => {
+                    (progress.unwrap_or(Duration::zero()) + self.elapsed()).min(self.duration())
+                }
+                _ => progress.unwrap_or(Duration::zero()),
             },
-            _ => Duration::zero()
+            _ => Duration::zero(),
         }
     }
 
     pub fn duration(&self) -> Duration {
         match &self.current {
-            Some(Playback { item: Some(Item::Track(Track { duration, .. })), .. }) => duration.clone(),
-            Some(Playback { item: Some(Item::Episode(Episode { duration, .. })), .. }) => duration.clone(),
-            _ => Duration::zero()
+            Some(Playback {
+                item: Some(Item::Track(Track { duration, .. })),
+                ..
+            }) => *duration,
+            Some(Playback {
+                item: Some(Item::Episode(Episode { duration, .. })),
+                ..
+            }) => *duration,
+            _ => Duration::zero(),
         }
     }
 
     fn generate_cover(&mut self) {
         if self.current.is_none() {
             self.cover = (0..50).map(|_| (0..50).map(|_| ' ').collect()).collect();
-            return
+            return;
         }
 
         let mut hasher = DefaultHasher::default();
         match &self.current {
-            Some(Playback { item: Some(Item::Track(track)), .. }) => {
-                track.album.name.clone()
-            }
-            Some(Playback { item: Some(Item::Episode(episode)), .. }) => {
-                match &episode.show {
-                    Some(show) => {
-                        show.name.clone()
-                    }
-                    None => episode.name.clone()
-                }
-            }
-            _ => String::new()
-        }.hash(&mut hasher);
+            Some(Playback {
+                item: Some(Item::Track(track)),
+                ..
+            }) => track.album.name.clone(),
+            Some(Playback {
+                item: Some(Item::Episode(episode)),
+                ..
+            }) => match &episode.show {
+                Some(show) => show.name.clone(),
+                None => episode.name.clone(),
+            },
+            _ => String::new(),
+        }
+        .hash(&mut hasher);
 
         let mut rng = StdRng::seed_from_u64(hasher.finish());
         let pattern: usize = rng.gen_range(0..PATTERNS.len());
-        let mut pattern = PATTERNS[pattern].chars().collect::<Vec<char>>();
+        let pattern = PATTERNS[pattern].chars().collect::<Vec<char>>();
 
         let scale = rng.gen_range(pattern.len()..pattern.len() * 12);
         // Pick random characters from pattern
@@ -270,7 +292,7 @@ impl DeviceState {
         if self.devices.is_empty() {
             None
         } else {
-            Some(self.devices[self.selection as usize].clone())
+            Some(self.devices[self.selection].clone())
         }
     }
 
@@ -300,7 +322,7 @@ pub enum Move {
     Right,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
 pub enum ModalWindow {
     #[default]
     DeviceSelect,
@@ -309,7 +331,7 @@ pub enum ModalWindow {
     Error,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
 pub enum MainWindow {
     #[default]
     Cover,
@@ -317,43 +339,85 @@ pub enum MainWindow {
     Playlists,
     Queue,
     Library,
-    Album,
-    Artist,
-    Show,
-    AudioBook
+    Context,
 }
 
 /// State for what is currently focused
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct Window {
     pub modal: ModalWindow,
     pub main: MainWindow,
-}
-
-impl Default for Window {
-    fn default() -> Self {
-        Self {
-            modal: ModalWindow::default(),
-            main: MainWindow::default(),
-        }
-    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
 pub enum WindowState {
     #[default]
     Main,
-    Modal
+    Modal,
 }
 
+// MainWindow::Queue,
+// MainWindow::Playlists,
+// MainWindow::Library,
+// MainWindow::Browse,
+// MainWindow::Context,
+#[derive(Default, Debug, Clone)]
+pub struct QueueState {
+    queue: Option<Queue>,
+    table_state: TableState,
+}
+
+impl QueueState {
+    pub fn unset(&self) -> bool {
+        self.queue.is_none()
+    }
+
+    pub fn set_queue(&mut self, queue: Option<Queue>) {
+        self.queue = queue;
+    }
+
+    pub fn queue(&self) -> Option<&Vec<Item>> {
+        self.queue.as_ref().map(|q| &q.queue)
+    }
+
+    pub fn next(&mut self) {
+        match self.queue.as_ref() {
+            Some(queue) => {
+                if let Some(selected) = self.table_state.selected().as_ref() {
+                    if *selected < (queue.queue.len() - 1) {
+                        self.table_state.select(Some(*selected + 1));
+                    }
+                }
+            }
+            None => self.table_state.select(None),
+        }
+    }
+
+    pub fn previous(&mut self) {
+        match self.queue.as_ref() {
+            Some(queue) => {
+                if let Some(selected) = self.table_state.selected().as_ref() {
+                    if *selected > 0 {
+                        self.table_state.select(Some(*selected - 1));
+                    }
+                }
+            }
+            None => self.table_state.select(None),
+        }
+    }
+}
+
+// TODO: Split into multiple files
 #[derive(Debug, Clone)]
 pub struct State {
+    pub focused: bool,
     pub icons: IconsConfig,
     pub counter: u8,
     pub window: Window,
     pub window_state: WindowState,
     pub playback: PlaybackState,
     pub device_select: DeviceState,
+    pub queue: QueueState,
 }
 
 impl State {
@@ -361,22 +425,22 @@ impl State {
         Self {
             icons: IconsConfig::default(),
             counter: 0,
+            focused: true,
             window: Window::default(),
             window_state: WindowState::default(),
             device_select: DeviceState::default(),
             playback: PlaybackState::default(),
+            queue: QueueState::default(),
         }
     }
 
     pub fn back(&mut self) -> bool {
         match self.window_state {
-            WindowState::Main => {
-                match self.window.main {
-                    MainWindow::Cover => return true,
-                    _ => self.window.main = MainWindow::Cover,
-                }
+            WindowState::Main => match self.window.main {
+                MainWindow::Cover => return true,
+                _ => self.window.main = MainWindow::Cover,
             },
-            WindowState::Modal => self.window_state = WindowState::Main
+            WindowState::Modal => self.window_state = WindowState::Main,
         }
         false
     }
@@ -388,17 +452,13 @@ impl State {
 
     pub fn move_with(&mut self, movement: Move) {
         match self.window_state {
-            WindowState::Modal => {
-                match self.window.modal {
-                    ModalWindow::DeviceSelect => {
-                        match movement {
-                            Move::Up => self.device_select.previous(),
-                            Move::Down => self.device_select.next(),
-                            _ => {}
-                        }
-                    },
+            WindowState::Modal => match self.window.modal {
+                ModalWindow::DeviceSelect => match movement {
+                    Move::Up => self.device_select.previous(),
+                    Move::Down => self.device_select.next(),
                     _ => {}
-                }
+                },
+                _ => {}
             },
             _ => {}
         }

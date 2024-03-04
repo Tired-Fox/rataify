@@ -1,10 +1,10 @@
-use std::cmp::max;
+use crate::state::State;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Span;
-use ratatui::widgets::{Block, Borders, BorderType, Clear, StatefulWidget, Widget};
-use crate::state::State;
+use ratatui::widgets::{Block, BorderType, Borders, Clear, StatefulWidget, Widget};
+use std::cmp::max;
 
 pub struct DeviceSelect;
 impl StatefulWidget for DeviceSelect {
@@ -12,12 +12,19 @@ impl StatefulWidget for DeviceSelect {
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // NOTE: Area is the container where the modal can be rendered, not the area of the modal
-        let names = state.device_select.devices
+        let names = state
+            .device_select
+            .devices
             .iter()
             .map(|d| d.name.clone())
             .collect::<Vec<_>>();
 
-        let max_width = names.iter().map(|n| n.chars().count()).max().unwrap_or(20);
+        let max_width = names
+            .iter()
+            .map(|n| n.chars().count())
+            .max()
+            .unwrap_or(20)
+            .max(20);
 
         let block = Block::default()
             .title("Devices")
@@ -53,7 +60,6 @@ impl StatefulWidget for DeviceSelect {
                 Constraint::Fill(1),
             ])
             .split(modal_vert)[1];
-
 
         // Use this inner area to render the content
         let inner = block.inner(modal);

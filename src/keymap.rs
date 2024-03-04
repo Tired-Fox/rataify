@@ -4,13 +4,13 @@ use std::str::FromStr;
 
 use color_eyre::Report;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd)]
 pub struct KeyMap {
     pub modifiers: KeyModifiers,
-    pub code: KeyCode
+    pub code: KeyCode,
 }
 
 impl From<&str> for KeyMap {
@@ -29,7 +29,7 @@ impl From<KeyEvent> for KeyMap {
     fn from(value: KeyEvent) -> Self {
         Self {
             modifiers: value.modifiers,
-            code: value.code
+            code: value.code,
         }
     }
 }
@@ -38,13 +38,16 @@ impl Default for KeyMap {
     fn default() -> Self {
         Self {
             modifiers: KeyModifiers::empty(),
-            code: KeyCode::Null
+            code: KeyCode::Null,
         }
     }
 }
 
 impl<'de> Deserialize<'de> for KeyMap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         struct Mapping;
         impl<'de> Visitor<'de> for Mapping {
             type Value = KeyMap;
@@ -53,7 +56,10 @@ impl<'de> Deserialize<'de> for KeyMap {
                 formatter.write_str("string")
             }
 
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: Error {
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: Error,
+            {
                 Ok(FromStr::from_str(v).unwrap())
             }
         }
@@ -61,7 +67,6 @@ impl<'de> Deserialize<'de> for KeyMap {
         deserializer.deserialize_str(Mapping)
     }
 }
-
 
 impl FromStr for KeyMap {
     type Err = Report;
@@ -74,11 +79,11 @@ impl FromStr for KeyMap {
 
         for part in parts {
             match part.to_ascii_lowercase().as_str() {
-                ""  => {
+                "" => {
                     if keymap.code == KeyCode::Null {
                         keymap.code = KeyCode::Char('+');
                     }
-                },
+                }
                 "ctrl" => keymap.modifiers |= KeyModifiers::CONTROL,
                 "shift" => keymap.modifiers |= KeyModifiers::SHIFT,
                 "alt" => keymap.modifiers |= KeyModifiers::ALT,
@@ -110,6 +115,7 @@ impl FromStr for KeyMap {
                             "f10" => keymap.code = KeyCode::F(10),
                             "f11" => keymap.code = KeyCode::F(11),
                             "f12" => keymap.code = KeyCode::F(12),
+                            "backtab" => keymap.code = KeyCode::BackTab,
                             "esc" => keymap.code = KeyCode::Esc,
                             "tab" => keymap.code = KeyCode::Tab,
                             "print_screen" => keymap.code = KeyCode::PrintScreen,
@@ -196,7 +202,10 @@ impl Display for KeyMap {
 }
 
 impl Serialize for KeyMap {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
@@ -227,4 +236,3 @@ macro_rules! keymaps {
         $crate::action::Action::None
     };
 }
-

@@ -1,7 +1,7 @@
+use crate::spotify::response::Image;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
-use serde::{Deserialize, Serialize};
-use crate::spotify::response::Image;
 
 /// Spotify's representation of a users explicit content settings
 #[derive(Debug, Deserialize)]
@@ -11,7 +11,7 @@ pub struct ExplicitContent {
 }
 
 /// Spotify's representation of an image
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct Followers {
     pub href: Option<String>,
     pub total: u32,
@@ -39,7 +39,7 @@ pub struct User {
 
 #[derive(Debug, Deserialize)]
 pub struct Devices {
-    pub devices: Vec<Device>
+    pub devices: Vec<Device>,
 }
 
 /// Spotify's representation of a device that can be streamed to

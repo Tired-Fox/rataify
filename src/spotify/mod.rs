@@ -84,6 +84,7 @@ impl Spotify {
                 user_read_currently_playing,
                 user_follow_read,
                 user_follow_modify,
+                user_library_read,
                 // Playlist permissions
                 playlist_modify_public,
                 playlist_modify_private,
@@ -194,6 +195,15 @@ impl Spotify {
 
     pub async fn queue(&mut self) -> SpotifyResponse<response::Queue> {
         let response = SpotifyRequest::get("/me/player/queue")
+            .send(&mut self.oauth)
+            .await;
+
+        SpotifyResponse::from_response(response).await
+    }
+
+    pub async fn check_saved_tracks<I: IntoIterator<Item = String>>(&mut self, tracks: I) -> SpotifyResponse<Vec<bool>> {
+        let response = SpotifyRequest::get("/me/tracks/contains")
+            .param("ids", tracks.into_iter().collect::<Vec<String>>().join("%2C"))
             .send(&mut self.oauth)
             .await;
 

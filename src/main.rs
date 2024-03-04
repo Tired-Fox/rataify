@@ -20,6 +20,17 @@ async fn main() -> Result<()> {
             "up" => Public::Up,
             "down" => Public::Down,
             "enter" => Public::Select,
+            "n" => Public::Next,
+            "p" => Public::Previous,
+            "d" => Public::SelectDevice,
+            "tab" => Public::NextTab,
+            "backtab" => Public::PreviousTab,
+            "s" => Public::ToggleShuffle,
+            "x" => Public::ToggleRepeat,
+            "?" => Public::Help,
+            "space" => Public::TogglePlayback,
+            "+" => Public::VolumeUp,
+            "-" => Public::VolumeDown,
         })
         .compile();
 

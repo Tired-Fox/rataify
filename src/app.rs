@@ -1,6 +1,6 @@
-use color_eyre::Report;
 use std::collections::HashMap;
 
+use color_eyre::Report;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 
@@ -13,7 +13,7 @@ use crate::spotify::api::SpotifyResponse;
 use crate::spotify::body::{StartPlayback, TransferPlayback};
 use crate::spotify::response::Repeat;
 use crate::spotify::Spotify;
-use crate::state::{MainWindow, ModalWindow, Move, State, WindowState, TABS};
+use crate::state::{MainWindow, ModalWindow, Move, State, TABS, WindowState};
 
 pub struct App {
     /// App should quit on next event loop
@@ -68,8 +68,8 @@ impl App {
     }
 
     pub fn with_ui<F>(mut self, ui: F) -> Self
-    where
-        F: FnMut(&mut State, &mut Frame) + 'static + Clone,
+        where
+            F: FnMut(&mut State, &mut Frame) + 'static + Clone,
     {
         self.ui = Some(Box::new(ui));
         self
@@ -79,7 +79,12 @@ impl App {
         match self.state.window.main {
             MainWindow::Queue => {
                 if self.state.queue.unset() {
-                    if let SpotifyResponse::Ok(queue) = self.spotify.queue().await {
+                    if let SpotifyResponse::Ok(mut queue) = self.spotify.queue().await {
+                        if let SpotifyResponse::Ok(liked) = self.spotify.check_saved_tracks(
+                            queue.queue.iter().map(|i| i.id())
+                        ).await {
+                            queue.queue.iter_mut().enumerate().for_each(|(i, q)| q.set_liked(*liked.get(i).unwrap()))
+                        }
                         self.state.queue.set_queue(Some(queue));
                     }
                 }
@@ -87,6 +92,8 @@ impl App {
             _ => {}
         }
     }
+
+    async fn fetch_state() {}
 
     async fn update(&mut self, action: Action) -> color_eyre::Result<()> {
         macro_rules! call_with_device {
@@ -100,7 +107,7 @@ impl App {
                     SpotifyResponse::Err(err) => Err(err)?,
                     SpotifyResponse::ExceededRateLimit => {}
                     SpotifyResponse::ExpiredToken => { /* TODO: Handle expired token */ }
-                    SpotifyResponse::Failed => { /* TODO: Handle failed response. Should send error message on reason */ }
+                    SpotifyResponse::Failed(err) => { /* TODO: Handle failed response. Should send error message on reason */ }
                     SpotifyResponse::Ok(_) => {}
                 }
             };
@@ -265,7 +272,6 @@ impl App {
 
     pub async fn run(&mut self, config: Config) -> color_eyre::Result<()> {
         let keymaps = &config.keymaps;
-        self.state.icons = config.icons;
 
         let mut terminal = Tui::new()?.title("Rataify");
         terminal.enter()?;
@@ -286,7 +292,10 @@ impl App {
                     }
                 } else if let Action::Private(Private::FetchPlayback) = action {
                     if !fetched_playback {
-                        if let SpotifyResponse::Ok(playback) = self.spotify.playback().await {
+                        if let SpotifyResponse::Ok(mut playback) = self.spotify.playback().await {
+                            if let SpotifyResponse::Ok(liked) = self.spotify.check_saved_tracks(vec![playback.item.as_ref().unwrap().id()]).await {
+                                playback.item.as_mut().unwrap().set_liked(*liked.first().unwrap());
+                            }
                             self.state.playback.now_playing(Some(playback))
                         }
                     }

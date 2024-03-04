@@ -2,6 +2,7 @@ pub mod body;
 pub mod response;
 
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use reqwest::header::{HeaderMap, IntoHeaderName};
 use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -144,6 +145,7 @@ impl SpotifyRequest {
     }
 }
 
+#[derive(Debug)]
 pub struct NoContent;
 
 impl<'de> Deserialize<'de> for NoContent {
@@ -164,21 +166,22 @@ impl<'de> Deserialize<'de> for NoContent {
     }
 }
 
+#[derive(Debug)]
 pub enum SpotifyResponse<T>
     where
-        T: Deserialize<'static>,
+        T: Deserialize<'static> + Debug,
 {
     Ok(T),
     NoDevice,
     ExpiredToken,
-    Failed,
+    Failed(response::Error),
     ExceededRateLimit,
     Err(crate::error::Error),
 }
 
 impl<T> SpotifyResponse<T>
     where
-        T: Deserialize<'static>,
+        T: Deserialize<'static> + Debug,
 {
     pub async fn from_response(response: color_eyre::Result<reqwest::Response>) -> Self {
         match response {
@@ -188,6 +191,21 @@ impl<T> SpotifyResponse<T>
                     StatusCode::UNAUTHORIZED => SpotifyResponse::ExpiredToken,
                     StatusCode::NOT_FOUND => SpotifyResponse::NoDevice,
                     StatusCode::TOO_MANY_REQUESTS => SpotifyResponse::ExceededRateLimit,
+                    StatusCode::BAD_REQUEST =>  match response.text().await {
+                        Ok(mut ok) => {
+                            match serde_json::from_str::<response::Error>(Box::leak(ok.into_boxed_str())) {
+                                Ok(err) => SpotifyResponse::Failed(err),
+                                Err(err) => {
+                                    ResponseLogger::log_error(status, &err.to_string()).await;
+                                    SpotifyResponse::Err(crate::error::Error::custom(err))
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            ResponseLogger::log_error(status, &err.to_string()).await;
+                            SpotifyResponse::Err(crate::error::Error::custom(err))
+                        }
+                    }
                     StatusCode::OK | StatusCode::NO_CONTENT => match response.text().await {
                         Ok(mut ok) => {
                             if ok.is_empty() {

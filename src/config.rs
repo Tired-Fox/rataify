@@ -6,8 +6,7 @@ use crossterm::event::KeyEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::action::{Action, Public};
-use crate::ui::icon::MediaIcon;
-use crate::KeyMap;
+use crate::{CONFIG_PATH, KeyMap};
 
 fn true_default() -> bool {
     true
@@ -20,62 +19,11 @@ pub struct Overrides {
 
 #[derive(Default, Debug)]
 pub struct Config {
-    pub icons: IconsConfig,
     pub keymaps: HashMap<KeyEvent, Action>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct IconsConfig {
-    #[serde(default = "true_default")]
-    pub on: bool,
-    pub custom: HashMap<MediaIcon, String>,
-}
-
-impl IconsConfig {
-    pub fn shuffle(&self) -> &str {
-        self.custom.get(&MediaIcon::Shuffle).unwrap()
-    }
-
-    pub fn repeat(&self, repeat: crate::spotify::response::Repeat) -> &str {
-        match repeat {
-            crate::spotify::response::Repeat::Track => self.custom.get(&MediaIcon::Repeat).unwrap(),
-            crate::spotify::response::Repeat::Context => {
-                self.custom.get(&MediaIcon::RepeatOnce).unwrap()
-            }
-            crate::spotify::response::Repeat::Off => self.custom.get(&MediaIcon::Repeat).unwrap(),
-        }
-    }
-
-    pub fn pause(&self) -> &str {
-        self.custom.get(&MediaIcon::Pause).unwrap()
-    }
-
-    pub fn play(&self) -> &str {
-        self.custom.get(&MediaIcon::Play).unwrap()
-    }
-
-    pub fn next(&self) -> &str {
-        self.custom.get(&MediaIcon::Next).unwrap()
-    }
-
-    pub fn previous(&self) -> &str {
-        self.custom.get(&MediaIcon::Previous).unwrap()
-    }
-}
-
-impl Default for IconsConfig {
-    fn default() -> Self {
-        Self {
-            on: true,
-            custom: HashMap::new(),
-        }
-    }
 }
 
 #[derive(Default, Deserialize)]
 pub struct ConfigBuilder {
-    #[serde(default)]
-    icons: IconsConfig,
     keymaps: Option<HashMap<KeyMap, Public>>,
     #[serde(skip)]
     reserved_keymaps: HashMap<KeyEvent, Action>,
@@ -84,11 +32,12 @@ pub struct ConfigBuilder {
 }
 
 impl Config {
+    /// Load config from file with fallback file paths
     pub fn load_with_fallback<const N: usize>(paths: [&str; N]) -> Result<ConfigBuilder> {
         let files = paths
             .iter()
             .filter_map(|p| {
-                let path = PathBuf::from(p);
+                let path = CONFIG_PATH.join(p);
                 if !path.exists() {
                     return None;
                 }
@@ -106,36 +55,21 @@ impl Config {
 }
 
 impl ConfigBuilder {
+    /// Set keybindings that cannot be overridden
     pub fn reserved_keys(mut self, mappings: HashMap<KeyEvent, Action>) -> Self {
         self.reserved_keymaps.extend(mappings);
         self
     }
 
+    // Set default keymaps that can be overridden with new keybindings
     pub fn default_keys(mut self, mappings: HashMap<KeyEvent, Action>) -> Self {
         self.default_keymaps.extend(mappings);
         self
     }
 
     pub fn compile(mut self) -> Config {
-        let default_icons = HashMap::from([
-            (MediaIcon::Pause, "▶".to_string()),
-            (MediaIcon::Play, "⏸".to_string()),
-            (MediaIcon::Next, "⏭".to_string()),
-            (MediaIcon::Previous, "⏮".to_string()),
-            (MediaIcon::Shuffle, "🔀".to_string()),
-            (MediaIcon::Repeat, "🔁".to_string()),
-            (MediaIcon::RepeatOnce, "🔂".to_string()),
-        ]);
-
-        for (key, icon) in default_icons.iter() {
-            if !self.icons.custom.contains_key(key) {
-                self.icons.custom.insert(*key, icon.to_string());
-            }
-        }
-
         Config {
             keymaps: self.keymaps(),
-            icons: self.icons,
         }
     }
 

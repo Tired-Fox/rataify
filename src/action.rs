@@ -19,6 +19,7 @@ pub enum PublicAction {
     VolumeDown,
     ToggleShuffle,
     ToggleRepeat,
+    Refresh,
     Select,
     Down,
     Up,

@@ -9,7 +9,6 @@ use rand::{Rng, SeedableRng};
 use ratatui::widgets::TableState;
 
 use crate::action::Action;
-use crate::config::IconsConfig;
 use crate::spotify::response::{
     Album, Device, Episode, Item, Playback, Queue, Repeat, Show, Track,
 };
@@ -89,6 +88,12 @@ impl Default for PlaybackState {
 }
 
 impl PlaybackState {
+    pub fn liked(&self) -> bool {
+        if let Some(Playback { item: Some(item), ..}) = &self.current {
+           return item.liked();
+        }
+        false
+    }
     pub fn shuffle(&self) -> bool {
         if let Some(playback) = &self.current {
             return playback.shuffle;
@@ -376,7 +381,7 @@ impl QueueState {
         self.queue = queue;
     }
 
-    pub fn queue(&self) -> Option<&Vec<Item>> {
+    pub fn get_queue(&self) -> Option<&Vec<Item>> {
         self.queue.as_ref().map(|q| &q.queue)
     }
 
@@ -411,7 +416,6 @@ impl QueueState {
 #[derive(Debug, Clone)]
 pub struct State {
     pub focused: bool,
-    pub icons: IconsConfig,
     pub counter: u8,
     pub window: Window,
     pub window_state: WindowState,
@@ -423,7 +427,6 @@ pub struct State {
 impl State {
     pub async fn new() -> Self {
         Self {
-            icons: IconsConfig::default(),
             counter: 0,
             focused: true,
             window: Window::default(),

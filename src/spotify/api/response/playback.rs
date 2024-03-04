@@ -141,6 +141,8 @@ pub enum RestrictionReason {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Track {
+    #[serde(skip)]
+    pub liked: bool,
     pub album: Album,
     pub artists: Vec<SimplifiedArtist>,
     pub available_markets: Vec<String>,
@@ -204,6 +206,8 @@ pub struct Show {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Episode {
+    #[serde(skip)]
+    pub liked: bool,
     pub audio_preview_url: Option<String>,
     pub description: String,
     pub html_description: String,
@@ -235,6 +239,43 @@ pub struct Episode {
 pub enum Item {
     Track(Track),
     Episode(Episode),
+}
+
+impl Item {
+    pub fn id(&self) -> String {
+        match self {
+            Item::Track(track) => track.id.clone(),
+            Item::Episode(episode) => episode.id.clone(),
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match self {
+            Item::Track(track) => track.name.clone(),
+            Item::Episode(episode) => episode.name.clone(),
+        }
+    }
+
+    pub fn duration(&self) -> Duration {
+        match self {
+            Item::Track(track) => track.duration,
+            Item::Episode(episode) => episode.duration,
+        }
+    }
+
+    pub fn liked(&self) -> bool {
+        match self {
+            Item::Track(track) => track.liked,
+            Item::Episode(episode) => episode.liked,
+        }
+    }
+
+    pub fn set_liked(&mut self, liked: bool) {
+       match self {
+           Item::Track(track) => track.liked = liked,
+           Item::Episode(episode) => episode.liked = liked,
+       }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

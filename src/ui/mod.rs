@@ -1,8 +1,9 @@
-use lazy_static::lazy_static;
-use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::widgets::{Block, Borders, Tabs, Widget};
 use ratatui::Frame;
+use ratatui::prelude::StatefulWidget;
 
 use crate::state::{MainWindow, ModalWindow, State, WindowState, TABS};
 use crate::ui::footer::Footer;
@@ -14,6 +15,7 @@ mod footer;
 pub mod icon;
 mod modal;
 mod tabs;
+mod list_view;
 
 pub fn player_ui(state: &mut State, frame: &mut Frame) {
     macro_rules! render_state {
@@ -27,7 +29,7 @@ pub fn player_ui(state: &mut State, frame: &mut Frame) {
         .constraints([
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(5),
+            Constraint::Length(6),
         ])
         .split(frame.size());
 
@@ -69,4 +71,41 @@ pub fn player_ui(state: &mut State, frame: &mut Frame) {
 
     // FOOTER
     render_state!(Footer, main[2]);
+}
+
+
+// TODO: Implement set pattern algorithms
+// TODO: Add color randomness potential
+pub struct Cover;
+impl StatefulWidget for Cover {
+    type State = State;
+
+    fn render(self, rect: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let width = rect.width - 2;
+        let height = rect.height - 2;
+        let cover = &state.playback.cover;
+
+        let start_y = ((cover.len() - 1) - height as usize) / 2;
+        let start_x = ((cover.get(0).unwrap().len() - 1) - width as usize) / 2;
+
+        for y in 0..height {
+            for x in 0..width {
+                buf.get_mut(rect.left() + x + 1, rect.top() + y + 1)
+                    .set_symbol(
+                        &cover
+                            .get(start_y + y as usize)
+                            .unwrap()
+                            .get(start_x + x as usize)
+                            .unwrap()
+                            .to_string(),
+                    );
+            }
+        }
+
+        buf.get_mut(rect.left(), rect.top()).set_symbol("┌─");
+        buf.get_mut(rect.right() - 2, rect.top()).set_symbol("─┐");
+        buf.get_mut(rect.left(), rect.bottom() - 1).set_symbol("└─");
+        buf.get_mut(rect.right() - 2, rect.bottom() - 1)
+            .set_symbol("─┘");
+    }
 }

@@ -1,39 +1,60 @@
-use lazy_static::lazy_static;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
-    widgets::{Block, Borders, List, Paragraph, Row, StatefulWidget, Table, Widget},
+    style::{Style, Stylize},
+    widgets::{Paragraph, Row, StatefulWidget, Table, Widget},
 };
-
-use super::footer::Cover;
 
 use crate::{
     spotify::response::{Episode, Item, Track},
-    state::{MainWindow, State},
+    state::State,
 };
+
+use crate::ui::Cover;
+use crate::ui::list_view::{TrackItem, TrackList};
 
 pub struct Queue;
 impl StatefulWidget for Queue {
     type State = State;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        match state.queue.queue() {
+        match state.queue.get_queue() {
             Some(queue) => {
-                let list = Table::new(
-                    queue
-                        .iter()
-                        .map(|i| {
-                            Row::new([match i {
-                                Item::Track(Track { name, .. }) => name.clone(),
-                                Item::Episode(Episode { name, .. }) => name.clone(),
-                            }])
-                        })
-                        .collect::<Vec<Row>>(),
-                    [Constraint::Fill(1)],
-                )
-                .highlight_style(Style::default().reversed());
-                Widget::render(list, area, buf);
+                let tracks = queue
+                    .iter()
+                    .map(|i| {
+                        match i {
+                            Item::Track(Track { liked, name, duration, artists, album, .. }) => {
+                                TrackItem::new(
+                                    name.clone(),
+                                    artists.iter().map(|a| a.name.clone()).collect::<Vec<String>>().join(", "),
+                                    *duration,
+                                   *liked,
+                                )
+                            },
+                            Item::Episode(Episode { liked, name, duration, show, .. }) => {
+                                let (artist, album) = match show {
+                                    Some(show) => (
+                                       show.publisher.clone(),
+                                       show.name.clone(),
+                                    ),
+                                    None => (String::new(), String::new()),
+                                };
+                                TrackItem::new(
+                                    name.clone(),
+                                    artist,
+                                    *duration,
+                                    *liked,
+                                )
+                            },
+                        }
+                    })
+                    .collect::<Vec<TrackItem>>();
+
+                TrackList::default()
+                    .items(tracks)
+                    .select(0)
+                    .render(area, buf)
             }
             None => {}
         }

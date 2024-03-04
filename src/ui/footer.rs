@@ -5,6 +5,7 @@ use ratatui::style::{Style, Stylize};
 use ratatui::widgets::{Block, Borders, Gauge, StatefulWidget, Widget};
 
 use crate::state::State;
+use crate::ui::Cover;
 
 pub struct Footer;
 
@@ -24,50 +25,14 @@ impl StatefulWidget for Footer {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(11),
+                Constraint::Length(12),
                 Constraint::Length(1),
-                Constraint::Min(5),
+                Constraint::Min(1),
             ])
             .split(padding[1]);
 
         Cover.render(layout[0], buf, state);
         PlaybackInfo.render(layout[2], buf, state);
-    }
-}
-
-// TODO: Move to generic location and implement set pattern algorithms
-// TODO: Add color randomness potential
-pub struct Cover;
-impl StatefulWidget for Cover {
-    type State = State;
-
-    fn render(self, rect: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let width = rect.width - 2;
-        let height = rect.height - 2;
-        let cover = &state.playback.cover;
-
-        let start_y = ((cover.len() - 1) - height as usize) / 2;
-        let start_x = ((cover.get(0).unwrap().len() - 1) - width as usize) / 2;
-
-        for y in 0..height {
-            for x in 0..width {
-                buf.get_mut(rect.left() + x + 1, rect.top() + y + 1)
-                    .set_symbol(
-                        &cover
-                            .get(start_y + y as usize)
-                            .unwrap()
-                            .get(start_x + x as usize)
-                            .unwrap()
-                            .to_string(),
-                    );
-            }
-        }
-
-        buf.get_mut(rect.left(), rect.top()).set_symbol("┌─");
-        buf.get_mut(rect.right() - 2, rect.top()).set_symbol("─┐");
-        buf.get_mut(rect.left(), rect.bottom() - 1).set_symbol("└─");
-        buf.get_mut(rect.right() - 2, rect.bottom() - 1)
-            .set_symbol("─┘");
     }
 }
 
@@ -79,8 +44,9 @@ impl StatefulWidget for PlaybackInfo {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(1),
+                Constraint::Length(1),
                 Constraint::Length(2),
+                Constraint::Length(1),
                 Constraint::Length(1),
                 Constraint::Length(1),
             ])
@@ -102,6 +68,7 @@ impl StatefulWidget for NameArtist {
             .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(rect);
 
+        // ♡
         buf.set_string(
             layout[0].left(),
             layout[0].top(),
@@ -152,6 +119,7 @@ impl StatefulWidget for PlayState {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
+                Constraint::Length(2),
                 Constraint::Length(9),
                 Constraint::Fill(1),
                 Constraint::Length(1),
@@ -163,13 +131,14 @@ impl StatefulWidget for PlayState {
             false => Style::default().italic().fg(Color::DarkGray),
         };
 
-        buf.set_string(layout[0].left(), layout[0].top(), "Shuffle ", shuffle_style);
+        buf.set_string(layout[0].left(), layout[0].top(), if state.playback.liked() { "♥" } else { " " }, Style::default());
+        buf.set_string(layout[1].left(), layout[1].top(), "Shuffle ", shuffle_style);
         buf.set_string(
-            layout[1].left(),
-            layout[1].top(),
+            layout[2].left(),
+            layout[2].top(),
             format!("Repeat: {}", state.playback.repeat()),
             Style::default(),
         );
-        buf.set_string(layout[2].left(), layout[2].top(), "?", Style::default());
+        buf.set_string(layout[3].left(), layout[3].top(), "?", Style::default());
     }
 }

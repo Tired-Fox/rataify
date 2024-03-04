@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use lazy_static::lazy_static;
 pub use keymap::KeyMap;
 
+pub mod spot;
+
 pub(crate) mod logging;
 pub mod error;
 mod keymap;

@@ -1,18 +1,14 @@
-use std::fmt::Debug;
 use color_eyre::{Report, Section};
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde_json::Value;
+use std::fmt::Debug;
 
-use auth::Credentials;
-use auth::OAuth;
-
-use crate::scopes;
-
-pub mod auth;
 mod api;
+pub mod auth;
 
-pub use api::{Spotify, player::AdditionalTypes};
-use crate::spot::api::SpotifyRequest;
+pub use crate::spot::api::SpotifyRequest;
+pub use api::{player::AdditionalTypes, Spotify};
 
 #[derive(Debug, Deserialize)]
 struct ErrorData {
@@ -22,7 +18,7 @@ struct ErrorData {
 
 #[derive(Debug, Deserialize)]
 struct ErrorBody {
-    pub error: ErrorData
+    pub error: ErrorData,
 }
 
 #[derive(Debug, Clone)]
@@ -52,61 +48,68 @@ impl From<Error> for Report {
     }
 }
 
+impl From<Report> for Error {
+    fn from(value: Report) -> Self {
+        Error::Unknown(value.to_string())
+    }
+}
 
 pub trait SpotifyResponse<T> {
     async fn to_spotify_response(self) -> Result<T, Error>;
 }
 
-impl SpotifyResponse<()> for Result<reqwest::Response, reqwest::Error> {
-    async fn to_spotify_response(self) -> Result<(), Error> {
-        match self {
-            Ok(response) => {
-                match response.status().clone() {
-                    StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
-                    StatusCode::UNAUTHORIZED => Err(Error::InvalidToken),
-                    StatusCode::NOT_FOUND => Err(Error::NoDevice),
-                    StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_REQUEST => {
-                        let body = response.text().await.map_err(|e| Error::Unknown(e.to_string()))?;
-                        let body = serde_json::from_str::<ErrorBody>(&body).map_err(|e| Error::Unknown(e.to_string()))?;
-                        Err(Error::Failed {
-                            code: body.error.code,
-                            message: body.error.message
-                        })
-                    }
-                }
-            },
-            Err(e) => {
-                return Err(Error::Unknown(e.to_string()));
-            }
-        }
+#[derive(Debug)]
+pub struct NoContent;
+impl<'de> Deserialize<'de> for NoContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+        Ok(match value {
+            Value::Object(obj) if obj.len() == 0 => NoContent,
+            Value::Null => NoContent,
+            _ => return Err(serde::de::Error::custom("Expected no content")),
+        })
     }
 }
 
-
 impl<T> SpotifyResponse<T> for Result<reqwest::Response, reqwest::Error>
-    where
-        T: Deserialize<'static> + Debug
+where
+    T: Deserialize<'static> + Debug,
 {
     async fn to_spotify_response(self) -> Result<T, Error> {
         match self {
-            Ok(response) => {
-                match response.status().clone() {
-                    StatusCode::OK => {
-                        let body = response.text().await.map_err(|e| Error::Unknown(e.to_string()))?;
-                        Ok(Some(serde_json::from_str::<T>(&body).map_err(|e| Error::Unknown(e.to_string()))?))
-                    },
-                    StatusCode::NOT_FOUND => Err(Error::NoContent),
-                    StatusCode::UNAUTHORIZED => Err(Error::InvalidToken),
-                    StatusCode::NOT_FOUND => Err(Error::NoDevice),
-                    StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_REQUEST => {
-                        let body = response.text().await.map_err(|e| Error::Unknown(e.to_string()))?;
-                        let body = serde_json::from_str::<ErrorBody>(&body).map_err(|e| Error::Unknown(e.to_string()))?;
-                        Err(Error::Failed {
-                            code: body.error.code,
-                            message: body.error.message
-                        })
+            Ok(response) => match response.status().clone() {
+                StatusCode::OK => {
+                    let mut body = response
+                        .text()
+                        .await
+                        .map_err(|e| Error::Unknown(e.to_string()))?;
+
+                    if body.is_empty() {
+                        body = String::from("null");
                     }
+
+                    Ok(serde_json::from_str::<T>(Box::leak(body.into_boxed_str()))
+                        .map_err(|e| Error::Unknown(e.to_string()))?)
                 }
+                StatusCode::NO_CONTENT => Err(Error::NoContent),
+                StatusCode::UNAUTHORIZED => Err(Error::InvalidToken),
+                StatusCode::NOT_FOUND => Err(Error::NoDevice),
+                StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_REQUEST => {
+                    let body = response
+                        .text()
+                        .await
+                        .map_err(|e| Error::Unknown(e.to_string()))?;
+                    let body = serde_json::from_str::<ErrorBody>(&body)
+                        .map_err(|e| Error::Unknown(e.to_string()))?;
+                    Err(Error::Failed {
+                        code: body.error.code,
+                        message: body.error.message,
+                    })
+                }
+                _ => Err(Error::Unknown("Unkown spotify response".to_string())),
             },
             Err(e) => {
                 return Err(Error::Unknown(e.to_string()));
@@ -115,21 +118,13 @@ impl<T> SpotifyResponse<T> for Result<reqwest::Response, reqwest::Error>
     }
 }
 
-async fn test() {
-    let oauth = OAuth::new(Credentials::from_env().unwrap(), scopes![
-        user_read_private,
-    ]);
-
-    let mut spotify = Spotify::new(oauth);
-
-    // TODO: Throw errors up and catch them before they go all the way up
-    //  handle no device by opening device select
-    //  handle invalid token by refreshing
-    //  handle all other known errors by showing error toast or dialog
-    //  handle all other errors by throwing the rest of the way up crashing the app
-    let response = spotify.player_state()
-        .market("US")
-        .additional_types([AdditionalTypes::Track, AdditionalTypes::Episode])
-        .send()
-        .await;
-}
+// #[macro_export]
+// macro_rules! scopes {
+//     ($($scope: ident),* $(,)?) => {
+//         std::collections::HashSet::from_iter(vec![$(stringify!($scope).replace("_", "-"),)*])
+//     };
+//     ($scopes: literal) => {
+//         std::collections::HashSet::from_iter($scopes.split(" ").map(|s| s.to_string()))
+//     };
+// }
+use crate::scopes;

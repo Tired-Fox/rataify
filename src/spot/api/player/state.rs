@@ -1,13 +1,13 @@
-use serde::{Deserialize, Serialize};
-use crate::spot::{SpotifyResponse, SpotifyRequest};
+use super::Playback;
 use crate::spot::auth::OAuth;
 use crate::spot::Error;
-use crate::spotify::response::Playback;
+use crate::spot::{SpotifyRequest, SpotifyResponse};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum AdditionalTypes {
-    #[defualt]
+    #[default]
     Track,
     Episode,
 }
@@ -39,17 +39,24 @@ impl<'a> PlayerStateBuilder<'a> {
         self
     }
 
-    pub fn additional_types<const N: usize>(mut self, additional_types: [AdditionalTypes; N]) -> Self {
+    pub fn additional_types<const N: usize>(
+        mut self,
+        additional_types: [AdditionalTypes; N],
+    ) -> Self {
         self.additional_types = additional_types.to_vec();
         self
     }
 }
 
-impl<'a> SpotifyRequest for PlayerStateBuilder<'a> {
+impl<'a> SpotifyRequest<Option<Playback>> for PlayerStateBuilder<'a> {
     async fn send(mut self) -> Result<Option<Playback>, Error> {
-        self.oauth.update()?;
-        let result: Result<Playback, Error> = reqwest::Client::new().get("https://api.spotify.com/v1/me/player")
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+        self.oauth.update().await?;
+        let result: Result<Playback, Error> = reqwest::Client::new()
+            .get("https://api.spotify.com/v1/me/player")
+            .header(
+                "Authorization",
+                self.oauth.token.as_ref().unwrap().to_header(),
+            )
             .send()
             .await
             .to_spotify_response()

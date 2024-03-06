@@ -20,18 +20,20 @@ pub use callback::Callback;
 use crate::{browser, CONFIG_PATH};
 
 mod credentials;
+
 pub use credentials::Credentials;
+use crate::prompt::prompt_creds_if_missing;
 
 fn to_base64<S>(data: &String, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
+    where
+        S: serde::Serializer,
 {
     serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(data.as_bytes()))
 }
 
 fn from_base64<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
     match base64::engine::general_purpose::STANDARD.decode(s.as_bytes()) {
@@ -60,7 +62,7 @@ fn from_base64_option<'de, D>(deserializer: D) -> Result<Option<String>, D::Erro
                 Ok(base) => Some(String::from_utf8(base).map_err(serde::de::Error::custom)?),
                 Err(_) => None
             }
-        },
+        }
         Err(_) => None
     })
 }
@@ -189,13 +191,24 @@ pub struct OAuth {
 }
 
 impl OAuth {
-    pub fn new(credentials: Credentials, scopes: HashSet<String>) -> Self {
+    pub fn new() -> Self {
+        prompt_creds_if_missing().unwrap();
+
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
-            credentials,
+            credentials: Credentials::from_env().unwrap(),
             state: Uuid::new_v4(),
             token: AuthToken::load(),
-            scopes,
+            scopes: HashSet::from_iter([
+                #[cfg(feature = "user-read-private")]
+                "user-read-private",
+                #[cfg(feature = "user-read-recently-played")]
+                "user-read-recently-played",
+                #[cfg(feature = "user-read-playback-state")]
+                "user-read-playback-state",
+                #[cfg(feature = "user-modify-playback-state")]
+                "user-modify-playback-state",
+            ].iter().map(|s: &&str| s.to_string())),
             tx,
             rx,
         }
@@ -234,7 +247,7 @@ impl OAuth {
         // When it is successful, the callback will be triggered and the result is returned
         browser!(
             "https://accounts.spotify.com/authorize" ?
-            client_id=self.credentials.client_id,
+            client_id=self.credentials.client_id.clone(),
             response_type="code",
             redirect_uri=urlencoding::encode("http://localhost:8888/Rataify/auth"),
             scope=format!("{}", self.scopes.iter().map(|v| v.clone()).collect::<Vec<_>>().join("%20")),
@@ -257,10 +270,9 @@ impl OAuth {
             ("redirect_uri", "http://localhost:8888/Rataify/auth".to_string()),
         ])?;
 
-        let client = reqwest::Client::new();
-        let result = client.post("https://accounts.spotify.com/api/token")
-            .header("Authorization", format!("Basic {}", self.credentials.auth()))
+        let result = reqwest::Client::new().post("https://accounts.spotify.com/api/token")
             .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Authorization", format!("Basic {}", self.credentials.auth()))
             .body(body)
             .send()
             .await?;

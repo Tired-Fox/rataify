@@ -1,3 +1,4 @@
+workspace = { members = ["crates/rotify"] }
 [package]
 name = "rataify"
 version = "0.1.0"

@@ -2,23 +2,25 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use chrono::{Duration, NaiveDateTime};
-use serde::de::{Error, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
-use serde_json::{Deserializer, Value};
+use serde::de::{Error, MapAccess, Visitor};
+use serde_json::Value;
 
-use crate::spotify::response::{Device, Followers, Image};
+use crate::model::device::Device;
+use crate::model::user::Followers;
+use crate::model::Image;
 
 fn ms_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where
-    D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
 {
     let ms: i64 = Deserialize::deserialize(deserializer)?;
     Ok(Duration::milliseconds(ms))
 }
 
 fn ms_to_duration_optional<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
-where
-    D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
 {
     let ms: Option<i64> = Deserialize::deserialize(deserializer)?;
     match ms {
@@ -28,8 +30,8 @@ where
 }
 
 fn ms_to_datetime<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
-where
-    D: serde::Deserializer<'de>,
+    where
+        D: serde::Deserializer<'de>,
 {
     let ms: i64 = Deserialize::deserialize(deserializer)?;
     NaiveDateTime::from_timestamp_millis(ms).ok_or(Error::custom("Invalid timestamp"))
@@ -290,9 +292,9 @@ pub struct Playback {
     #[serde(deserialize_with = "ms_to_datetime")]
     pub timestamp: NaiveDateTime,
     #[serde(
-        rename = "progress_ms",
-        deserialize_with = "ms_to_duration_optional",
-        skip_serializing_if = "Option::is_none"
+    rename = "progress_ms",
+    deserialize_with = "ms_to_duration_optional",
+    skip_serializing_if = "Option::is_none"
     )]
     pub progress: Option<Duration>,
     #[serde(rename = "is_playing")]

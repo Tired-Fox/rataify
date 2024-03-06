@@ -1,8 +1,5 @@
-use crate::spot::{auth::OAuth, SpotifyResponse};
-use serde::Deserialize;
 use std::hash::Hash;
-
-use super::SpotifyRequest;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct Devices {
@@ -10,7 +7,7 @@ pub struct Devices {
 }
 
 /// Spotify's representation of a device that can be streamed to
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Device {
     pub id: String,
     /// If this is the currently active device
@@ -45,31 +42,5 @@ impl Hash for Device {
         self.id.hash(state);
         self.name.hash(state);
         self.r#type.hash(state);
-    }
-}
-
-pub struct DevicesBuilder<'a> {
-    oauth: &'a mut OAuth,
-}
-
-impl<'a> DevicesBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
-        Self { oauth }
-    }
-}
-
-impl<'a> SpotifyRequest<Devices> for DevicesBuilder<'a> {
-    async fn send(self) -> Result<Devices, super::Error> {
-        self.oauth.update().await?;
-        reqwest::Client::new()
-            .get("https://api.spotify.com/v1/me/player/devices")
-            .header(
-                "Authorization",
-                self.oauth.token.as_ref().unwrap().to_header(),
-            )
-            .send()
-            .await
-            .to_spotify_response()
-            .await
     }
 }

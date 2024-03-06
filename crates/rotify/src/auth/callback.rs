@@ -1,3 +1,5 @@
+use std::future::Future;
+use std::pin::Pin;
 use color_eyre::eyre::eyre;
 use color_eyre::Report;
 use html_to_string_macro::html;
@@ -44,7 +46,7 @@ impl Callback {
         }
     }
 
-    async fn handler(query: Option<&str>, state: String, result: UnboundedSender<String>) -> color_eyre::Result<Response<Full<Bytes>>> {
+    fn handler(query: Option<&str>, state: String, result: UnboundedSender<String>) -> color_eyre::Result<Response<Full<Bytes>>> {
         match query {
             Some(query) => {
                 let response: AuthCodeResponse = serde_qs::from_str(query)?;
@@ -85,7 +87,7 @@ impl Callback {
 impl Service<Request<Incoming>> for Callback {
     type Response = Response<Full<Bytes>>;
     type Error = Report;
-    type Future = futures::future::BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, req: Request<Incoming>) -> Self::Future {
         match (req.method().clone(), req.uri().path()) {
@@ -93,7 +95,7 @@ impl Service<Request<Incoming>> for Callback {
                 let state = self.state.clone();
                 let tx = self.tx.clone();
                 Box::pin(async move {
-                    match Callback::handler(req.uri().query(), state, tx).await {
+                    match Callback::handler(req.uri().query(), state, tx) {
                         Ok(response) => Ok(response),
                         Err(err) => {
                             eprintln!("{:?}", err);

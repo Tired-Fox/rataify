@@ -1,26 +1,10 @@
-extern crate rataify;
+extern crate rotify;
 
-// use std::time::Duration;
-use rataify::{
-    scopes,
-    spot::{Spotify, SpotifyRequest},
-    spot::auth::{Credentials, OAuth},
-};
-use rataify::spot::model::UriType;
+use rotify::{auth::OAuth, Spotify, SpotifyRequest};
 
 #[tokio::main]
 async fn main() {
-    let oauth = OAuth::new(
-        Credentials::from_env().unwrap(),
-        scopes![
-            user_read_private,
-            user_read_recently_played,
-            user_read_playback_state,
-            user_modify_playback_state,
-        ],
-    );
-
-    let mut spotify = Spotify::new(oauth);
+    let mut spotify = Spotify::new();
 
     // TODO: Throw errors up and catch them before they go all the way up
     //  handle no device by opening device select
@@ -39,4 +23,14 @@ async fn main() {
         .send()
         .await;
     println!("{result:#?}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oauth_works() {
+        let oauth = OAuth::new();
+    }
 }

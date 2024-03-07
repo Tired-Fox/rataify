@@ -1,6 +1,7 @@
 extern crate rotify;
 
 use rotify::{auth::OAuth, Spotify, SpotifyRequest};
+use rotify::model::playback::{Item, Track, Episode};
 
 #[tokio::main]
 async fn main() {
@@ -15,11 +16,8 @@ async fn main() {
     // tokio::time::sleep(Duration::from_secs(1)).await;
 
 
-    let result = spotify
-        .player()
-        // .add_to_queue(UriType::Track, "1DeXr9ob3s3HQbq3ypvifn")
-        // .next()
-        .pause()
+    let result = spotify.tracks()
+        .get_saved_tracks()
         .send()
         .await;
     println!("{result:#?}");

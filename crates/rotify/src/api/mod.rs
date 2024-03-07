@@ -30,4 +30,8 @@ impl Spotify {
     pub fn player(&mut self) -> player::PlayerBuilder {
         player::PlayerBuilder::new(&mut self.oauth)
     }
+
+    pub fn tracks(&mut self) -> tracks::TrackBuilder {
+        tracks::TrackBuilder::new(&mut self.oauth)
+    }
 }

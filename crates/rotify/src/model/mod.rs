@@ -1,7 +1,8 @@
 pub mod playback;
 pub mod queue;
-mod device;
-mod user;
+pub mod device;
+pub mod user;
+pub mod tracks;
 
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;

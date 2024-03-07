@@ -142,6 +142,11 @@ pub enum RestrictionReason {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Tracks {
+   tracks: Vec<Track>
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Track {
     #[serde(skip)]
     pub liked: bool,

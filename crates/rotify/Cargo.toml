@@ -36,6 +36,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.114"
 serde_urlencoded = "0.7.1"
 serde_qs = "0.12.0"
+serde_path_to_error = "0.1.15"
 
 color-eyre = "0.6.2"
 
@@ -58,3 +59,5 @@ dotenvy = "0.15.7"
 envy = "0.4.2"
 dialoguer = "0.11.0"
 terminal_size = "0.3.0"
+
+cfg-if = "1.0.0"

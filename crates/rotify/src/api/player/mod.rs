@@ -1,39 +1,42 @@
 #[cfg(feature = "user-read-playback-state")]
 use device::DevicesBuilder;
 #[cfg(feature = "user-modify-playback-state")]
-use modify::PausePlaybackBuilder;
+use user::NextPlaybackBuilder;
 #[cfg(feature = "user-modify-playback-state")]
-use modify::StartPlaybackBuilder;
+use user::PausePlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::PreviousPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::RepeatBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::SeekPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::ShuffleBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::StartPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use user::VolumeBuilder;
 pub use playback::AdditionalTypes;
 #[cfg(feature = "user-read-playback-state")]
 use playback::PlayerStateBuilder;
 #[cfg(feature = "user-modify-playback-state")]
 use playback::TransferPlaybackBuilder;
-
 #[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::NextPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::PreviousPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::RepeatBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::SeekPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::ShuffleBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::modify::VolumeBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use crate::api::player::queue::AddToQueueBuilder;
+use queue::AddToQueueBuilder;
 #[cfg(all(feature = "user-read-playback-state", feature = "user-read-currently-playing"))]
-use crate::api::player::queue::QueueBuilder;
+use queue::QueueBuilder;
 #[cfg(feature = "user-read-recently-played")]
-use crate::api::player::queue::RecentlyPlayedBuilder;
+use queue::RecentlyPlayedBuilder;
+
 use crate::auth::OAuth;
 use crate::model::{Uri, UriType};
 
 mod playback;
+#[cfg(feature = "user-read-playback-state")]
 pub mod device;
-mod modify;
+#[cfg(feature = "user-modify-playback-state")]
+mod user;
+#[cfg(any(feature = "user-modify-playback-state", feature = "user-read-playback-state", feature = "user-read-recently-played"))]
 mod queue;
 
 pub struct PlayerBuilder<'a>(&'a mut OAuth);

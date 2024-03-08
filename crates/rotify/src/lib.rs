@@ -11,7 +11,7 @@ pub mod auth;
 pub mod model;
 mod prompt;
 
-pub use api::{player::AdditionalTypes, Spotify, SpotifyRequest};
+pub use api::{player::AdditionalTypes, Spotify, SpotifyRequest, AsyncIter};
 
 lazy_static::lazy_static! {
     pub static ref CONFIG_PATH: PathBuf = {
@@ -109,7 +109,12 @@ impl<F, T> SpotifyResponse<T> for F
                         .await
                         .map_err(|e| Error::Unknown(e.to_string()))?;
 
-                    Ok(serde_json::from_str::<T>(Box::leak(body.into_boxed_str()))
+                    if body.is_empty() {
+                        body = String::from("null");
+                    }
+
+                    let jd = &mut serde_json::Deserializer::from_str(Box::leak(body.into_boxed_str()));
+                    Ok(serde_path_to_error::deserialize(jd)
                         .map_err(|e| Error::Json(e.to_string()))?)
                 }
                 StatusCode::NO_CONTENT => {
@@ -118,7 +123,8 @@ impl<F, T> SpotifyResponse<T> for F
                         body = String::from("null");
                     }
 
-                    match serde_json::from_str(Box::leak(body.into_boxed_str())) {
+                    let jd = &mut serde_json::Deserializer::from_str(Box::leak(body.into_boxed_str()));
+                    match serde_path_to_error::deserialize(jd) {
                         Ok(v) => Ok(v),
                         Err(_) => Err(Error::NoContent),
                     }

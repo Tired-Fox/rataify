@@ -66,8 +66,9 @@ impl Callback {
                             Response::builder()
                                 .body(Full::new(Bytes::from(layout! {
                                    <h1>
-                                       "Successfully authenticated Rataify with "
+                                       "Successfully granted access to "
                                        <span class="green">"Spotify"</span>
+                                       " for Rotify"
                                    </h1>
                                    <h3>"This tab may now be closed"</h3>
                                 })))

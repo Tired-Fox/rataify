@@ -1551,6 +1551,7 @@ name = "rotify"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.0",
+ "cfg-if",
  "chrono",
  "color-eyre",
  "dialoguer",
@@ -1566,6 +1567,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "serde_qs",
  "serde_urlencoded",
  "terminal_size",

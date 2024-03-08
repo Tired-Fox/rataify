@@ -1,12 +1,12 @@
 use std::future::Future;
+
 use crate::auth::OAuth;
-use crate::prompt::prompt_creds_if_missing;
+
+use super::Error;
 
 pub mod player;
 pub mod tracks;
 pub mod users;
-
-use super::Error;
 
 pub struct Spotify {
     pub oauth: OAuth,
@@ -34,4 +34,17 @@ impl Spotify {
     pub fn tracks(&mut self) -> tracks::TrackBuilder {
         tracks::TrackBuilder::new(&mut self.oauth)
     }
+
+    pub fn users(&mut self) -> users::UsersBuilder {
+        users::UsersBuilder::new(&mut self.oauth)
+    }
+}
+
+/// Two-way async iterator. Mainly for use with paginated endpoints. Allows for the next and previous
+/// urls to be followed automatically.
+pub trait AsyncIter {
+    type Item;
+
+    fn next(&mut self) -> impl Future<Output=Option<Self::Item>>;
+    fn prev(&mut self) -> impl Future<Output=Option<Self::Item>>;
 }

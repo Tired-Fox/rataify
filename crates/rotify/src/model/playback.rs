@@ -1,21 +1,22 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-use chrono::{Duration, NaiveDateTime};
+use chrono::{DateTime, Duration, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use serde::de::{Error, MapAccess, Visitor};
 use serde_json::Value;
 
 use crate::model::device::Device;
-use crate::model::user::Followers;
 use crate::model::Image;
+use crate::model::user::Followers;
 
 fn ms_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where
         D: serde::Deserializer<'de>,
 {
     let ms: i64 = Deserialize::deserialize(deserializer)?;
-    Ok(Duration::milliseconds(ms))
+    let delta = TimeDelta::try_milliseconds(ms).ok_or(serde::de::Error::custom("Failed to parse duration"))?;
+    Ok(Duration::from(delta))
 }
 
 fn ms_to_duration_optional<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
@@ -24,17 +25,20 @@ fn ms_to_duration_optional<'de, D>(deserializer: D) -> Result<Option<Duration>, 
 {
     let ms: Option<i64> = Deserialize::deserialize(deserializer)?;
     match ms {
-        Some(ms) => Ok(Some(Duration::milliseconds(ms))),
+        Some(ms) => {
+            let delta = TimeDelta::try_milliseconds(ms).ok_or(serde::de::Error::custom("Failed to parse duration"))?;
+            Ok(Some(Duration::from(delta)))
+        },
         None => Ok(None),
     }
 }
 
-fn ms_to_datetime<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
+fn ms_to_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
     where
         D: serde::Deserializer<'de>,
 {
     let ms: i64 = Deserialize::deserialize(deserializer)?;
-    NaiveDateTime::from_timestamp_millis(ms).ok_or(Error::custom("Invalid timestamp"))
+    DateTime::from_timestamp_millis(ms).ok_or(Error::custom("Invalid timestamp"))
 }
 
 #[derive(Debug, Deserialize, Copy, Clone, PartialEq)]
@@ -73,10 +77,12 @@ pub struct Context {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
 pub enum AlbumType {
+    #[serde(alias = "album", alias = "ALBUM")]
     Album,
+    #[serde(alias = "single", alias = "SINGLE")]
     Single,
+    #[serde(alias = "compilation", alias = "COMPILATION")]
     Compilation,
 }
 
@@ -148,8 +154,6 @@ pub struct Tracks {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Track {
-    #[serde(skip)]
-    pub liked: bool,
     pub album: Album,
     pub artists: Vec<SimplifiedArtist>,
     pub available_markets: Vec<String>,
@@ -269,20 +273,6 @@ impl Item {
             Item::Episode(episode) => episode.duration,
         }
     }
-
-    pub fn liked(&self) -> bool {
-        match self {
-            Item::Track(track) => track.liked,
-            Item::Episode(episode) => episode.liked,
-        }
-    }
-
-    pub fn set_liked(&mut self, liked: bool) {
-        match self {
-            Item::Track(track) => track.liked = liked,
-            Item::Episode(episode) => episode.liked = liked,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -295,7 +285,7 @@ pub struct Playback {
     pub shuffle: bool,
     pub context: Option<Context>,
     #[serde(deserialize_with = "ms_to_datetime")]
-    pub timestamp: NaiveDateTime,
+    pub timestamp: DateTime<Utc>,
     #[serde(
     rename = "progress_ms",
     deserialize_with = "ms_to_duration_optional",

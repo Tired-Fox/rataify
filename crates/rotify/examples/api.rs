@@ -1,7 +1,8 @@
 extern crate rotify;
 
-use rotify::{auth::OAuth, Spotify, SpotifyRequest};
-use rotify::model::playback::{Item, Track, Episode};
+use tokio::task::JoinSet;
+use rotify::{AsyncIter, auth::OAuth, Spotify, SpotifyRequest};
+use rotify::model::UriType;
 
 #[tokio::main]
 async fn main() {
@@ -15,12 +16,13 @@ async fn main() {
 
     // tokio::time::sleep(Duration::from_secs(1)).await;
 
-
-    let result = spotify.tracks()
-        .get_saved_tracks()
-        .send()
-        .await;
-    println!("{result:#?}");
+    println!(
+        "{:#?}",
+        spotify.users()
+            .current_user_profile()
+            .send()
+            .await
+    )
 }
 
 #[cfg(test)]

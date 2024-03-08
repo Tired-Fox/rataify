@@ -3,6 +3,8 @@ pub mod queue;
 pub mod device;
 pub mod user;
 pub mod tracks;
+pub mod paginate;
+pub mod audio;
 
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -21,7 +23,7 @@ pub enum UriType {
 }
 
 impl Display for UriType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             Self::Album => "album",
             Self::Track => "track",

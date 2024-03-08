@@ -200,14 +200,54 @@ impl OAuth {
             state: Uuid::new_v4(),
             token: AuthToken::load(),
             scopes: HashSet::from_iter([
-                #[cfg(feature = "user-read-private")]
-                "user-read-private",
-                #[cfg(feature = "user-read-recently-played")]
-                "user-read-recently-played",
+                #[cfg(feature = "ugc-image-upload")]
+                    "ugc-image-upload",
                 #[cfg(feature = "user-read-playback-state")]
-                "user-read-playback-state",
+                    "user-read-playback-state",
                 #[cfg(feature = "user-modify-playback-state")]
-                "user-modify-playback-state",
+                    "user-modify-playback-state",
+                #[cfg(feature = "user-read-currently-playing")]
+                    "user-read-currently-playing",
+                #[cfg(feature = "app-remote-control")]
+                    "app-remote-control",
+                #[cfg(feature = "streaming")]
+                    "streaming",
+                #[cfg(feature = "playlist-read-private")]
+                    "playlist-read-private",
+                #[cfg(feature = "playlist-read-collaborative")]
+                    "playlist-read-collaborative",
+                #[cfg(feature = "playlist-modify-private")]
+                    "playlist-modify-private",
+                #[cfg(feature = "playlist-modify-public")]
+                    "playlist-modify-public",
+                #[cfg(feature = "user-follow-modify")]
+                    "user-follow-modify",
+                #[cfg(feature = "user-follow-read")]
+                    "user-follow-read",
+                #[cfg(feature = "user-read-playback-position")]
+                    "user-read-playback-position",
+                #[cfg(feature = "user-top-read")]
+                    "user-top-read",
+                #[cfg(feature = "user-read-recently-played")]
+                    "user-read-recently-played",
+                #[cfg(feature = "user-library-modify")]
+                    "user-library-modify",
+                #[cfg(feature = "user-library-read")]
+                    "user-library-read",
+                #[cfg(feature = "user-read-email")]
+                    "user-read-email",
+                #[cfg(feature = "user-read-private")]
+                    "user-read-private",
+                #[cfg(feature = "user-soa-link")]
+                    "user-soa-link",
+                #[cfg(feature = "user-soa-unlink")]
+                    "user-soa-unlink",
+                #[cfg(feature = "user-manage-entitlements")]
+                    "user-manage-entitlements",
+                #[cfg(feature = "user-manage-partner")]
+                    "user-manage-partner",
+                #[cfg(feature = "user-create-partner")]
+                    "user-create-partner",
             ].iter().map(|s: &&str| s.to_string())),
             tx,
             rx,
@@ -326,7 +366,7 @@ impl OAuth {
         // Check for expired token with 10-second grace period
         if let Some(token) = &mut self.token {
             // if scopes changed re-authenticate
-            if !self.scopes.is_subset(&token.scopes) {
+            if self.scopes != token.scopes {
                 self.authenticate().await?;
                 return Ok(());
             }

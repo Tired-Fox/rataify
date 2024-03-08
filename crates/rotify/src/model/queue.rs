@@ -1,8 +1,13 @@
 use serde::Deserialize;
+use crate::AsyncIter;
 use crate::model::playback::{Context, Item, Track};
 
-#[derive(Debug, Deserialize)]
-pub struct RecentlyPlayedCursors {
+fn default_limit() -> usize {
+    20
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Cursor {
     pub after: String,
     pub before: String,
 }
@@ -17,10 +22,11 @@ pub struct RecentlyPlayedItems {
 #[derive(Debug, Deserialize)]
 pub struct RecentlyPlayedTracks {
     pub href: String,
-    pub limit: Option<u8>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
     pub next: Option<String>,
-    pub cursors: RecentlyPlayedCursors,
-    pub total: Option<u64>,
+    pub cursors: Option<Cursor>,
+    pub total: Option<usize>,
     pub items: Vec<RecentlyPlayedItems>,
 }
 

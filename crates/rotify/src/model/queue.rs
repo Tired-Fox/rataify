@@ -6,10 +6,10 @@ fn default_limit() -> usize {
     20
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Cursor {
-    pub after: String,
-    pub before: String,
+    pub after: Option<String>,
+    pub before: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

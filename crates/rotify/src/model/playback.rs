@@ -113,7 +113,7 @@ pub struct Album {
     pub artists: Vec<SimplifiedArtist>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Artist {
     pub external_urls: HashMap<String, String>,
     pub followers: Followers,

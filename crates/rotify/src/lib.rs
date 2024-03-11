@@ -76,29 +76,29 @@ impl From<Report> for Error {
 }
 
 pub trait SpotifyResponse<T> {
-    fn to_spotify_response(self) -> impl Future<Output = Result<T, Error>>;
+    fn to_spotify_response(self) -> impl Future<Output=Result<T, Error>>;
 }
 
 #[derive(Debug)]
 pub struct NoContent;
+
 impl<'de> Deserialize<'de> for NoContent {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where D: Deserializer<'de>
     {
-        let value= Value::deserialize(deserializer)?;
+        let value = Value::deserialize(deserializer)?;
         match value {
             Value::Object(map) if map.len() == 0 => Ok(NoContent),
             Value::Null => Ok(NoContent),
             _ => Err(serde::de::Error::custom("Content in response when it was not expected")),
         }
     }
-
 }
 
 impl<F, T> SpotifyResponse<T> for F
     where
         T: Deserialize<'static> + Debug,
-        F: Future<Output = Result<reqwest::Response, reqwest::Error>>
+        F: Future<Output=Result<reqwest::Response, reqwest::Error>>
 {
     async fn to_spotify_response(self) -> Result<T, Error> {
         match self.await {
@@ -128,17 +128,18 @@ impl<F, T> SpotifyResponse<T> for F
                         Ok(v) => Ok(v),
                         Err(_) => Err(Error::NoContent),
                     }
-                },
+                }
                 StatusCode::UNAUTHORIZED => Err(Error::InvalidToken),
                 StatusCode::NOT_FOUND => Err(Error::NoDevice),
                 StatusCode::FORBIDDEN => Err(Error::Unauthorized),
                 StatusCode::TOO_MANY_REQUESTS | StatusCode::BAD_REQUEST => {
+                    let code = response.status().as_u16();
                     let body = response
                         .text()
                         .await
                         .map_err(|e| Error::Unknown(e.to_string()))?;
                     let body = serde_json::from_str::<ErrorBody>(&body)
-                        .map_err(|e| Error::Json(e.to_string()))?;
+                        .map_err(|e| Error::Json(e.to_string())).unwrap_or(ErrorBody { error: ErrorData { status: code, message: Default::default() } });
                     Err(Error::Failed {
                         code: body.error.status,
                         message: body.error.message,
@@ -147,9 +148,8 @@ impl<F, T> SpotifyResponse<T> for F
                 code => {
                     eprintln!("{code:?}");
                     Err(Error::Unknown("Unkown spotify response".to_string()))
-                },
+                }
             }
-
             Err(e) => {
                 return Err(Error::Unknown(e.to_string()));
             }

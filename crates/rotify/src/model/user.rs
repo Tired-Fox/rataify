@@ -1,5 +1,25 @@
 use std::collections::HashMap;
-use serde::Deserialize;
+use std::fmt::{Debug, Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::paginate::{Paginate, parse_pagination};
+
+#[derive(Debug, Serialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum Variant {
+    Tracks,
+    Artists,
+}
+
+impl Display for Variant {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", match self {
+            Self::Tracks => "tracks",
+            Self::Artists => "artists",
+        })
+    }
+}
 
 /// Spotify's representation of an image
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -43,4 +63,32 @@ pub struct UserProfile {
     #[serde(rename = "type")]
     pub _type: String,
     pub uri: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct UserPublicProfile {
+    pub display_name: Option<String>,
+    pub external_urls: HashMap<String, String>,
+    pub followers: Followers,
+    pub href: String,
+    pub id: String,
+    pub images: Vec<Image>,
+
+    #[serde(rename = "type")]
+    pub _type: String,
+    pub uri: String,
+}
+
+
+#[derive(Debug, Deserialize, PartialEq, Clone)]
+pub struct TopItems<I: Debug + PartialEq + Clone> {
+    pub href: String,
+    pub limit: usize,
+    #[serde(deserialize_with = "parse_pagination")]
+    pub next: Option<Paginate>,
+    #[serde(deserialize_with = "parse_pagination")]
+    pub previous: Option<Paginate>,
+    pub offset: usize,
+    pub total: usize,
+    pub items: Vec<I>,
 }

@@ -76,7 +76,7 @@ mod callback;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthToken {
     token_type: String,
-    scopes: HashSet<String>,
+    scopes: Option<HashSet<String>>,
     expires: DateTime<Local>,
     #[serde(serialize_with = "to_base64", deserialize_with = "from_base64")]
     access_token: String,
@@ -88,7 +88,7 @@ impl Default for AuthToken {
     fn default() -> Self {
         Self {
             token_type: String::from("Bearer"),
-            scopes: HashSet::new(),
+            scopes: None,
             expires: Local::now() - Duration::seconds(12),
             access_token: String::new(),
             refresh_token: None,
@@ -156,9 +156,9 @@ impl FromStr for AuthToken {
             token_type: object.get("token_type").ok_or_eyre("failed to parse AuthToken::token_type: missing")?
                 .as_str().ok_or_eyre("failed to parse AuthToken::token_type: not a string")?
                 .to_string(),
-            scopes: object.get("scope").ok_or_eyre("failed to parse AuthToken::scope: missing")?
-                .as_str().ok_or_eyre("failed to parse AuthToken::scope: not a space seperated string list")?
-                .split(" ").map(|v| v.to_string()).collect(),
+            scopes: object.get("scope").map_or(None, |v| {
+                v.as_str().map(|v| v.split(" ").map(|v| v.to_string()).collect())
+            }),
             expires: {
                 let seconds = object.get("expires_in").ok_or_eyre("failed to parse AuthToken::expires: missing")?;
                 let seconds = seconds.as_i64().ok_or_eyre("failed to parse AuthToken::expires: not an integer")?;
@@ -366,9 +366,16 @@ impl OAuth {
         // Check for expired token with 10-second grace period
         if let Some(token) = &mut self.token {
             // if scopes changed re-authenticate
-            if self.scopes != token.scopes {
-                self.authenticate().await?;
-                return Ok(());
+            match token.scopes.as_ref() {
+                Some(scopes) if scopes != &self.scopes => {
+                    self.authenticate().await?;
+                    return Ok(());
+                }
+                None if self.scopes.len() != 0 => {
+                    self.authenticate().await?;
+                    return Ok(());
+                }
+                _ => {}
             }
 
             if token.expires < (Local::now() - Duration::seconds(10)) {

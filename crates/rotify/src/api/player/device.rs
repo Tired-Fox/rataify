@@ -1,6 +1,7 @@
 use crate::{auth::OAuth, SpotifyResponse};
 use serde::Deserialize;
 use std::hash::Hash;
+use crate::model::Wrapped;
 
 use crate::SpotifyRequest;
 
@@ -58,14 +59,16 @@ impl<'a> DevicesBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Devices> for DevicesBuilder<'a> {
-    async fn send(self) -> Result<Devices, crate::Error> {
+impl<'a> SpotifyRequest<Vec<Device>> for DevicesBuilder<'a> {
+    async fn send(self) -> Result<Vec<Device>, crate::Error> {
         self.oauth.update().await?;
-        reqwest::Client::new()
+        let result: Result<Wrapped<Vec<Device>>, crate::Error> = reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/player/devices")
             .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
             .send()
             .to_spotify_response()
-            .await
+            .await;
+
+        result.map(|v| v.unwrap())
     }
 }

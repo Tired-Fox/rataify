@@ -5,10 +5,12 @@ pub mod user;
 pub mod tracks;
 pub mod paginate;
 pub mod audio;
+pub mod follow;
 
-use std::fmt::{Display, Formatter};
+use std::collections::HashMap;
+use std::fmt::{Debug, Display, Formatter};
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use crate::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -57,7 +59,7 @@ impl FromStr for UriType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Uri {
     uri_type: UriType,
-    id: String
+    id: String,
 }
 
 impl Display for Uri {
@@ -68,8 +70,8 @@ impl Display for Uri {
 
 impl Serialize for Uri {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
+        where
+            S: serde::Serializer,
     {
         serializer.serialize_str(&self.to_string())
     }
@@ -79,7 +81,7 @@ impl Uri {
     pub fn new(uri_type: UriType, id: String) -> Self {
         Self {
             uri_type,
-            id
+            id,
         }
     }
 
@@ -104,7 +106,7 @@ impl FromStr for Uri {
 
         Ok(Self {
             uri_type: UriType::from_str(parts[1])?,
-            id: parts[2].to_string()
+            id: parts[2].to_string(),
         })
     }
 }
@@ -119,4 +121,35 @@ pub struct Image {
     pub url: String,
     pub width: Option<u32>,
     pub height: Option<u32>,
+}
+
+pub(crate) struct Wrapped<T>(T);
+impl<T> Wrapped<T> {
+    pub fn unwrap(self) -> T {
+        self.0
+    }
+}
+
+impl<T: Debug> Debug for Wrapped<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Wrapped({:?})", self.0)
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Wrapped<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+    {
+        let mut map: HashMap<String, T> = HashMap::deserialize(deserializer)?;
+        if map.len() != 1 {
+            return Err(serde::de::Error::custom("Expected exactly one key"));
+        }
+
+        let mut entries = map.drain();
+        Ok(Wrapped(entries.next().unwrap().1))
+    }
 }

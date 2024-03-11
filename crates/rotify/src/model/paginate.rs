@@ -21,7 +21,7 @@ pub fn parse_pagination<'de, D>(d: D) -> Result<Option<Paginate>, D::Error>
     }
 }
 
-#[derive(Default, Debug, Deserialize, Clone, Copy)]
+#[derive(Default, Debug, Deserialize, Clone, Copy, PartialEq)]
 pub struct Paginate {
     pub offset: Option<usize>,
     pub limit: Option<usize>,

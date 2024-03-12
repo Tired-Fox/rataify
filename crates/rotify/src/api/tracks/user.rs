@@ -84,8 +84,10 @@ impl<'a> GetSavedTracksBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<PagedTracks> for GetSavedTracksBuilder<'a> {
-    async fn send(mut self) -> Result<PagedTracks, Error> {
+impl<'a> SpotifyRequest for GetSavedTracksBuilder<'a> {
+    type Response = PagedTracks;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = Vec::new();
@@ -218,8 +220,10 @@ impl<'a> CheckSavedTracksBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Vec<bool>> for CheckSavedTracksBuilder<'a> {
-    async fn send(mut self) -> Result<Vec<bool>, Error> {
+impl<'a> SpotifyRequest for CheckSavedTracksBuilder<'a> {
+    type Response = Vec<bool>;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()
@@ -246,8 +250,10 @@ impl<'a> SaveTracksBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for SaveTracksBuilder<'a> {
-    async fn send(mut self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for SaveTracksBuilder<'a> {
+    type Response = ();
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let data = &json!({
@@ -281,8 +287,10 @@ impl<'a> RemoveTracksBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for RemoveTracksBuilder<'a> {
-    async fn send(mut self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for RemoveTracksBuilder<'a> {
+    type Response = ();
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let data = &json!({

@@ -16,21 +16,23 @@ async fn main() {
     // tokio::time::sleep(Duration::from_secs(1)).await;
 
     let playlist = "37i9dQZF1DX0b1hHYQtJjp";
-    println!(
-        "{:#?}",
-        spotify.users()
-            .unfollow_playlist(playlist)
-            .send()
-            .await
-    );
+    let id = "d0nko8z8jy6gcbkclk4lgik6d";
 
     println!(
         "{:#?}",
         spotify.users()
-            .follow_playlist(playlist)
+            .check_users_follow_playlist(playlist, [ id ])
             .send()
             .await
-    )
+    );
+    //
+    // println!(
+    //     "{:#?}",
+    //     spotify.users()
+    //         .current_user_profile()
+    //         .send()
+    //         .await
+    // )
 }
 
 #[cfg(test)]

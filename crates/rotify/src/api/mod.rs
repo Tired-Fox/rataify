@@ -12,8 +12,9 @@ pub struct Spotify {
     pub oauth: OAuth,
 }
 
-pub trait SpotifyRequest<T> {
-    fn send(self) -> impl Future<Output=Result<T, Error>>;
+pub trait SpotifyRequest {
+    type Response;
+    fn send(self) -> impl Future<Output=Result<Self::Response, Error>>;
 }
 
 impl Spotify {

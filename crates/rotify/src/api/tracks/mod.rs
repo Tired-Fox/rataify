@@ -14,7 +14,6 @@ use crate::auth::OAuth;
 mod user;
 
 mod info;
-mod audio;
 
 pub struct TrackBuilder<'a>(&'a mut OAuth);
 

@@ -1564,6 +1564,7 @@ dependencies = [
  "hyper-util",
  "lazy_static",
  "open",
+ "paste",
  "reqwest",
  "serde",
  "serde_json",

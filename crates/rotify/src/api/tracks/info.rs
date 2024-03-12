@@ -25,8 +25,10 @@ impl<'a> GetTrackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Track> for GetTrackBuilder<'a> {
-    async fn send(mut self) -> Result<Track, Error> {
+impl<'a> SpotifyRequest for GetTrackBuilder<'a> {
+    type Response = Track;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = Vec::new();
@@ -65,8 +67,10 @@ impl<'a> GetTracksBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Tracks> for GetTracksBuilder<'a> {
-    async fn send(mut self) -> Result<Tracks, Error> {
+impl<'a> SpotifyRequest for GetTracksBuilder<'a> {
+    type Response = Tracks;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         if self.ids.len() > 100 {
             return Err(Error::Unknown("Can fetch a maximum of 100 tracks at a time".into()));
         }
@@ -102,8 +106,10 @@ impl<'a> GetTrackAudioFeaturesBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<AudioFeatures> for GetTrackAudioFeaturesBuilder<'a> {
-    async fn send(mut self) -> Result<AudioFeatures, Error> {
+impl<'a> SpotifyRequest for GetTrackAudioFeaturesBuilder<'a> {
+    type Response = AudioFeatures;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()
@@ -129,8 +135,10 @@ impl<'a> GetSeveralTrackAudioFeaturesBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Vec<AudioFeatures>> for GetSeveralTrackAudioFeaturesBuilder<'a> {
-    async fn send(mut self) -> Result<Vec<AudioFeatures>, Error> {
+impl<'a> SpotifyRequest for GetSeveralTrackAudioFeaturesBuilder<'a> {
+    type Response = Vec<AudioFeatures>;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()
@@ -157,8 +165,10 @@ impl<'a> GetTrackAudioAnalysisBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<AudioAnalysis> for GetTrackAudioAnalysisBuilder<'a> {
-    async fn send(mut self) -> Result<AudioAnalysis, Error> {
+impl<'a> SpotifyRequest for GetTrackAudioAnalysisBuilder<'a> {
+    type Response = AudioAnalysis;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()
@@ -453,8 +463,10 @@ impl<'a> GetRecommendationsBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Recommendations> for GetRecommendationsBuilder<'a> {
-    async fn send(mut self) -> Result<Recommendations, Error> {
+impl<'a> SpotifyRequest for GetRecommendationsBuilder<'a> {
+    type Response = Recommendations;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()

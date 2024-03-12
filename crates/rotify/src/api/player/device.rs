@@ -59,8 +59,10 @@ impl<'a> DevicesBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Vec<Device>> for DevicesBuilder<'a> {
-    async fn send(self) -> Result<Vec<Device>, crate::Error> {
+impl<'a> SpotifyRequest for DevicesBuilder<'a> {
+    type Response = Vec<Device>;
+
+    async fn send(self) -> Result<Self::Response, crate::Error> {
         self.oauth.update().await?;
         let result: Result<Wrapped<Vec<Device>>, crate::Error> = reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/player/devices")

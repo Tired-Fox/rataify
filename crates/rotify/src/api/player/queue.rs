@@ -54,8 +54,10 @@ impl<'a> RecentlyPlayedBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<RecentlyPlayedTracks> for RecentlyPlayedBuilder<'a> {
-    async fn send(self) -> Result<RecentlyPlayedTracks, Error> {
+impl<'a> SpotifyRequest for RecentlyPlayedBuilder<'a> {
+    type Response = RecentlyPlayedTracks;
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = Vec::new();
@@ -89,8 +91,10 @@ impl<'a> QueueBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Queue> for QueueBuilder<'a> {
-    async fn send(self) -> Result<Queue, Error> {
+impl<'a> SpotifyRequest for QueueBuilder<'a> {
+    type Response = Queue;
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         reqwest::Client::new()
@@ -124,8 +128,10 @@ impl<'a> AddToQueueBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for AddToQueueBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for AddToQueueBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = vec![("uri", self.uri.to_string())];

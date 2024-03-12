@@ -59,8 +59,10 @@ impl<'a> StartPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for StartPlaybackBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for StartPlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         let mut request = reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/play")
@@ -119,8 +121,10 @@ impl<'a> PausePlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for PausePlaybackBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for PausePlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         let mut request = reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/pause")
@@ -158,8 +162,10 @@ impl<'a> NextPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for NextPlaybackBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for NextPlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         reqwest::Client::new()
             .post("https://api.spotify.com/v1/me/player/next")
@@ -191,8 +197,10 @@ impl<'a> PreviousPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for PreviousPlaybackBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for PreviousPlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         reqwest::Client::new()
             .post("https://api.spotify.com/v1/me/player/previous")
@@ -226,8 +234,10 @@ impl<'a> SeekPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for SeekPlaybackBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for SeekPlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = vec![("position_ms", self.position.to_string())];
@@ -272,8 +282,10 @@ impl<'a> VolumeBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for VolumeBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for VolumeBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = vec![("volume_percent", self.volume_percent.to_string())];
@@ -322,8 +334,10 @@ impl<'a> ShuffleBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for ShuffleBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for ShuffleBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
 
         let mut query = vec![("state", self.state.to_string())];
@@ -376,8 +390,10 @@ impl<'a> RepeatBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<()> for RepeatBuilder<'a> {
-    async fn send(self) -> Result<(), Error> {
+impl<'a> SpotifyRequest for RepeatBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         let mut query = vec![("state", self.state.to_string())];
         if let Some(device) = self.device {

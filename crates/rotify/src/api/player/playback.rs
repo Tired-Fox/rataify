@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{auth::OAuth, Error, NoContent, SpotifyRequest, SpotifyResponse};
+use crate::{auth::OAuth, Error, SpotifyRequest, SpotifyResponse};
 use crate::model::playback::Playback;
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
@@ -48,8 +48,10 @@ impl<'a> PlayerStateBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<Option<Playback>> for PlayerStateBuilder<'a> {
-    async fn send(mut self) -> Result<Option<Playback>, Error> {
+impl<'a> SpotifyRequest for PlayerStateBuilder<'a> {
+    type Response = Option<Playback>;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         let result: Result<Playback, Error> = reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/player")
@@ -98,8 +100,10 @@ impl<'a> TransferPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest<NoContent> for TransferPlaybackBuilder<'a> {
-    async fn send(self) -> Result<NoContent, Error> {
+impl<'a> SpotifyRequest for TransferPlaybackBuilder<'a> {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
         self.oauth.update().await?;
         let mut body = Value::Object(Map::new());
         if let Value::Object(map) = &mut body {

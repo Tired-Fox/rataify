@@ -1,11 +1,7 @@
-pub mod playback;
-pub mod queue;
-pub mod device;
-pub mod user;
+pub mod users;
 pub mod tracks;
 pub mod paginate;
-pub mod audio;
-pub mod follow;
+pub mod player;
 
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};

@@ -1,20 +1,20 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use cfg_if::cfg_if;
 
 use serde_json::json;
 
 use crate::{Error, SpotifyRequest, SpotifyResponse};
 use crate::auth::OAuth;
-use crate::model::follow::FollowedArtists;
-use crate::model::user::{UserProfile, UserPublicProfile};
+use crate::model::users::{UserProfile, UserPublicProfile, FollowedArtists};
 use crate::model::Wrapped;
 
-pub struct UsersBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct UsersBuilder {
+    oauth: Arc<Mutex<OAuth>>,
 }
 
-impl<'a> UsersBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl UsersBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self { oauth }
     }
 
@@ -22,13 +22,13 @@ impl<'a> UsersBuilder<'a> {
     ///
     /// # Scope
     /// Optional: user-read-private, user-read-email
-    pub fn get_current_user_profile(self) -> GetCurrentUserProfileBuilder<'a> {
+    pub fn get_current_user_profile(self) -> GetCurrentUserProfileBuilder {
         GetCurrentUserProfileBuilder::new(self.oauth)
     }
 
 
     /// Get a user's public profile
-    pub fn get_users_profile<S: Into<String>>(self, user_id: S) -> GetUserProfileBuilder<'a> {
+    pub fn get_users_profile<S: Into<String>>(self, user_id: S) -> GetUserProfileBuilder {
         GetUserProfileBuilder::new(self.oauth, user_id)
     }
 
@@ -47,7 +47,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// playlist-modify-public, playlist-modify-private
     #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-    pub fn follow_playlist<S: Into<String>>(self, playlist_id: S) -> FollowPlaylistBuilder<'a> {
+    pub fn follow_playlist<S: Into<String>>(self, playlist_id: S) -> FollowPlaylistBuilder {
         FollowPlaylistBuilder::new(self.oauth, playlist_id.into())
     }
 
@@ -56,7 +56,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// playlist-modify-public, playlist-modify-private
     #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-    pub fn unfollow_playlist<S: Into<String>>(self, playlist_id: S) -> UnfollowPlaylistBuilder<'a> {
+    pub fn unfollow_playlist<S: Into<String>>(self, playlist_id: S) -> UnfollowPlaylistBuilder {
         UnfollowPlaylistBuilder::new(self.oauth, playlist_id.into())
     }
 
@@ -65,7 +65,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-read
     #[cfg(feature = "user-follow-read")]
-    pub fn get_followed_artists(self) -> GetFollowedArtistsBuilder<'a> {
+    pub fn get_followed_artists(self) -> GetFollowedArtistsBuilder {
         GetFollowedArtistsBuilder::new(self.oauth)
     }
 
@@ -74,7 +74,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-modify
     #[cfg(feature = "user-follow-modify")]
-    pub fn follow_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> FollowArtistOrUserBuilder<'a> {
+    pub fn follow_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> FollowArtistOrUserBuilder {
         FollowArtistOrUserBuilder::new(self.oauth, FollowVariant::Artist, ids.into_iter().map(|v| v.into()).collect())
     }
 
@@ -83,7 +83,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-modify
     #[cfg(feature = "user-follow-modify")]
-    pub fn follow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> FollowArtistOrUserBuilder<'a> {
+    pub fn follow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> FollowArtistOrUserBuilder {
         FollowArtistOrUserBuilder::new(self.oauth, FollowVariant::User, ids.into_iter().map(|v| v.into()).collect())
     }
 
@@ -92,7 +92,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-modify
     #[cfg(feature = "user-follow-modify")]
-    pub fn unfollow_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> UnfollowArtistOrUserBuilder<'a> {
+    pub fn unfollow_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> UnfollowArtistOrUserBuilder {
         UnfollowArtistOrUserBuilder::new(self.oauth, FollowVariant::Artist, ids.into_iter().collect())
     }
 
@@ -101,7 +101,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-modify
     #[cfg(feature = "user-follow-modify")]
-    pub fn unfollow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> UnfollowArtistOrUserBuilder<'a> {
+    pub fn unfollow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> UnfollowArtistOrUserBuilder {
         UnfollowArtistOrUserBuilder::new(self.oauth, FollowVariant::User, ids.into_iter().map(|v| v.into()).collect())
     }
 
@@ -110,7 +110,7 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-read
     #[cfg(feature = "user-follow-read")]
-    pub fn check_follows_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> CheckFollowsArtistOrUserBuilder<'a> {
+    pub fn check_follows_artists<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> CheckFollowsArtistOrUserBuilder {
         CheckFollowsArtistOrUserBuilder::new(self.oauth, FollowVariant::Artist, ids.into_iter().collect())
     }
 
@@ -119,12 +119,12 @@ impl<'a> UsersBuilder<'a> {
     /// # Scope
     /// user-follow-read
     #[cfg(feature = "user-follow-read")]
-    pub fn check_follow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> CheckFollowsArtistOrUserBuilder<'a> {
+    pub fn check_follow_users<S: IntoIterator<Item=T>, T: Into<String>>(self, ids: S) -> CheckFollowsArtistOrUserBuilder {
         CheckFollowsArtistOrUserBuilder::new(self.oauth, FollowVariant::User, ids.into_iter().map(|v| v.into()).collect())
     }
 
     /// Check if users follow a playlist
-    pub fn check_users_follow_playlist<S, T, U>(self, playlist: S, users: T) -> CheckUsersFollowPlaylistBuilder<'a>
+    pub fn check_users_follow_playlist<S, T, U>(self, playlist: S, users: T) -> CheckUsersFollowPlaylistBuilder
         where
             T: IntoIterator<Item=U>,
             U: Into<String>,
@@ -134,65 +134,65 @@ impl<'a> UsersBuilder<'a> {
     }
 }
 
-pub struct GetUserProfileBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct GetUserProfileBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     user_id: String,
 }
 
-impl<'a> GetUserProfileBuilder<'a> {
-    pub fn new<S: Into<String>>(oauth: &'a mut OAuth, user_id: S) -> Self {
+impl GetUserProfileBuilder {
+    pub fn new<S: Into<String>>(oauth: Arc<Mutex<OAuth>>, user_id: S) -> Self {
         Self { oauth, user_id: user_id.into() }
     }
 }
 
-impl<'a> SpotifyRequest for GetUserProfileBuilder<'a> {
+impl SpotifyRequest for GetUserProfileBuilder {
     type Response = UserPublicProfile;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .get(format!("https://api.spotify.com/v1/users/{}", self.user_id))
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
     }
 }
 
-pub struct GetCurrentUserProfileBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct GetCurrentUserProfileBuilder {
+    oauth: Arc<Mutex<OAuth>>,
 }
 
-impl<'a> GetCurrentUserProfileBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl GetCurrentUserProfileBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self { oauth }
     }
 }
 
-impl<'a> SpotifyRequest for GetCurrentUserProfileBuilder<'a> {
+impl SpotifyRequest for GetCurrentUserProfileBuilder {
     type Response = UserProfile;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .get("https://api.spotify.com/v1/me")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
     }
 }
 
-pub struct GetFollowedArtistsBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct GetFollowedArtistsBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     after: Option<String>,
     limit: Option<usize>,
 }
 
-impl<'a> GetFollowedArtistsBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl GetFollowedArtistsBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             after: None,
@@ -211,11 +211,11 @@ impl<'a> GetFollowedArtistsBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for GetFollowedArtistsBuilder<'a> {
+impl SpotifyRequest for GetFollowedArtistsBuilder {
     type Response = FollowedArtists;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = HashMap::from([("type", "artist".to_string())]);
         if let Some(after) = self.after {
@@ -228,7 +228,7 @@ impl<'a> SpotifyRequest for GetFollowedArtistsBuilder<'a> {
 
         let result: Result<Wrapped<FollowedArtists>, Error> = reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/following")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(&query)
             .send()
             .to_spotify_response()
@@ -244,15 +244,15 @@ cfg_if! {
     }
 }
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-pub struct FollowPlaylistBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct FollowPlaylistBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     playlist_id: String,
     public: bool,
 }
 
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-impl<'a> FollowPlaylistBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, playlist_id: String) -> Self {
+impl FollowPlaylistBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, playlist_id: String) -> Self {
         Self {
             oauth,
             playlist_id,
@@ -267,11 +267,11 @@ impl<'a> FollowPlaylistBuilder<'a> {
 }
 
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-impl<'a> SpotifyRequest for FollowPlaylistBuilder<'a> {
+impl SpotifyRequest for FollowPlaylistBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let body = serde_json::to_string(&json!({
             "public": self.public
@@ -279,7 +279,7 @@ impl<'a> SpotifyRequest for FollowPlaylistBuilder<'a> {
 
         reqwest::Client::new()
             .put(format!("https://api.spotify.com/v1/playlists/{}/followers", self.playlist_id))
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .header("Content-Type", "application/json")
             .header("Content-Length", body.len())
             .body(body)
@@ -290,14 +290,14 @@ impl<'a> SpotifyRequest for FollowPlaylistBuilder<'a> {
 }
 
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-pub struct UnfollowPlaylistBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct UnfollowPlaylistBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     playlist_id: String,
 }
 
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-impl<'a> UnfollowPlaylistBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, playlist_id: String) -> Self {
+impl UnfollowPlaylistBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, playlist_id: String) -> Self {
         Self {
             oauth,
             playlist_id,
@@ -306,15 +306,15 @@ impl<'a> UnfollowPlaylistBuilder<'a> {
 }
 
 #[cfg(all(feature = "playlist-modify-public", feature = "playlist-modify-private"))]
-impl<'a> SpotifyRequest for UnfollowPlaylistBuilder<'a> {
+impl SpotifyRequest for UnfollowPlaylistBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .delete(format!("https://api.spotify.com/v1/playlists/{}/followers", self.playlist_id))
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
@@ -326,14 +326,14 @@ pub enum FollowVariant {
     User,
 }
 
-pub struct FollowArtistOrUserBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct FollowArtistOrUserBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     ids: Vec<String>,
     _type: FollowVariant,
 }
 
-impl<'a> FollowArtistOrUserBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, _type: FollowVariant, ids: Vec<String>) -> Self {
+impl FollowArtistOrUserBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, _type: FollowVariant, ids: Vec<String>) -> Self {
         Self {
             oauth,
             ids,
@@ -352,11 +352,11 @@ impl<'a> FollowArtistOrUserBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for FollowArtistOrUserBuilder<'a> {
+impl SpotifyRequest for FollowArtistOrUserBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let body = serde_json::to_string(&json!({
             "ids": self.ids
@@ -364,7 +364,7 @@ impl<'a> SpotifyRequest for FollowArtistOrUserBuilder<'a> {
 
         reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/following")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .header("Content-Type", "application/json")
             .header("Content-Length", body.len())
             .query(&[("type", match self._type {
@@ -378,14 +378,14 @@ impl<'a> SpotifyRequest for FollowArtistOrUserBuilder<'a> {
     }
 }
 
-pub struct UnfollowArtistOrUserBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct UnfollowArtistOrUserBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     ids: Vec<String>,
     _type: FollowVariant,
 }
 
-impl<'a> UnfollowArtistOrUserBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, _type: FollowVariant, ids: Vec<String>) -> Self {
+impl UnfollowArtistOrUserBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, _type: FollowVariant, ids: Vec<String>) -> Self {
         Self {
             oauth,
             ids,
@@ -404,11 +404,11 @@ impl<'a> UnfollowArtistOrUserBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for UnfollowArtistOrUserBuilder<'a> {
+impl SpotifyRequest for UnfollowArtistOrUserBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let body = serde_json::to_string(&json!({
             "ids": self.ids
@@ -416,7 +416,7 @@ impl<'a> SpotifyRequest for UnfollowArtistOrUserBuilder<'a> {
 
         reqwest::Client::new()
             .delete("https://api.spotify.com/v1/me/following")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .header("Content-Type", "application/json")
             .header("Content-Length", body.len())
             .query(&[("type", match self._type {
@@ -430,14 +430,14 @@ impl<'a> SpotifyRequest for UnfollowArtistOrUserBuilder<'a> {
     }
 }
 
-pub struct CheckFollowsArtistOrUserBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct CheckFollowsArtistOrUserBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     ids: Vec<String>,
     _type: FollowVariant,
 }
 
-impl<'a> CheckFollowsArtistOrUserBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, _type: FollowVariant, ids: Vec<String>) -> Self {
+impl CheckFollowsArtistOrUserBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, _type: FollowVariant, ids: Vec<String>) -> Self {
         Self {
             oauth,
             ids,
@@ -456,15 +456,15 @@ impl<'a> CheckFollowsArtistOrUserBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for CheckFollowsArtistOrUserBuilder<'a> {
+impl SpotifyRequest for CheckFollowsArtistOrUserBuilder {
     type Response = Vec<bool>;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth =self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/following/contains")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(&[
                 (
                     "type",
@@ -481,14 +481,14 @@ impl<'a> SpotifyRequest for CheckFollowsArtistOrUserBuilder<'a> {
     }
 }
 
-pub struct CheckUsersFollowPlaylistBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct CheckUsersFollowPlaylistBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     playlist_id: String,
     ids: Vec<String>,
 }
 
-impl<'a> CheckUsersFollowPlaylistBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, playlist_id: String, ids: Vec<String>) -> Self {
+impl CheckUsersFollowPlaylistBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, playlist_id: String, ids: Vec<String>) -> Self {
         Self {
             oauth,
             ids,
@@ -497,15 +497,15 @@ impl<'a> CheckUsersFollowPlaylistBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for CheckUsersFollowPlaylistBuilder<'a> {
+impl SpotifyRequest for CheckUsersFollowPlaylistBuilder {
     type Response = Vec<bool>;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .get(format!("https://api.spotify.com/v1/playlists/{}/followers/contains", self.playlist_id))
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(&[("ids", self.ids.join(","))])
             .send()
             .to_spotify_response()

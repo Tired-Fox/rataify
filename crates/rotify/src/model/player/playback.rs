@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde::de::{Error, MapAccess, Visitor};
 use serde_json::Value;
 
-use crate::model::device::Device;
+use crate::model::player::Device;
 use crate::model::Image;
-use crate::model::user::Followers;
+use crate::model::users::Followers;
 
 fn ms_to_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where

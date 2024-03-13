@@ -4,6 +4,7 @@ use std::fmt::{Debug, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::model::paginate::{Paginate, parse_pagination};
+use crate::model::player::{Artist, Cursor};
 
 #[derive(Debug, Serialize, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
@@ -91,4 +92,19 @@ pub struct TopItems<I: Debug + PartialEq + Clone> {
     pub offset: usize,
     pub total: usize,
     pub items: Vec<I>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FollowedArtists {
+    pub href: String,
+    pub limit: Option<usize>,
+    pub next: Option<String>,
+    pub cursor: Option<Cursor>,
+    pub total: Option<usize>,
+    pub items: Vec<Artist>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Artists {
+    pub artists: FollowedArtists,
 }

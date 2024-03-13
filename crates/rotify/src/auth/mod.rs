@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use base64::Engine;
-use chrono::{DateTime, Duration, Local};
+use chrono::{DateTime, Duration, Local, TimeDelta};
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Report;
 use hyper::server::conn::http1;
@@ -73,7 +73,7 @@ mod callback;
 ///
 /// `access_token` and `refresh_token` are stored as base64 strings to prevent data being stored in
 /// plaintext
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthToken {
     token_type: String,
     scopes: Option<HashSet<String>>,
@@ -89,7 +89,7 @@ impl Default for AuthToken {
         Self {
             token_type: String::from("Bearer"),
             scopes: None,
-            expires: Local::now() - Duration::seconds(12),
+            expires: Local::now() - TimeDelta::try_seconds(12).unwrap(),
             access_token: String::new(),
             refresh_token: None,
         }
@@ -362,18 +362,18 @@ impl OAuth {
 
     /// Refresh the access token if it has expired, or authenticate the user if the token is
     /// invalid or missing.
-    pub async fn update(&mut self) -> color_eyre::Result<()> {
+    pub async fn update(&mut self) -> color_eyre::Result<Option<AuthToken>> {
         // Check for expired token with 10-second grace period
         if let Some(token) = &mut self.token {
             // if scopes changed re-authenticate
             match token.scopes.as_ref() {
                 Some(scopes) if scopes != &self.scopes => {
                     self.authenticate().await?;
-                    return Ok(());
+                    return Ok(self.token.clone());
                 }
                 None if self.scopes.len() != 0 => {
                     self.authenticate().await?;
-                    return Ok(());
+                    return Ok(self.token.clone());
                 }
                 _ => {}
             }
@@ -384,6 +384,6 @@ impl OAuth {
         } else {
             self.authenticate().await?;
         }
-        Ok(())
+        Ok(self.token.clone())
     }
 }

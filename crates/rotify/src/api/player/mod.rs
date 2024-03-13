@@ -1,64 +1,60 @@
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "user-read-playback-state")]
 use device::DevicesBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::NextPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::PausePlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::PreviousPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::RepeatBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::SeekPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::ShuffleBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::StartPlaybackBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use user::VolumeBuilder;
-pub use playback::AdditionalTypes;
-#[cfg(feature = "user-read-playback-state")]
-use playback::PlayerStateBuilder;
-#[cfg(feature = "user-modify-playback-state")]
-use playback::TransferPlaybackBuilder;
 #[cfg(feature = "user-modify-playback-state")]
 use queue::AddToQueueBuilder;
 #[cfg(all(feature = "user-read-playback-state", feature = "user-read-currently-playing"))]
 use queue::QueueBuilder;
 #[cfg(feature = "user-read-recently-played")]
 use queue::RecentlyPlayedBuilder;
+pub use state::AdditionalTypes;
+#[cfg(feature = "user-modify-playback-state")]
+use state::NextPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::PausePlaybackBuilder;
+#[cfg(feature = "user-read-playback-state")]
+use state::PlayerStateBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::PreviousPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::RepeatBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::SeekPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::ShuffleBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::StartPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::TransferPlaybackBuilder;
+#[cfg(feature = "user-modify-playback-state")]
+use state::VolumeBuilder;
 
 use crate::auth::OAuth;
 use crate::model::{Uri, UriType};
+use crate::model::player::Repeat;
 
-mod playback;
+mod state;
 #[cfg(feature = "user-read-playback-state")]
 pub mod device;
-#[cfg(feature = "user-modify-playback-state")]
-mod user;
 #[cfg(any(feature = "user-modify-playback-state", feature = "user-read-playback-state", feature = "user-read-recently-played"))]
 mod queue;
 
-pub struct PlayerBuilder<'a>(&'a mut OAuth);
+pub struct PlayerBuilder(Arc<Mutex<OAuth>>);
 
-impl<'a> PlayerBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl PlayerBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self(oauth)
     }
+
+    // TODO: currently playing track
 
     /// Get playback state
     ///
     /// # Scope
     /// user-read-playback-state
     #[cfg(feature = "user-read-playback-state")]
-    pub fn playback(self) -> PlayerStateBuilder<'a> {
+    pub fn get_playback_state(self) -> PlayerStateBuilder {
         PlayerStateBuilder::new(self.0)
-    }
-
-    /// Get a list of available devices
-    #[cfg(feature = "user-read-playback-state")]
-    pub fn devices(self) -> DevicesBuilder<'a> {
-        DevicesBuilder::new(self.0)
     }
 
     /// Transfer playback to another device
@@ -66,8 +62,14 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn transfer_playback(self) -> TransferPlaybackBuilder<'a> {
+    pub fn transfer_playback(self) -> TransferPlaybackBuilder {
         TransferPlaybackBuilder::new(self.0)
+    }
+
+    /// Get a list of available devices
+    #[cfg(feature = "user-read-playback-state")]
+    pub fn get_devices(self) -> DevicesBuilder {
+        DevicesBuilder::new(self.0)
     }
 
     /// Start/Resume playback
@@ -75,7 +77,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn play(self) -> StartPlaybackBuilder<'a> {
+    pub fn play(self) -> StartPlaybackBuilder {
         StartPlaybackBuilder::new(self.0)
     }
 
@@ -84,7 +86,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn pause(self) -> PausePlaybackBuilder<'a> {
+    pub fn pause(self) -> PausePlaybackBuilder {
         PausePlaybackBuilder::new(self.0)
     }
 
@@ -93,7 +95,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn next(self) -> NextPlaybackBuilder<'a> {
+    pub fn skip_to_next(self) -> NextPlaybackBuilder {
         NextPlaybackBuilder::new(self.0)
     }
 
@@ -102,7 +104,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn previous(self) -> PreviousPlaybackBuilder<'a> {
+    pub fn skip_to_previous(self) -> PreviousPlaybackBuilder {
         PreviousPlaybackBuilder::new(self.0)
     }
 
@@ -111,13 +113,16 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn seek(self, position: i64) -> SeekPlaybackBuilder<'a> {
+    pub fn seek_to_position(self, position: i64) -> SeekPlaybackBuilder {
         SeekPlaybackBuilder::new(self.0, position)
     }
 
-    // Set playback volume
+    /// Set playback volume as a percentage
+    ///
+    /// # Scope
+    /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn volume(self, volume: u8) -> VolumeBuilder<'a> {
+    pub fn set_playback_volume(self, volume: u8) -> VolumeBuilder {
         VolumeBuilder::new(self.0, volume)
     }
 
@@ -126,8 +131,8 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn shuffle(self) -> ShuffleBuilder<'a> {
-        ShuffleBuilder::new(self.0)
+    pub fn shuffle(self, shuffle: bool) -> ShuffleBuilder {
+        ShuffleBuilder::new(self.0, shuffle)
     }
 
     /// Toggle repeat mode
@@ -135,8 +140,8 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn repeat(self) -> RepeatBuilder<'a> {
-        RepeatBuilder::new(self.0)
+    pub fn repeat(self, repeat: Repeat) -> RepeatBuilder {
+        RepeatBuilder::new(self.0, repeat)
     }
 
     /// Get recently played tracks
@@ -144,7 +149,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-read-recently-played
     #[cfg(feature = "user-read-recently-played")]
-    pub fn recently_played_tracks(self) -> RecentlyPlayedBuilder<'a> {
+    pub fn get_recently_played_tracks(self) -> RecentlyPlayedBuilder {
         RecentlyPlayedBuilder::new(self.0)
     }
 
@@ -153,7 +158,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-read-playback-state, user-read-currently-playing
     #[cfg(all(feature = "user-read-playback-state", feature = "user-read-currently-playing"))]
-    pub fn queue(self) -> QueueBuilder<'a> {
+    pub fn get_queue(self) -> QueueBuilder {
         QueueBuilder::new(self.0)
     }
 
@@ -162,7 +167,7 @@ impl<'a> PlayerBuilder<'a> {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn add_to_queue<S: Into<String>>(self, uri_type: UriType, id: S) -> AddToQueueBuilder<'a> {
+    pub fn add_to_queue<S: Into<String>>(self, uri_type: UriType, id: S) -> AddToQueueBuilder {
         AddToQueueBuilder::new(self.0, Uri::new(uri_type, id.into()))
     }
 }

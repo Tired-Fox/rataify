@@ -1,7 +1,7 @@
 extern crate rotify;
 
 use rotify::{AsyncIter, auth::OAuth, Spotify, SpotifyRequest};
-use rotify::model::playback::Track;
+use rotify::model::player::{Repeat, Track};
 
 #[tokio::main]
 async fn main() {
@@ -18,21 +18,22 @@ async fn main() {
     let playlist = "37i9dQZF1DX0b1hHYQtJjp";
     let id = "d0nko8z8jy6gcbkclk4lgik6d";
 
-    println!(
-        "{:#?}",
-        spotify.users()
-            .check_users_follow_playlist(playlist, [ id ])
-            .send()
-            .await
-    );
-    //
-    // println!(
-    //     "{:#?}",
-    //     spotify.users()
-    //         .current_user_profile()
-    //         .send()
-    //         .await
-    // )
+    let mut track_iter = spotify
+        .tracks()
+        .get_saved_tracks()
+        .iter();
+
+    let mut count = 0;
+    while let Some(Ok(next_track)) = track_iter.next().await {
+        for item in next_track.items.iter() {
+            count += 1;
+            println!("{count}. {:#?}", item.track.name);
+        }
+
+        if count >= 100 {
+            break;
+        }
+    }
 }
 
 #[cfg(test)]

@@ -11,7 +11,8 @@ pub mod auth;
 pub mod model;
 mod prompt;
 
-pub use api::{player::AdditionalTypes, Spotify, SpotifyRequest, AsyncIter};
+pub use api::{player::AdditionalTypes, Spotify, SpotifyRequest};
+pub use model::paginate::AsyncIter;
 
 lazy_static::lazy_static! {
     pub static ref CONFIG_PATH: PathBuf = {

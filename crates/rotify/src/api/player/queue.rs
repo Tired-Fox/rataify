@@ -1,8 +1,9 @@
+use std::sync::{Arc, Mutex};
 use chrono::Duration;
 
 use crate::{Error, SpotifyRequest, SpotifyResponse};
 use crate::auth::OAuth;
-use crate::model::queue::{Queue, RecentlyPlayedTracks};
+use crate::model::player::{Queue, RecentlyPlayedTracks};
 use crate::model::Uri;
 
 enum TimeOffset {
@@ -19,15 +20,15 @@ impl TimeOffset {
     }
 }
 
-pub struct RecentlyPlayedBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct RecentlyPlayedBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     amount: Option<Duration>,
     limit: Option<u8>,
     offset: TimeOffset,
 }
 
-impl<'a> RecentlyPlayedBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl RecentlyPlayedBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             amount: None,
@@ -54,11 +55,11 @@ impl<'a> RecentlyPlayedBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for RecentlyPlayedBuilder<'a> {
+impl SpotifyRequest for RecentlyPlayedBuilder {
     type Response = RecentlyPlayedTracks;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = Vec::new();
         if let Some(amount) = self.amount {
@@ -71,7 +72,7 @@ impl<'a> SpotifyRequest for RecentlyPlayedBuilder<'a> {
         reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/player/recently-played")
             .query(&query)
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
@@ -79,27 +80,27 @@ impl<'a> SpotifyRequest for RecentlyPlayedBuilder<'a> {
 }
 
 // Queue
-pub struct QueueBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct QueueBuilder {
+    oauth: Arc<Mutex<OAuth>>,
 }
 
-impl<'a> QueueBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl QueueBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth
         }
     }
 }
 
-impl<'a> SpotifyRequest for QueueBuilder<'a> {
+impl SpotifyRequest for QueueBuilder {
     type Response = Queue;
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth =self.oauth.lock().unwrap().update().await?;
 
         reqwest::Client::new()
             .get("https://api.spotify.com/v1/me/player/queue")
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
@@ -107,14 +108,14 @@ impl<'a> SpotifyRequest for QueueBuilder<'a> {
 }
 
 // Add to queue
-pub struct AddToQueueBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct AddToQueueBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     uri: Uri,
     device_id: Option<String>,
 }
 
-impl<'a> AddToQueueBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, uri: Uri) -> Self {
+impl AddToQueueBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, uri: Uri) -> Self {
         Self {
             oauth,
             uri,
@@ -128,11 +129,11 @@ impl<'a> AddToQueueBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for AddToQueueBuilder<'a> {
+impl SpotifyRequest for AddToQueueBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = vec![("uri", self.uri.to_string())];
         if let Some(device_id) = self.device_id {
@@ -143,7 +144,7 @@ impl<'a> SpotifyRequest for AddToQueueBuilder<'a> {
             .post("https://api.spotify.com/v1/me/player/queue")
             .header("Content-Length", 0)
             .query(&query)
-            .header("Authorization", self.oauth.token().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await

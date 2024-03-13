@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 
 use crate::auth::OAuth;
 
@@ -8,8 +9,9 @@ pub mod player;
 pub mod tracks;
 pub mod users;
 
+#[derive(Clone)]
 pub struct Spotify {
-    pub oauth: OAuth,
+    pub oauth: Arc<Mutex<OAuth>>,
 }
 
 pub trait SpotifyRequest {
@@ -19,7 +21,7 @@ pub trait SpotifyRequest {
 
 impl Spotify {
     pub fn new() -> Self {
-        Self { oauth: OAuth::new() }
+        Self { oauth: Arc::new(Mutex::new(OAuth::new())) }
     }
 
     #[cfg(any(
@@ -29,23 +31,36 @@ impl Spotify {
     feature = "user-modify-playback-state",
     ))]
     pub fn player(&mut self) -> player::PlayerBuilder {
-        player::PlayerBuilder::new(&mut self.oauth)
+        player::PlayerBuilder::new(self.oauth.clone())
     }
 
     pub fn tracks(&mut self) -> tracks::TrackBuilder {
-        tracks::TrackBuilder::new(&mut self.oauth)
+        tracks::TrackBuilder::new(self.oauth.clone())
     }
 
     pub fn users(&mut self) -> users::UsersBuilder {
-        users::UsersBuilder::new(&mut self.oauth)
+        users::UsersBuilder::new(self.oauth.clone())
     }
 }
 
-/// Two-way async iterator. Mainly for use with paginated endpoints. Allows for the next and previous
-/// urls to be followed automatically.
-pub trait AsyncIter {
-    type Item;
+#[macro_export]
+macro_rules! query {
+    ($($name: literal : $value: expr),* $(,)?) => {
+        {
+            use $crate::api::IntoQueryParam;
+            std::collections::HashMap::from([
+                $(($name, $value.into_query_param()),)*
+            ])
+        }
+    };
+}
 
-    fn next(&mut self) -> impl Future<Output=Option<Self::Item>>;
-    fn prev(&mut self) -> impl Future<Output=Option<Self::Item>>;
+pub trait IntoQueryParam {
+    fn into_query_param(self) -> Option<String>;
+}
+
+impl<S: ToString> IntoQueryParam for Option<S> {
+    fn into_query_param(self) -> Option<String> {
+        self.map(|s| s.to_string())
+    }
 }

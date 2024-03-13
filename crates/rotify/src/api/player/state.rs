@@ -1,14 +1,142 @@
-use std::fmt::Display;
-use std::str::FromStr;
-use serde_json::json;
-use crate::auth::OAuth;
-use crate::{Error, NoContent, SpotifyRequest, SpotifyResponse};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
+
+use crate::{auth::OAuth, Error, SpotifyRequest, SpotifyResponse};
+use crate::model::player::{Playback, Repeat};
 use crate::model::Uri;
-use crate::model::playback::Repeat;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum AdditionalTypes {
+    #[default]
+    Track,
+    Episode,
+}
+
+pub struct PlayerStateBuilder {
+    oauth: Arc<Mutex<OAuth>>,
+    device_id: Option<String>,
+    market: Option<String>,
+    additional_types: Vec<AdditionalTypes>,
+}
+
+impl PlayerStateBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
+        Self {
+            oauth,
+            device_id: None,
+            market: None,
+            additional_types: vec![AdditionalTypes::Track],
+        }
+    }
+
+    pub fn device_id(mut self, device_id: String) -> Self {
+        self.device_id = Some(device_id);
+        self
+    }
+
+    pub fn market<S: Into<String>>(mut self, market: S) -> Self {
+        self.market = Some(market.into());
+        self
+    }
+
+    pub fn additional_types<const N: usize>(
+        mut self,
+        additional_types: [AdditionalTypes; N],
+    ) -> Self {
+        self.additional_types = additional_types.to_vec();
+        self
+    }
+}
+
+impl SpotifyRequest for PlayerStateBuilder {
+    type Response = Option<Playback>;
+
+    async fn send(mut self) -> Result<Self::Response, Error> {
+        let auth = self.oauth.lock().unwrap().update().await?;
+        let result: Result<Playback, Error> = reqwest::Client::new()
+            .get("https://api.spotify.com/v1/me/player")
+            .header("Authorization", auth.unwrap().to_header())
+            .send()
+            .to_spotify_response()
+            .await;
+
+        // Map no content error to be None. This is because the playback just isn't available at the moment
+        match result {
+            Ok(result) => Ok(Some(result)),
+            Err(Error::NoContent) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+pub struct TransferPlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
+    devices: Vec<String>,
+    play: Option<bool>,
+}
+
+impl TransferPlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
+        Self {
+            oauth,
+            devices: Vec::new(),
+            play: None,
+        }
+    }
+
+    pub fn device<S: Into<String>>(mut self, device: S) -> Self {
+        self.devices.push(device.into());
+        self
+    }
+
+    pub fn devices<S: IntoIterator<Item=String>>(mut self, devices: S) -> Self {
+        self.devices = devices.into_iter().collect::<Vec<String>>();
+        self
+    }
+
+    pub fn play(mut self, play: bool) -> Self {
+        self.play = Some(play);
+        self
+    }
+}
+
+impl SpotifyRequest for TransferPlaybackBuilder {
+    type Response = ();
+
+    async fn send(self) -> Result<Self::Response, Error> {
+        let auth = self.oauth.lock().unwrap().update().await?;
+        let mut body = Value::Object(Map::new());
+        if let Value::Object(map) = &mut body {
+            map.insert(
+                "device_ids".to_string(),
+                Value::Array(
+                    self.devices
+                        .iter()
+                        .map(|v| Value::String(v.clone()))
+                        .collect(),
+                ),
+            );
+            if let Some(play) = self.play {
+                map.insert("play".to_string(), Value::Bool(play));
+            }
+        }
+
+        reqwest::Client::new()
+            .put("https://api.spotify.com/v1/me/player")
+            .header("Authorization", auth.unwrap().to_header())
+            .body(serde_json::to_string(&body).map_err(|e| Error::Unknown(e.to_string()))?)
+            .send()
+            .to_spotify_response()
+            .await
+    }
+}
 
 /// start
-pub struct StartPlaybackBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct StartPlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
     context: Option<Uri>,
     uris: Vec<Uri>,
@@ -16,8 +144,8 @@ pub struct StartPlaybackBuilder<'a> {
     position: usize,
 }
 
-impl<'a> StartPlaybackBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl StartPlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             device: None,
@@ -59,14 +187,14 @@ impl<'a> StartPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for StartPlaybackBuilder<'a> {
+impl SpotifyRequest for StartPlaybackBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth =self.oauth.lock().unwrap().update().await?;
         let mut request = reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/play")
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header());
+            .header("Authorization", auth.unwrap().to_header());
         if let Some(device) = self.device {
             request = request.query(&[("device_id", device)]);
         }
@@ -102,13 +230,13 @@ impl<'a> SpotifyRequest for StartPlaybackBuilder<'a> {
 }
 
 /// pause
-pub struct PausePlaybackBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct PausePlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
 }
 
-impl<'a> PausePlaybackBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl PausePlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             device: None,
@@ -121,15 +249,15 @@ impl<'a> PausePlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for PausePlaybackBuilder<'a> {
+impl SpotifyRequest for PausePlaybackBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth =self.oauth.lock().unwrap().update().await?;
         let mut request = reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/pause")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header());
+            .header("Authorization", auth.unwrap().to_header());
 
         if let Some(device) = self.device {
             request = request.query(&[("device_id", device)]);
@@ -143,13 +271,13 @@ impl<'a> SpotifyRequest for PausePlaybackBuilder<'a> {
 }
 
 /// next
-pub struct NextPlaybackBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct NextPlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
 }
 
-impl<'a> NextPlaybackBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl NextPlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             device: None,
@@ -162,15 +290,15 @@ impl<'a> NextPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for NextPlaybackBuilder<'a> {
+impl SpotifyRequest for NextPlaybackBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
         reqwest::Client::new()
             .post("https://api.spotify.com/v1/me/player/next")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
@@ -178,13 +306,13 @@ impl<'a> SpotifyRequest for NextPlaybackBuilder<'a> {
 }
 
 /// previous
-pub struct PreviousPlaybackBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct PreviousPlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
 }
 
-impl<'a> PreviousPlaybackBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl PreviousPlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
         Self {
             oauth,
             device: None,
@@ -197,15 +325,15 @@ impl<'a> PreviousPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for PreviousPlaybackBuilder<'a> {
+impl SpotifyRequest for PreviousPlaybackBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
         reqwest::Client::new()
             .post("https://api.spotify.com/v1/me/player/previous")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .send()
             .to_spotify_response()
             .await
@@ -213,14 +341,14 @@ impl<'a> SpotifyRequest for PreviousPlaybackBuilder<'a> {
 }
 
 /// Seek
-pub struct SeekPlaybackBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct SeekPlaybackBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     position: i64,
     device: Option<String>,
 }
 
-impl<'a> SeekPlaybackBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, position: i64) -> Self {
+impl SeekPlaybackBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, position: i64) -> Self {
         Self {
             oauth,
             device: None,
@@ -234,11 +362,11 @@ impl<'a> SeekPlaybackBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for SeekPlaybackBuilder<'a> {
+impl SpotifyRequest for SeekPlaybackBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = vec![("position_ms", self.position.to_string())];
         if let Some(device) = self.device {
@@ -248,7 +376,7 @@ impl<'a> SpotifyRequest for SeekPlaybackBuilder<'a> {
         reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/seek")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(query.as_slice())
             .send()
             .to_spotify_response()
@@ -257,14 +385,14 @@ impl<'a> SpotifyRequest for SeekPlaybackBuilder<'a> {
 }
 
 // volume
-pub struct VolumeBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct VolumeBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     volume_percent: u8,
     device: Option<String>,
 }
 
-impl<'a> VolumeBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth, mut volume_percent: u8) -> Self {
+impl VolumeBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, mut volume_percent: u8) -> Self {
         if volume_percent > 100 {
             volume_percent = 100;
         }
@@ -282,11 +410,11 @@ impl<'a> VolumeBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for VolumeBuilder<'a> {
+impl SpotifyRequest for VolumeBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = vec![("volume_percent", self.volume_percent.to_string())];
         if let Some(device) = self.device {
@@ -296,7 +424,7 @@ impl<'a> SpotifyRequest for VolumeBuilder<'a> {
         reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/volume")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(query.as_slice())
             .send()
             .to_spotify_response()
@@ -305,17 +433,17 @@ impl<'a> SpotifyRequest for VolumeBuilder<'a> {
 }
 
 /// Shuffle
-pub struct ShuffleBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct ShuffleBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
     state: bool,
 }
 
-impl<'a> ShuffleBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl ShuffleBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, state: bool) -> Self {
         Self {
             oauth,
-            state: false,
+            state,
             device: None,
         }
     }
@@ -334,11 +462,11 @@ impl<'a> ShuffleBuilder<'a> {
     }
 }
 
-impl<'a> SpotifyRequest for ShuffleBuilder<'a> {
+impl SpotifyRequest for ShuffleBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
 
         let mut query = vec![("state", self.state.to_string())];
         if let Some(device) = self.device {
@@ -348,7 +476,7 @@ impl<'a> SpotifyRequest for ShuffleBuilder<'a> {
         reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/shuffle")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(query.as_slice())
             .send()
             .to_spotify_response()
@@ -357,44 +485,32 @@ impl<'a> SpotifyRequest for ShuffleBuilder<'a> {
 }
 
 /// Repeat
-pub struct RepeatBuilder<'a> {
-    oauth: &'a mut OAuth,
+pub struct RepeatBuilder {
+    oauth: Arc<Mutex<OAuth>>,
     device: Option<String>,
     state: Repeat,
 }
 
-impl<'a> RepeatBuilder<'a> {
-    pub fn new(oauth: &'a mut OAuth) -> Self {
+impl RepeatBuilder {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, repeat: Repeat) -> Self {
         Self {
             oauth,
-            state: Repeat::Off,
+            state: repeat,
             device: None,
         }
     }
 
-    pub fn state(mut self, state: Repeat) -> Self {
-        self.state = state;
+    pub fn device<S: Into<String>>(mut self, device: S) -> Self {
+        self.device = Some(device.into());
         self
-    }
-
-    pub fn track(self) -> Self {
-        self.state(Repeat::Track)
-    }
-
-    pub fn context(self) -> Self {
-        self.state(Repeat::Context)
-    }
-
-    pub fn off(self) -> Self {
-        self.state(Repeat::Off)
     }
 }
 
-impl<'a> SpotifyRequest for RepeatBuilder<'a> {
+impl SpotifyRequest for RepeatBuilder {
     type Response = ();
 
     async fn send(self) -> Result<Self::Response, Error> {
-        self.oauth.update().await?;
+        let auth = self.oauth.lock().unwrap().update().await?;
         let mut query = vec![("state", self.state.to_string())];
         if let Some(device) = self.device {
             query.push(("device_id", device));
@@ -403,7 +519,7 @@ impl<'a> SpotifyRequest for RepeatBuilder<'a> {
         reqwest::Client::new()
             .put("https://api.spotify.com/v1/me/player/repeat")
             .header("Content-Length", 0)
-            .header("Authorization", self.oauth.token.as_ref().unwrap().to_header())
+            .header("Authorization", auth.unwrap().to_header())
             .query(query.as_slice())
             .send()
             .to_spotify_response()

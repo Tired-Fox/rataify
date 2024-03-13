@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use crate::AsyncIter;
-use crate::model::playback::{Context, Item, Track};
+use crate::model::player::{Context, Item, Track};
 
 fn default_limit() -> usize {
     20

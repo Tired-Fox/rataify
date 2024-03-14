@@ -1,14 +1,13 @@
 use std::fmt::{Debug, Display, Formatter};
 
 use color_eyre::{Report, Section};
-use crate::spotify::response;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
     Custom(Report),
-    Response(response::Error),
+    Response(rotify::Error),
     Reqwest(reqwest::Error),
     Io(std::io::Error),
     NoDevice,
@@ -25,7 +24,7 @@ impl Display for Error {
         write!(f, "Error: {}", match self {
             Self::Custom(msg) => msg.to_string(),
             Self::NoDevice => "No device found".to_string(),
-            Self::Response(err) => err.message.to_string(),
+            Self::Response(err) => Report::from(err).to_string(),
             Self::Io(err) => err.to_string(),
             Self::Reqwest(err) => err.to_string(),
         })
@@ -50,7 +49,7 @@ impl From<Error> for Report {
             Error::Custom(report) => report,
             Error::Reqwest(err) => Report::from(err),
             Error::Io(err) => Report::from(err),
-            Error::Response(err) => Report::msg(err.message),
+            Error::Response(err) => Report::from(err),
             Error::NoDevice => Report::msg("No device found")
                 .suggestion("Try again later")
                 .suggestion("Make sure the device is active")

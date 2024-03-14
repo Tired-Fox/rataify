@@ -191,12 +191,12 @@ pub struct OAuth {
 }
 
 impl OAuth {
-    pub fn new() -> Self {
+    pub fn new() -> color_eyre::Result<Self> {
         prompt_creds_if_missing().unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        Self {
-            credentials: Credentials::from_env().unwrap(),
+        Ok(Self {
+            credentials: Credentials::from_env().ok_or_eyre("Failed to load spotify credentials")?,
             state: Uuid::new_v4(),
             token: AuthToken::load(),
             scopes: HashSet::from_iter([
@@ -251,7 +251,7 @@ impl OAuth {
             ].iter().map(|s: &&str| s.to_string())),
             tx,
             rx,
-        }
+        })
     }
 
     pub fn token(&self) -> Option<&AuthToken> {

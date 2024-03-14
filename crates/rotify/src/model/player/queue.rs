@@ -30,7 +30,7 @@ pub struct RecentlyPlayedTracks {
     pub items: Vec<RecentlyPlayedItems>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Queue {
     currently_playing: Item,
     pub queue: Vec<Item>,

@@ -217,8 +217,6 @@ pub struct Show {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Episode {
-    #[serde(skip)]
-    pub liked: bool,
     pub audio_preview_url: Option<String>,
     pub description: String,
     pub html_description: String,

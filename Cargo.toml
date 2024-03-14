@@ -8,6 +8,14 @@ edition = "2021"
 [profile.dev.package.backtrace]
 opt-level = 3
 
+[dependencies.rotify]
+path = "crates/rotify"
+features = [
+    'user-read-playback-state',
+    'user-read-currently-playing',
+    'user-modify-playback-state',
+]
+
 [dependencies]
 # Terminal Interaction
 crossterm = { version = "0.27.0", features = ["event-stream", "serde"] }

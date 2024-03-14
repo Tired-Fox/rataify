@@ -9,10 +9,8 @@ use crate::action::{Action, Private, Public};
 use crate::config::Config;
 use crate::error::Error;
 use crate::event::{Event, Tui};
-use crate::spotify::api::SpotifyResponse;
-use crate::spotify::body::{StartPlayback, TransferPlayback};
-use crate::spotify::response::Repeat;
-use crate::spotify::Spotify;
+use rotify::model::player::Repeat;
+use rotify::{Spotify, SpotifyRequest};
 use crate::state::{MainWindow, ModalWindow, Move, State, TABS, WindowState};
 
 pub struct App {
@@ -60,7 +58,7 @@ impl App {
 
             input: rx,
 
-            spotify: Spotify::new().await.unwrap(),
+            spotify: Spotify::new()?,
             state: State::new().await,
 
             actions: tx,
@@ -79,12 +77,15 @@ impl App {
         match self.state.window.main {
             MainWindow::Queue => {
                 if self.state.queue.unset() {
-                    if let SpotifyResponse::Ok(mut queue) = self.spotify.queue().await {
-                        if let SpotifyResponse::Ok(liked) = self.spotify.check_saved_tracks(
-                            queue.queue.iter().map(|i| i.id())
-                        ).await {
-                            queue.queue.iter_mut().enumerate().for_each(|(i, q)| q.set_liked(*liked.get(i).unwrap()))
-                        }
+                    if let Ok(mut queue) = self.spotify.player().get_queue().send().await {
+                        // TODO: Add additional state for if the track is liked
+                        // if let Ok(liked) = self.spotify
+                        //     .tracks()
+                        //     .check_saved_tracks(queue.queue.iter().map(|i| i.id()))
+                        //     .send()
+                        //     .await {
+                        //     queue.queue.iter_mut().enumerate().for_each(|(i, q)| q.set_liked(*liked.get(i).unwrap()))
+                        // }
                         self.state.queue.set_queue(Some(queue));
                     }
                 }
@@ -96,27 +97,10 @@ impl App {
     async fn fetch_state() {}
 
     async fn update(&mut self, action: Action) -> color_eyre::Result<()> {
-        macro_rules! call_with_device {
-            ($completable: expr, $action: expr) => {
-                match $completable.await {
-                    SpotifyResponse::NoDevice => {
-                        self.actions.send(Action::Public(Public::SelectDevice)).map_err(Error::custom)?;
-                        self.state.device_select.end_action = $action;
-                        self.state.device_select.select(self.state.playback.current.as_ref().map(|v| v.device.clone()));
-                    }
-                    SpotifyResponse::Err(err) => Err(err)?,
-                    SpotifyResponse::ExceededRateLimit => {}
-                    SpotifyResponse::ExpiredToken => { /* TODO: Handle expired token */ }
-                    SpotifyResponse::Failed(err) => { /* TODO: Handle failed response. Should send error message on reason */ }
-                    SpotifyResponse::Ok(_) => {}
-                }
-            };
-        }
-
         match action {
             Action::Public(public) => match public {
-                Public::Next => call_with_device!(self.spotify.next(), None),
-                Public::Previous => call_with_device!(self.spotify.previous(), None),
+                Public::Next => self.spotify.player().skip_to_next().send().await?,
+                Public::Previous => self.spotify.player().skip_to_previous().send().await?,
                 Public::Down => self.state.move_with(Move::Down),
                 Public::Up => self.state.move_with(Move::Up),
                 Public::Left => self.state.move_with(Move::Left),
@@ -134,22 +118,19 @@ impl App {
 
                                     let device = self.state.device_select.device();
                                     if let Some(device) = device.as_ref() {
-                                        match self
-                                            .spotify
-                                            .transfer_playback(&TransferPlayback {
-                                                device_ids: [device.id.clone()],
-                                                play,
-                                            })
-                                            .await
-                                        {
-                                            SpotifyResponse::Ok(_) => {}
-                                            _ => {
-                                                self.state.device_select.reset();
-                                                self.state.back();
-                                                // TODO: Let the user know the error
-                                                return Ok(());
-                                            }
+                                        let mut transfer = self.spotify
+                                            .player()
+                                            .transfer_playback([device.id.clone()]);
+                                        if let Some(play) = play {
+                                            transfer = transfer.play(play);
                                         }
+
+                                        let response = transfer.send().await;
+
+                                        self.state.device_select.reset();
+                                        self.state.back();
+
+                                        response?;
                                     }
 
                                     self.state.device_select.reset();
@@ -162,30 +143,17 @@ impl App {
                     }
                 }
                 Public::Help => self.state.show_modal(ModalWindow::Help),
-                Public::Play => call_with_device!(
-                    self.spotify.play(&StartPlayback::default()),
-                    Some(action::public!(Play))
-                ),
-                Public::ToggleShuffle => {
-                    call_with_device!(self.spotify.shuffle(!self.state.playback.shuffle()), None)
-                }
-                Public::ToggleRepeat => call_with_device!(
-                    self.spotify.repeat(match self.state.playback.repeat() {
-                        Repeat::Context => Repeat::Off,
-                        Repeat::Off => Repeat::Track,
-                        Repeat::Track => Repeat::Context,
-                    }),
-                    None
-                ),
-                Public::Pause => {
-                    call_with_device!(self.spotify.pause(), Some(action::public!(Pause)))
-                }
+                Public::Play => self.spotify.player().play().send().await?,
+                Public::ToggleShuffle => self.spotify.player().shuffle(!self.state.playback.shuffle()).send().await?,
+                Public::ToggleRepeat => self.spotify.player().repeat(match self.state.playback.repeat() {
+                    Repeat::Context => Repeat::Off,
+                    Repeat::Off => Repeat::Track,
+                    Repeat::Track => Repeat::Context,
+                }).send().await?,
+                Public::Pause => self.spotify.player().pause().send().await?,
                 Public::TogglePlayback => match self.state.playback.playing() {
-                    true => call_with_device!(self.spotify.pause(), Some(action::public!(Pause))),
-                    false => call_with_device!(
-                        self.spotify.play(&StartPlayback::default()),
-                        Some(action::public!(Play))
-                    ),
+                    true => self.spotify.player().pause().send().await?,
+                    false => self.spotify.player().play().send().await?,
                 },
                 Public::Back => {
                     if self.state.back() {
@@ -196,12 +164,9 @@ impl App {
                 Public::SelectDevice => {
                     // TODO: Handle what happens when there are no devices
                     //  probably show an error message that a device needs to be started
-                    match self.spotify.devices().await {
-                        SpotifyResponse::Ok(devices) => {
-                            self.state.device_select.set_devices(devices.devices)
-                        }
-                        _ => return Err(Report::msg("Failed to get spotify devices")),
-                    }
+                    let devices = self.spotify.player().get_devices().send().await?;
+                    self.state.device_select.set_devices(devices);
+
                     let device = self
                         .state
                         .playback
@@ -292,11 +257,14 @@ impl App {
                     }
                 } else if let Action::Private(Private::FetchPlayback) = action {
                     if !fetched_playback {
-                        if let SpotifyResponse::Ok(mut playback) = self.spotify.playback().await {
-                            if let SpotifyResponse::Ok(liked) = self.spotify.check_saved_tracks(vec![playback.item.as_ref().unwrap().id()]).await {
-                                playback.item.as_mut().unwrap().set_liked(*liked.first().unwrap());
-                            }
-                            self.state.playback.now_playing(Some(playback))
+                        if let Ok(playback) = self.spotify.player().playback().send().await {
+                            // TODO: Add additional state for if it is liked
+                            // if let Some(playback) = &mut playback {
+                            //     if let Ok(liked) = self.spotify.tracks().check_saved_tracks(vec![playback.item.as_ref().unwrap().id()]).await {
+                            //         playback.item.as_mut().unwrap().set_liked(*liked.first().unwrap());
+                            //     }
+                            // }
+                            self.state.playback.now_playing(playback);
                         }
                     }
                     fetched_playback = true;

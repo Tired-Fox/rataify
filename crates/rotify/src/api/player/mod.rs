@@ -53,7 +53,7 @@ impl PlayerBuilder {
     /// # Scope
     /// user-read-playback-state
     #[cfg(feature = "user-read-playback-state")]
-    pub fn get_playback_state(self) -> PlayerStateBuilder {
+    pub fn playback(self) -> PlayerStateBuilder {
         PlayerStateBuilder::new(self.0)
     }
 
@@ -62,8 +62,8 @@ impl PlayerBuilder {
     /// # Scope
     /// user-modify-playback-state
     #[cfg(feature = "user-modify-playback-state")]
-    pub fn transfer_playback(self) -> TransferPlaybackBuilder {
-        TransferPlaybackBuilder::new(self.0)
+    pub fn transfer_playback<T: Into<String>, S: IntoIterator<Item = T>>(self, devices: S) -> TransferPlaybackBuilder {
+        TransferPlaybackBuilder::new(self.0, devices.into_iter().map(|v| v.into()).collect())
     }
 
     /// Get a list of available devices

@@ -1428,6 +1428,7 @@ dependencies = [
  "ratatui",
  "regex",
  "reqwest",
+ "rotify",
  "rspotify",
  "serde",
  "serde_json",

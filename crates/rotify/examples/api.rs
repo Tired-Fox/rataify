@@ -18,22 +18,31 @@ async fn main() {
     let playlist = "37i9dQZF1DX0b1hHYQtJjp";
     let id = "d0nko8z8jy6gcbkclk4lgik6d";
 
-    let mut track_iter = spotify
-        .tracks()
-        .get_saved_tracks()
-        .iter();
+    let playback = spotify
+        .player()
+        .playback()
+        .send()
+        .await
+        .expect("Failed to get spotify playback state");
 
-    let mut count = 0;
-    while let Some(Ok(next_track)) = track_iter.next().await {
-        for item in next_track.items.iter() {
-            count += 1;
-            println!("{count}. {:#?}", item.track.name);
-        }
+    println!("{:#?}", playback);
 
-        if count >= 100 {
-            break;
-        }
-    }
+    // let mut track_iter = spotify
+    //     .tracks()
+    //     .get_saved_tracks()
+    //     .iter();
+    //
+    // let mut count = 0;
+    // while let Some(Ok(next_track)) = track_iter.next().await {
+    //     for item in next_track.items.iter() {
+    //         count += 1;
+    //         println!("{count}. {:#?}", item.track.name);
+    //     }
+    //
+    //     if count >= 100 {
+    //         break;
+    //     }
+    // }
 }
 
 #[cfg(test)]

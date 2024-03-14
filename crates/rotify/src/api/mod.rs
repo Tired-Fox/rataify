@@ -20,8 +20,8 @@ pub trait SpotifyRequest {
 }
 
 impl Spotify {
-    pub fn new() -> Self {
-        Self { oauth: Arc::new(Mutex::new(OAuth::new())) }
+    pub fn new() -> color_eyre::Result<Self> {
+        Ok(Self { oauth: Arc::new(Mutex::new(OAuth::new()?)) })
     }
 
     #[cfg(any(

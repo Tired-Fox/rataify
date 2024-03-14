@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::spotify::response::Playback;
 pub use crate::{_private_action as private, _public_action as public};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]

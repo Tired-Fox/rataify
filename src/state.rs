@@ -9,7 +9,7 @@ use rand::{Rng, SeedableRng};
 use ratatui::widgets::TableState;
 
 use crate::action::Action;
-use crate::spotify::response::{
+use rotify::model::player::{
     Album, Device, Episode, Item, Playback, Queue, Repeat, Show, Track,
 };
 
@@ -89,9 +89,6 @@ impl Default for PlaybackState {
 
 impl PlaybackState {
     pub fn liked(&self) -> bool {
-        if let Some(Playback { item: Some(item), ..}) = &self.current {
-           return item.liked();
-        }
         false
     }
     pub fn shuffle(&self) -> bool {

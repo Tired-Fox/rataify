@@ -2,18 +2,17 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
-    widgets::{Paragraph, Row, StatefulWidget, Table, Widget},
+    widgets::{Paragraph, StatefulWidget, Widget},
 };
 
-use crate::{
-    spotify::response::{Episode, Item, Track},
-    state::State,
-};
+use rotify::model::player::{Episode, Item, Track};
 
+use crate::state::State;
 use crate::ui::Cover;
 use crate::ui::list_view::{TrackItem, TrackList};
 
 pub struct Queue;
+
 impl StatefulWidget for Queue {
     type State = State;
 
@@ -24,19 +23,19 @@ impl StatefulWidget for Queue {
                     .iter()
                     .map(|i| {
                         match i {
-                            Item::Track(Track { liked, name, duration, artists, album, .. }) => {
+                            Item::Track(Track { name, duration, artists, album, .. }) => {
                                 TrackItem::new(
                                     name.clone(),
                                     artists.iter().map(|a| a.name.clone()).collect::<Vec<String>>().join(", "),
                                     *duration,
-                                   *liked,
+                                    false,
                                 )
-                            },
-                            Item::Episode(Episode { liked, name, duration, show, .. }) => {
+                            }
+                            Item::Episode(Episode { name, duration, show, .. }) => {
                                 let (artist, album) = match show {
                                     Some(show) => (
-                                       show.publisher.clone(),
-                                       show.name.clone(),
+                                        show.publisher.clone(),
+                                        show.name.clone(),
                                     ),
                                     None => (String::new(), String::new()),
                                 };
@@ -44,9 +43,9 @@ impl StatefulWidget for Queue {
                                     name.clone(),
                                     artist,
                                     *duration,
-                                    *liked,
+                                    false
                                 )
-                            },
+                            }
                         }
                     })
                     .collect::<Vec<TrackItem>>();

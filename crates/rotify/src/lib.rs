@@ -70,6 +70,12 @@ impl From<Error> for Report {
     }
 }
 
+impl From<&Error> for Report {
+    fn from(value: &Error) -> Self {
+        Report::from(value.clone())
+    }
+}
+
 impl From<Report> for Error {
     fn from(value: Report) -> Self {
         Error::Unknown(value.to_string())

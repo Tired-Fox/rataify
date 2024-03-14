@@ -79,22 +79,12 @@ pub struct TransferPlaybackBuilder {
 }
 
 impl TransferPlaybackBuilder {
-    pub fn new(oauth: Arc<Mutex<OAuth>>) -> Self {
+    pub fn new(oauth: Arc<Mutex<OAuth>>, ids: Vec<String>) -> Self {
         Self {
             oauth,
-            devices: Vec::new(),
+            devices: ids,
             play: None,
         }
-    }
-
-    pub fn device<S: Into<String>>(mut self, device: S) -> Self {
-        self.devices.push(device.into());
-        self
-    }
-
-    pub fn devices<S: IntoIterator<Item=String>>(mut self, devices: S) -> Self {
-        self.devices = devices.into_iter().collect::<Vec<String>>();
-        self
     }
 
     pub fn play(mut self, play: bool) -> Self {

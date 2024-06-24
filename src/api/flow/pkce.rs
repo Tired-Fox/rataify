@@ -1,16 +1,61 @@
-mod cred;
-
-pub use cred::Credentials;
-
+use base64::Engine;
 use chrono::Local;
+use sha2::{Digest, Sha256};
 use std::{collections::HashSet, fmt::Debug, net::SocketAddr, str::FromStr};
 use tokio::net::TcpListener;
 
-use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token};
+use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token, Credentials};
 use crate::{
     api::{PublicApi, SpotifyResponse, UserApi},
     Error, Locked, Shared,
 };
+
+#[derive(Debug, Clone)]
+pub struct CodeChallenge {
+    pub(crate) challenge: String,
+    pub(crate) verifier: String,
+}
+
+static PKCE_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
+
+impl CodeChallenge {
+    fn verifier<const N: usize>(alphabet: &[u8]) -> String {
+        debug_assert!(N >= 43);
+        debug_assert!(N <= 128);
+
+        let mut buf = [0u8; N];
+        getrandom::getrandom(&mut buf).unwrap();
+        let range = alphabet.len();
+
+        buf.iter()
+            .map(|b| alphabet[*b as usize % range] as char)
+            .collect()
+    }
+
+    fn sha256<S: AsRef<[u8]>>(value: S) -> Vec<u8> {
+        let mut hasher = Sha256::new();
+        hasher.update(value);
+        hasher.finalize().to_vec()
+    }
+
+    fn base64encode<S: AsRef<[u8]>>(value: S) -> String {
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value)
+    }
+
+    pub fn new() -> Self {
+        let verifier = Self::verifier::<43>(PKCE_ALPHABET);
+        let challenge = Self::base64encode(Self::sha256(&verifier));
+        Self {
+            verifier,
+            challenge,
+        }
+    }
+
+    pub fn refresh(&mut self) {
+        self.verifier = Self::verifier::<43>(PKCE_ALPHABET);
+        self.challenge = Self::base64encode(Self::sha256(&self.verifier));
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Flow {
@@ -18,6 +63,7 @@ pub struct Flow {
     pub(crate) oauth: OAuth,
     pub(crate) config: Config,
     pub(crate) token: Shared<Locked<Token>>,
+    pub(crate) code: CodeChallenge,
 }
 
 impl CacheToken for Flow {
@@ -73,7 +119,7 @@ impl Flow {
             ("code", authentication_code.clone()),
             ("redirect_uri", self.oauth.redirect.clone()),
             ("client_id", self.credentials.id.clone()),
-            ("code_verifier", self.credentials.verifier.to_string()),
+            ("code_verifier", self.code.verifier.to_string()),
         ])?;
 
         let result = reqwest::Client::new()
@@ -110,6 +156,7 @@ impl AuthFlow for Flow {
             token: Shared::new(Locked::new(Token::default())),
             credentials,
             oauth,
+            code: CodeChallenge::new(),
         };
 
         if !flow
@@ -153,7 +200,7 @@ impl AuthFlow for Flow {
                         .join("%20")
                 ),
                 ("code_challenge_method", "S256".to_string()),
-                ("code_challenge", self.credentials.challenge.clone()),
+                ("code_challenge", self.code.challenge.clone()),
             ])?
         ))
     }

@@ -1,7 +1,7 @@
 use tupy::{
     api::{
         auth::OAuth,
-        flow::pkce::{Flow, Credentials},
+        flow::{Pkce, Credentials},
         scopes,
         Spotify, UserApi
     },
@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let oauth = OAuth::from_env([scopes::USER_TOP_READ]).unwrap();
 
-    let spotify = Spotify::<Flow>::new(
+    let spotify = Spotify::<Pkce>::new(
         Credentials::from_env().unwrap(),
         oauth,
         "tupy"

@@ -1,6 +1,6 @@
 use tupy::{
     api::{
-        auth::OAuth, flow::auth::{Credentials, Flow}, request::TimeRange, response::{Artist, Track}, scopes, Spotify, UserApi
+        auth::OAuth, flow::{Credentials, AuthCode}, request::TimeRange, response::{Artist, Track}, scopes, Spotify, UserApi
     },
     Pagination
 };
@@ -9,7 +9,7 @@ use tupy::{
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let oauth = OAuth::from_env([scopes::USER_TOP_READ]).unwrap();
 
-    let spotify = Spotify::<Flow>::new(
+    let spotify = Spotify::<AuthCode>::new(
         Credentials::from_env().unwrap(),
         oauth,
         "tupy"

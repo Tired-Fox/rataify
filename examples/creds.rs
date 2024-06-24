@@ -1,6 +1,6 @@
 use tupy::{
     api::{
-        auth::OAuth, flow::creds::{Credentials, Flow}, PublicApi, Spotify 
+        auth::OAuth, flow::{Credentials, Creds}, PublicApi, Spotify 
     }, Pagination,
     //AsyncIter
 };
@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let oauth = OAuth::from_env(()).unwrap();
 
-    let spotify = Spotify::<Flow>::new(
+    let spotify = Spotify::<Creds>::new(
         Credentials::from_env().unwrap(),
         oauth,
         "tupy"

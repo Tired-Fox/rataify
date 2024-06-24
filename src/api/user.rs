@@ -2,14 +2,13 @@ use std::{fmt::Debug, future::Future};
 
 use serde::Deserialize;
 
-use crate::{pinned, Error};
+use crate::Error;
 
 use super::{
-    auth::Token,
     flow::AuthFlow,
     request::{self, TimeRange},
     response::{IntoUserTopItemType, Paginated, Profile, TopItems},
-    scopes, validate_scope, DefaultResponse, SpotifyResponse, API_BASE_URL,
+    scopes, validate_scope, SpotifyResponse, API_BASE_URL,
 };
 
 pub trait UserApi: AuthFlow {

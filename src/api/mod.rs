@@ -1,11 +1,10 @@
 pub mod auth;
 pub mod flow;
-pub mod datetime;
 
 pub mod request;
 pub mod response;
-mod user_api;
-mod public_api;
+mod user;
+mod public;
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,8 +15,8 @@ use hyper::{
     Method, StatusCode,
 };
 
-pub use user_api::UserApi;
-pub use public_api::PublicApi;
+pub use user::UserApi;
+pub use public::PublicApi;
 
 use crate::Error;
 

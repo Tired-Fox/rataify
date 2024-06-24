@@ -5,15 +5,15 @@ use base64::Engine;
 #[derive(Debug, Clone)]
 pub struct Credentials { 
     pub(crate) id: String,
-    pub(crate) secret: String,
+    pub(crate) secret: Option<String>,
 }
 
 impl Credentials {
     /// Create credentials from a client ID and a client secret
-    pub fn new(client_id: &str, client_secret: &str) -> Self {
+    pub fn new(client_id: &str, client_secret: Option<&str>) -> Self {
         Self {
             id: client_id.to_string(),
-            secret: client_secret.to_string(),
+            secret: client_secret.map(|v| v.to_string()),
         }
     }
 
@@ -30,7 +30,7 @@ impl Credentials {
 
         Some(Self::new(
             &env::var("TUPY_CLIENT_ID").ok()?,
-            &env::var("TUPY_CLIENT_SECRET").ok()?
+            env::var("TUPY_CLIENT_SECRET").ok().as_deref()
         ))
     }
 }
@@ -40,7 +40,7 @@ impl Display for Credentials {
         let auth = format!(
             "{}:{}",
             self.id,
-            self.secret
+            self.secret.as_ref().unwrap_or(&"".to_string())
         );
         
         write!(f, "{}", base64::engine::general_purpose::STANDARD.encode(auth.as_bytes()))

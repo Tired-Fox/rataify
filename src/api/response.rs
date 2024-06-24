@@ -7,12 +7,13 @@ use crate::Pagination;
 //    deserialize_date, deserialize_datetime, NaiveDate, NaiveDateTime
 //};
 
-use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse, API_BASE_URL};
+use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse};
 
 pub struct Paginated<T, F, const N: usize>
 where
     F: AuthFlow,
 {
+    pub(crate) offset: isize,
     pub(crate) flow: F,
     pub(crate) next: Option<String>,
     pub(crate) prev: Option<String>,
@@ -28,6 +29,7 @@ where
         C: Fn(&T) -> (Option<String>, Option<String>) + 'static
     {
         Self {
+            offset: -1,
             flow,
             next,
             prev,
@@ -42,6 +44,7 @@ where
 {
     type Item = T;
     async fn next(&mut self) -> Option<(usize, Self::Item)> {
+        self.offset += 1;
         if self.next.is_none() {
             return None;
         }
@@ -55,7 +58,7 @@ where
                         let (next, prev) = (self.resolve)(&item);
                         self.next = next;
                         self.prev = prev;
-                        Some((0, item))
+                        Some((self.offset as usize, item))
                     },
                     Err(err) => {
                         eprintln!("{:?}", err);
@@ -71,9 +74,10 @@ where
     }
 
     async fn prev(&mut self) -> Option<(usize, Self::Item)> {
-        if self.prev.is_none() {
+        if self.prev.is_none() || self.offset < 1 {
             return None;
         }
+        self.offset -= 1;
 
         let prev = self.prev.as_ref().unwrap();
         match SpotifyRequest::get(prev).send_raw(self.flow.token().await.ok()?).await {
@@ -84,7 +88,7 @@ where
                         let (next, prev) = (self.resolve)(&item);
                         self.next = next;
                         self.prev = prev;
-                        Some((0, item))
+                        Some((self.offset as usize, item))
                     },
                     Err(err) => {
                         eprintln!("{:?}", err);

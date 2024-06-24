@@ -1,9 +1,7 @@
-pub use super::auth::Credentials;
-
 use chrono::Local;
 use std::{collections::HashSet, fmt::Debug};
 
-use super::{AuthFlow, CacheToken, Config, OAuth, Token};
+use super::{AuthFlow, CacheToken, Config, OAuth, Token, Credentials};
 use crate::{
     api::{PublicApi, SpotifyResponse},
     Error, Locked, Shared,

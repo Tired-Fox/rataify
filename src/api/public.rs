@@ -3,7 +3,7 @@ use crate::Error;
 use super::{
     flow::AuthFlow,
     response::{NewReleases, Paginated},
-    DefaultResponse, API_BASE_URL,
+    API_BASE_URL,
 };
 
 pub trait PublicApi: AuthFlow {

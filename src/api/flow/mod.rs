@@ -1,6 +1,12 @@
 pub mod auth;
 pub mod creds;
 pub mod pkce;
+mod credential;
+
+pub use credential::Credentials;
+pub use auth::Flow as AuthCode;
+pub use pkce::Flow as Pkce;
+pub use creds::Flow as Creds;
 
 use std::{collections::HashSet, fmt::Debug, future::Future, path::{Path, PathBuf}, pin::Pin};
 

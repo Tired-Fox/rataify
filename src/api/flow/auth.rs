@@ -1,12 +1,8 @@
-mod cred;
-
-pub use cred::Credentials;
-
 use chrono::Local;
 use std::{collections::HashSet, fmt::Debug, net::SocketAddr, str::FromStr};
 use tokio::net::TcpListener;
 
-use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token};
+use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token, Credentials};
 use crate::{
     api::{SpotifyResponse, UserApi},
     Error, Locked, Shared,

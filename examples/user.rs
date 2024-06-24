@@ -15,13 +15,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "tupy"
     ).await?;
 
-    let mut top_items = spotify.api.get_user_top_items::<Artist, 1>(TimeRange::Medium)?;
-    while let Some((i, page)) = top_items.next().await {
-        println!("Page {}", i + 1);
+    let mut top_items = spotify.api.get_user_top_items::<Track, 1>(TimeRange::Medium)?;
+    while let Some(page) = top_items.next().await {
+        println!("Page {}", top_items.page() + 1);
         for item in page.items {
             println!("{}", item.name);
         }
-        if i >= 1 {
+        if top_items.page() >= 1 {
             break;
         }
     }

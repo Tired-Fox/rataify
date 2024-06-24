@@ -1,10 +1,14 @@
 #[macro_export]
 macro_rules! spotify_request {
     ($type: ident, $url: literal) => {
-        $crate::api::SpotifyRequest::$type($url)
+        paste::paste! {
+            $crate::api::SpotifyRequest::<String>::new(hyper::Method::[<$type:upper>], format!($url))
+        }
     };
     ($type: ident, $url: literal, $($param: expr),*) => {
-        $crate::api::SpotifyRequest::$type(format!($url, $($param,)*))
+        paste::paste! {
+            $crate::api::SpotifyRequest::<String>::new(hyper::Method::[<$type:upper>], format!($url, $($param,)*))
+        }
     }
 }
 
@@ -22,11 +26,27 @@ macro_rules! spotify_request_post {
     }
 }
 
+#[macro_export]
+macro_rules! spotify_request_put {
+    ($($rest: tt)*) => {
+        $crate::spotify_request!(put, $($rest)*)
+    }
+}
+
+#[macro_export]
+macro_rules! spotify_request_delete {
+    ($($rest: tt)*) => {
+        $crate::spotify_request!(delete, $($rest)*)
+    }
+}
+
 use std::fmt::Display;
 use std::fmt::Formatter;
 
 pub use crate::spotify_request_get as get;
 pub use crate::spotify_request_post as post;
+pub use crate::spotify_request_put as put;
+pub use crate::spotify_request_delete as delete;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TimeRange {

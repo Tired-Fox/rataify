@@ -17,20 +17,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).await?;
 
     let mut new_releases = spotify.api.get_new_releases::<1>()?;
-    if let Some((i, page)) = new_releases.next().await {
-        println!("Page [{}]", i);
+    if let Some(page) = new_releases.next().await {
+        println!("Page [{}]", new_releases.page());
         for item in page.albums.items {
             println!("{}", item.name);
         }
     }
-    if let Some((i, page)) = new_releases.next().await {
-        println!("Page [{}]", i);
+    if let Some(page) = new_releases.next().await {
+        println!("Page [{}]", new_releases.page());
         for item in page.albums.items {
             println!("{}", item.name);
         }
     }
-    if let Some((i, page)) = new_releases.prev().await {
-        println!("Page [{}]", i);
+    if let Some(page) = new_releases.prev().await {
+        println!("Page [{}]", new_releases.page());
         for item in page.albums.items {
             println!("{}", item.name);
         }

@@ -18,7 +18,7 @@ use hyper::{
 pub use user::UserApi;
 pub use public::PublicApi;
 
-use crate::Error;
+use crate::{Error, SpotifyErrorType};
 
 pub(crate) static API_BASE_URL: &str = "https://api.spotify.com/v1";
 
@@ -60,20 +60,22 @@ impl SpotifyResponse {
                         serde_json::from_str(&body).map_err(Error::custom)?;
 
                     if err_res.contains_key("error_description") {
-                        Err(Error::SpotifyAuth {
+                        Err(Error::Auth {
                             code: status.as_u16(),
                             error: err_res.get("error").unwrap().as_str().unwrap().to_owned(),
                             message: err_res.get("error_description").unwrap().as_str().unwrap().to_owned(),
                         })
                     } else {
                         let err = err_res.get("error").unwrap().as_object().unwrap();
-                        Err(Error::SpotifyRequest {
+                        Err(Error::Request {
+                            error_type: SpotifyErrorType::from(status.clone()),
                             code: status.as_u16(),
                             message: err.get("message").unwrap().as_str().unwrap().to_owned(),
                         })
                     }
                 } else {
-                    Err(Error::SpotifyRequest {
+                    Err(Error::Request {
+                        error_type: SpotifyErrorType::from(status.clone()),
                         code: status.as_u16(),
                         message: "Failed to make spotify request".to_owned(),
                     })
@@ -84,19 +86,9 @@ impl SpotifyResponse {
 }
 
 impl SpotifyRequest<String> {
-    pub fn get<S: AsRef<str>>(url: S) -> Self {
+    pub fn new<S: AsRef<str>>(method: Method, url: S) -> Self {
         Self {
-            method: Method::GET,
-            url: url.as_ref().to_string(),
-            headers: HashMap::new(),
-            params: HashMap::new(),
-            body: None,
-        }
-    }
-
-    pub fn post<S: AsRef<str>>(url: S) -> Self {
-        Self {
-            method: Method::POST,
+            method,
             url: url.as_ref().to_string(),
             headers: HashMap::new(),
             params: HashMap::new(),
@@ -162,6 +154,8 @@ impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
         let mut request = match self.method {
             Method::GET => reqwest::Client::new().get(url),
             Method::POST => reqwest::Client::new().post(url),
+            Method::PUT => reqwest::Client::new().put(url),
+            Method::DELETE => reqwest::Client::new().delete(url),
             _ => unimplemented!(),
         }
         .headers(

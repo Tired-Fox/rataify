@@ -1,105 +1,120 @@
-use std::fmt::Debug;
+use std::{fmt::{Debug, Display}, str::FromStr};
 
-use serde::{Deserialize, Deserializer};
+use hyper::Method;
+use serde::{de::IntoDeserializer, Deserialize, Deserializer};
+use serde_path_to_error::deserialize;
 
-use crate::Pagination;
+use crate::{Error, Pagination};
 //use crate::api::datetime::{
 //    deserialize_date, deserialize_datetime, NaiveDate, NaiveDateTime
 //};
 
 use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse};
 
-pub struct Paginated<T, F, const N: usize>
+#[macro_export]
+macro_rules! pares {
+    ($value: expr) => {
+        {
+            let jd = &mut serde_json::Deserializer::from_str($value);
+            serde_path_to_error::deserialize(jd)
+        }
+    };
+    ($type: ty: $value: expr) => {
+        {
+            let jd = &mut serde_json::Deserializer::from_str($value);
+            serde_path_to_error::deserialize::<_, $type>(jd)
+        }
+    };
+}
+
+pub use crate::pares;
+
+pub struct Paginated<R, T, F, const N: usize>
 where
     F: AuthFlow,
 {
     pub(crate) offset: isize,
+    pub(crate) page_size: usize,
     pub(crate) flow: F,
     pub(crate) next: Option<String>,
     pub(crate) prev: Option<String>,
-    pub(crate) resolve: Box<dyn Fn(&T) -> (Option<String>, Option<String>)>
+    pub(crate) resolve: Box<dyn Fn(T) -> (R, Option<String>, Option<String>)>
 }
 
-impl<T, F, const N: usize> Paginated<T, F, N>
+impl<T, R, F, const N: usize> Paginated<R, T, F, N>
 where
     F: AuthFlow,
 {
     pub fn new<C>(flow: F, next: Option<String>, prev: Option<String>, resolve: C) -> Self
     where
-        C: Fn(&T) -> (Option<String>, Option<String>) + 'static
+        C: Fn(T) -> (R, Option<String>, Option<String>) + 'static
     {
         Self {
             offset: -1,
+            page_size:  N,
             flow,
             next,
             prev,
             resolve: Box::new(resolve)
         }
     }
+
+    pub fn page(&self) -> usize {
+        self.offset.max(0) as usize
+    }
+
+    pub fn page_size(&self) -> usize {
+        self.page_size
+    }
 }
 
-impl<T: Deserialize<'static>, F, const N: usize> Pagination for Paginated<T, F, N>
+impl<R, P: Deserialize<'static>, F, const N: usize> Pagination for Paginated<R, P, F, N>
 where
     F: AuthFlow,
 {
-    type Item = T;
-    async fn next(&mut self) -> Option<(usize, Self::Item)> {
+    type Item = R;
+    async fn next(&mut self) -> Result<Option<Self::Item>, Error> {
         self.offset += 1;
-        if self.next.is_none() {
-            return None;
-        }
 
-        let next = self.next.as_ref().unwrap();
-        match SpotifyRequest::get(next).send_raw(self.flow.token().await.ok()?).await {
-            Ok(SpotifyResponse { body, .. }) => {
-                let body = body.into_boxed_str();
-                match serde_json::from_str::<Self::Item>(Box::leak(body)) {
-                    Ok(item) => {
-                        let (next, prev) = (self.resolve)(&item);
-                        self.next = next;
-                        self.prev = prev;
-                        Some((self.offset as usize, item))
-                    },
-                    Err(err) => {
-                        eprintln!("{:?}", err);
-                        None
-                    }
-                }
+        let next = match self.next.as_ref() {
+            Some(next) => next,
+            None => return Ok(None),
+        };
+
+        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token().await?).await?;
+        let body = body.into_boxed_str();
+        match pares!(P: Box::leak(body)) {
+            Ok(item) => {
+                let (result, prev, next) = (self.resolve)(item);
+                self.next = next;
+                self.prev = prev;
+                Ok(Some(result))
             },
-            Err(err) => {
-                eprintln!("{:?}", err);
-                None
-            }
+            Err(e) => Err(Error::custom(e))
         }
     }
 
-    async fn prev(&mut self) -> Option<(usize, Self::Item)> {
-        if self.prev.is_none() || self.offset < 1 {
-            return None;
+    async fn prev(&mut self) -> Result<Option<Self::Item>, Error> {
+        if self.offset < 1 {
+            return Ok(None);
         }
         self.offset -= 1;
 
-        let prev = self.prev.as_ref().unwrap();
-        match SpotifyRequest::get(prev).send_raw(self.flow.token().await.ok()?).await {
-            Ok(SpotifyResponse { body, .. }) => {
-                let body = body.into_boxed_str();
-                match serde_json::from_str::<Self::Item>(Box::leak(body)) {
-                    Ok(item) => {
-                        let (next, prev) = (self.resolve)(&item);
-                        self.next = next;
-                        self.prev = prev;
-                        Some((self.offset as usize, item))
-                    },
-                    Err(err) => {
-                        eprintln!("{:?}", err);
-                        None
-                    }
-                }
+        let prev = match self.prev.as_ref() {
+            Some(prev) => prev,
+            None => return Ok(None),
+        };
+
+        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, prev).send_raw(self.flow.token().await?).await?;
+        let body = body.into_boxed_str();
+        match pares!(P: Box::leak(body)) {
+            Ok(item) => {
+                let (result, prev, next) = (self.resolve)(item);
+                self.next = next;
+                self.prev = prev;
+                Ok(Some(result))
             },
-            Err(err) => {
-                eprintln!("{:?}", err);
-                None
-            }
+            Err(e) => Err(Error::custom(e))
         }
     }
 }
@@ -123,7 +138,7 @@ pub struct ExternalUrls {
 }
 
 /// Followers for a user profile
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
 pub struct Followers {
     /// This will always be set to null, as the Web API does not support it at the moment.
     #[cfg(feature = "future")]
@@ -158,7 +173,7 @@ pub struct Profile {
     /// A link to the Web API endpoint for this user.
     pub href: String,
     /// The spotify uri for the user
-    pub uri: String,
+    pub uri: Uri,
     /// Known external URLs for this user.
     pub external_urls: ExternalUrls,
     /// The user's profile image.
@@ -187,9 +202,97 @@ pub struct Profile {
     pub explicit: Option<ExplicitContent>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Resource {
+  Artist,
+  Album,
+  Track,
+  Playlist,
+  User,
+  Show,
+  Episode,
+  Collection,
+  CollectionYourEpisodes,
+}
+
+impl Display for Resource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Resource::Album => "album",
+            Resource::Artist => "artist",
+            Resource::Track => "track",
+            Resource::Playlist => "playlist",
+            Resource::User => "user",
+            Resource::Show => "show",
+            Resource::Episode => "episode",
+            Resource::Collection => "collection",
+            Resource::CollectionYourEpisodes => "collectionyourepisodes",
+        })
+    }
+}
+
+impl FromStr for Resource {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "album" => Ok(Self::Album),
+            "artist" => Ok(Self::Artist),
+            "track" => Ok(Self::Track),
+            "playlist" => Ok(Self::Playlist),
+            "user" => Ok(Self::User),
+            "show" => Ok(Self::Show),
+            "episode" => Ok(Self::Episode),
+            "collection" => Ok(Self::Collection),
+            "collectionyourepisodes" => Ok(Self::CollectionYourEpisodes),
+            _ => Err("Invalid spotify uri".into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Uri {
+    resource: Resource,
+    id: String,
+}
+
+impl Display for Uri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "spotify:{}:{}", self.resource, self.id)
+    }
+}
+
+impl<'de> Deserialize<'de> for Uri {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let parts = s.splitn(2, ':').collect::<Vec<_>>();
+        let id = parts[2].to_string();
+        Ok(Self {
+            resource: Resource::from_str(parts[1]).map_err(serde::de::Error::custom)?,
+            id
+        })
+    }
+}
+
+impl Uri {
+    /// Id of the spotify uri
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    /// Type of the spotify uri
+    pub fn resource(&self) -> Resource {
+        self.resource
+    }
+}
+
 /// Album types
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "UPPERCASE")]
 pub enum AlbumType {
     Album,
     Single,
@@ -247,7 +350,7 @@ pub struct SimplifiedArtist {
     name: String,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
     /// Example: "spotify:artist:4iV5W9uYEdYUVa79Axb7Rh"
-    uri: String,
+    uri: Uri,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -282,18 +385,18 @@ pub struct Album {
     pub restrictions: Option<Restrictions>,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the album.
     /// Example: "spotify:album:2up3OPMp9Tb4dAKM2erWXQ"
-    pub uri: String,
+    pub uri: Uri,
     /// The artists of the album. Each artist object includes a link in href to more detailed information about the artist.
     pub artists: Vec<SimplifiedArtist>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct NewReleases {
-    pub albums: Albums,
-}
+//#[derive(Debug, Clone, Deserialize, PartialEq)]
+//pub struct NewReleases {
+//    pub albums: Albums,
+//}
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct Albums {
+pub struct NewReleases {
     /// The maximum number of items in the response (as set in the query or by default).
     /// Example: 20
     pub limit: usize,
@@ -326,12 +429,14 @@ pub struct Artist {
     /// Information about the followers of the artist.
     pub followers: Followers,
     /// A list of the genres the artist is associated with. If not yet classified, the array is empty.
+    #[serde(default="Vec::new")]
     pub genres: Vec<String>,
     /// A link to the Web API endpoint providing full details of the artist.
     pub href: String,
     /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
     pub id: String,
     /// Images of the artist in various sizes, widest first.
+    #[serde(default="Vec::new")]
     pub images: Vec<Image>,
     /// The name of the artist.
     pub name: String,
@@ -339,7 +444,7 @@ pub struct Artist {
     pub popularity: u8,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
     /// Example: "spotify:artist:4iV5W9uYEdYUVa79Axb7Rh"
-    pub uri: String,
+    pub uri: Uri,
 }
 impl IntoUserTopItemType for Artist {
     fn into_top_item_type() -> &'static str {
@@ -350,11 +455,11 @@ impl IntoUserTopItemType for Artist {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct ExternalIds {
     /// The [International Standard Recording Code](http://en.wikipedia.org/wiki/International_Standard_Recording_Code)
-    pub isrc: String,
+    pub isrc: Option<String>,
     /// [International Article Number](http://en.wikipedia.org/wiki/International_Article_Number)
-    pub ean: String,
+    pub ean: Option<String>,
     /// [Universal Product Code](http://en.wikipedia.org/wiki/Universal_Product_Code)
-    pub upc: String,
+    pub upc: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -362,7 +467,7 @@ pub struct Track {
     /// The album on which the track appears. The album object includes a link in href to full information about the album.
     pub album: Album,
     /// The artists who performed the track. Each artist object includes a link in href to more detailed information about the artist.
-    pub artists: Vec<Artist>,
+    pub artists: Vec<SimplifiedArtist>,
     /// A list of countries in which the track can be played, identified by their [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
     pub available_markets: Vec<String>,
     /// The disc number (usually 1 unless the album consists of more than one disc).
@@ -382,6 +487,7 @@ pub struct Track {
     /// Example: "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
     pub id: String,
     /// Part of the response when [Track Relinking](https://developer.spotify.com/documentation/web-api/concepts/track-relinking) is applied. If true, the track is playable in the given market. Otherwise false.
+    #[serde(default="bool::default")]
     pub is_playable: bool,
     /// Part of the response when [Track Relinking](https://developer.spotify.com/documentation/web-api/concepts/track-relinking) is applied, and the requested track has been replaced with different track. The track in the linked_from object contains information about the originally requested track.
     pub linked_from: Option<Box<Track>>,
@@ -395,7 +501,7 @@ pub struct Track {
     pub track_number: u8,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the track.
     /// Example: "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
-    pub uri: String,
+    pub uri: Uri,
     /// Whether or not the track is from a local file.
     pub is_local: bool,
 }
@@ -426,4 +532,27 @@ pub struct TopItems<T: Debug + Clone + PartialEq> {
     /// Example: 4
     pub total: usize,
     pub items: Vec<T>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Cursor {
+    /// The cursor to use as key to find the next page of items.
+    pub after: Option<String>,
+    /// The cursor to use as key to find the previous page of items.
+    pub before: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct FollowedArtists {
+    /// A link to the Web API endpoint returning the full result of the request.
+    pub href: String,
+    ///The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The cursors used to find the next set of items.
+    pub cursors: Cursor,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<Artist>,
 }

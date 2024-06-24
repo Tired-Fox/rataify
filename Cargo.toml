@@ -18,6 +18,9 @@ env-file = ["dep:dotenvy"]
 cli = []
 future = []
 
+[dev-dependencies]
+dialoguer = "0.11.0"
+
 [dependencies]
 base64 = "0.22.1"
 chrono = "0.4.38"
@@ -32,9 +35,11 @@ hyper-util = { version = "0.1.5", features = ["http1", "server"] }
 indoc = "2.0.5"
 log = "0.4.21"
 open = "5.1.4"
+paste = "1.0.15"
 reqwest = "0.12.5"
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
+serde_path_to_error = "0.1.16"
 serde_qs = "0.13.0"
 serde_urlencoded = "0.7.1"
 sha2 = "0.10.8"

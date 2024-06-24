@@ -142,7 +142,7 @@ impl Token {
     pub fn parse_refresh<S: AsRef<str>>(&mut self, body: S) -> Result<(), Error> {
         let body: HashMap<String, serde_json::Value> = serde_json::from_str(body.as_ref())?;
         if body.contains_key("error_description") {
-            return Err(Error::SpotifyAuth {
+            return Err(Error::Auth {
                 code: 400,
                 error: body.get("error").unwrap().as_str().unwrap().to_string(),
                 message: body.get("error_description").unwrap().as_str().unwrap().to_string(),

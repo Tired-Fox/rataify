@@ -1,5 +1,7 @@
 use std::{fmt::Display, future::Future, pin::Pin, string::FromUtf8Error, sync::{Arc, Mutex}};
 
+use hyper::StatusCode;
+
 pub mod api;
 
 pub type Shared<T> = Arc<T>;
@@ -20,21 +22,41 @@ pub trait Pagination {
     type Item;
 
     #[allow(async_fn_in_trait)]
-    async fn next(&mut self) -> Option<(usize, Self::Item)>;
+    async fn next(&mut self) -> Result<Option<Self::Item>, Error>;
     #[allow(async_fn_in_trait)]
-    async fn prev(&mut self) -> Option<(usize, Self::Item)>;
+    async fn prev(&mut self) -> Result<Option<Self::Item>, Error>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum SpotifyErrorType {
+    Token,
+    OAuth,
+    RateLimit,
+    Other(u16)
+}
+
+impl From<StatusCode> for SpotifyErrorType {
+    fn from(value: StatusCode) -> Self {
+        match value {
+            StatusCode::UNAUTHORIZED => Self::Token,
+            StatusCode::FORBIDDEN => Self::OAuth,
+            StatusCode::TOO_MANY_REQUESTS => Self::RateLimit,
+            _ => Self::Other(value.as_u16())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     Other(String),
     ScopesNotGranted(Vec<String>),
-    SpotifyAuth {
+    Auth {
         code: u16,
         error: String,
         message: String,
     },
-    SpotifyRequest {
+    Request {
+        error_type: SpotifyErrorType,
         code: u16,
         message: String,
     }
@@ -52,11 +74,11 @@ impl Display for Error {
         write!(f, "{}", match self {
             Error::Other(msg) => msg.clone(),
             Error::ScopesNotGranted(scopes) => format!(
-                "The following scopes are required but not granted: {}",
+                "the following scopes are required but not granted: {}",
                 scopes.join(", ")
             ),
-            Error::SpotifyAuth { message, .. } => message.clone(),
-            Error::SpotifyRequest { message, .. } => message.clone(),
+            Error::Auth { message, .. } => message.clone(),
+            Error::Request { message, .. } => message.clone(),
         })
     }
 }
@@ -75,6 +97,12 @@ impl From<FromUtf8Error> for Error {
 
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
+        Self::custom(err)
+    }
+}
+
+impl From<serde_path_to_error::Error<serde_json::Error>> for Error {
+    fn from(err: serde_path_to_error::Error<serde_json::Error>) -> Self {
         Self::custom(err)
     }
 }

@@ -3,10 +3,11 @@ pub mod flow;
 
 pub mod request;
 pub mod response;
+pub(crate) mod markets;
 mod user;
 mod public;
 
-use std::{collections::{HashMap, HashSet}, fmt::Display};
+use std::collections::{HashMap, HashSet};
 
 use flow::AuthFlow;
 use auth::{OAuth, Token};
@@ -19,6 +20,8 @@ pub use user::UserApi;
 pub use public::PublicApi;
 
 use crate::{Error, SpotifyErrorType};
+
+use self::request::IntoSpotifyId;
 
 pub(crate) static API_BASE_URL: &str = "https://api.spotify.com/v1";
 
@@ -33,6 +36,7 @@ pub struct SpotifyRequest<B: Into<reqwest::Body>> {
     pub body: Option<B>,
 }
 
+#[derive(Debug)]
 pub struct SpotifyResponse {
     status: StatusCode,
     headers: HashMap<String, String>,
@@ -101,24 +105,17 @@ pub trait IntoSpotifyParam {
     fn into_spotify_param(self) -> Option<String>;
 }
 
+impl<I: IntoSpotifyId> IntoSpotifyParam for I {
+    fn into_spotify_param(self) -> Option<String> {
+        Some(self.into_spotify_id())
+    }
+}
+
 impl IntoSpotifyParam for Option<()> {
     fn into_spotify_param(self) -> Option<String> {
         self.map(|_| String::new())
     }
 }
-
-impl IntoSpotifyParam for String {
-    fn into_spotify_param(self) -> Option<String> {
-        Some(self.clone())
-    }
-}
-
-impl IntoSpotifyParam for &str {
-    fn into_spotify_param(self) -> Option<String> {
-        Some(self.to_string())
-    }
-}
-
 
 impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
     pub fn header<V: AsRef<str>>(mut self, key: HeaderName, value: V) -> Self {
@@ -199,7 +196,7 @@ impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
         if let Some(body) = self.body {
             request = request.body(body);
         } else {
-            request = request.body("");
+            request = request.body("").header("Content-Length", 0);
         }
 
         SpotifyResponse::from_response(request.send().await?).await

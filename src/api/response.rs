@@ -1,5 +1,6 @@
 use std::{fmt::{Debug, Display}, str::FromStr};
 
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone};
 use hyper::Method;
 use serde::{Deserialize, Deserializer};
 
@@ -24,6 +25,49 @@ macro_rules! pares {
 }
 
 pub use crate::pares;
+
+#[derive(Deserialize)]
+struct Author {
+    pub name: String,
+}
+fn deserialize_named_objects<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Vec::<Author>::deserialize(deserializer)?;
+    Ok(s.iter().map(|a| a.name.clone()).collect())
+}
+
+fn deserialize_date_ymd<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    NaiveDate::parse_from_str(&s, "%Y-%m-%d").map_err(serde::de::Error::custom)
+}
+fn deserialize_date_ym<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    NaiveDate::parse_from_str(&s, "%Y-%m").map_err(serde::de::Error::custom)
+}
+fn deserialize_date_y<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    NaiveDate::parse_from_str(&s, "%Y").map_err(serde::de::Error::custom)
+}
+
+fn deserialize_added_at<'de, D>(deserializer: D) -> Result<DateTime<Local>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    let naive = NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%SZ").map_err(serde::de::Error::custom)?;
+    Ok(Local.from_utc_datetime(&naive))
+}
 
 fn deserialize_duration<'de, D>(deserializer: D) -> Result<chrono::Duration, D::Error>
 where
@@ -417,8 +461,17 @@ pub struct SimplifiedArtist {
     pub uri: Uri,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AlbumGroup {
+    Album,
+    Single,
+    Compilation,
+    AppearsOn,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Album {
+pub struct SimplifiedAlbum {
     /// The type of the album.
     pub album_type: AlbumType,
     /// The number of tracks in the album.
@@ -430,16 +483,76 @@ pub struct Album {
     pub external_urls: ExternalUrls,
     /// A link to the Web API endpoint providing full details of the album.
     pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the album.
+    pub id: String,
+    /// The cover art for the album in various sizes, widest first.
+    pub images: Vec<Image>,
+    /// The name of the album. In case of an album takedown, the value may be an empty string.
+    pub name: String,
+
+    /// The date the album was first released.
+    #[serde(flatten)]
+    pub release: ReleaseDate,
+    
+    /// Included in the response when a content restriction is applied.
+    pub restrictions: Option<Restrictions>,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the album.
+    pub uri: Uri,
+
+    /// The artists of the album. Each artist object includes a link in href to more detailed information about the artist.
+    pub artists: Vec<SimplifiedArtist>,
+    /// This field describes the relationship between the artist and the album.
+    pub album_group: AlbumGroup,
+    /// Not documented in official Spotify docs, however most albums do contain this field
+    pub label: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Deserialize)]
+#[serde(tag="release_date_precision", content="release_date", rename_all="snake_case")]
+pub enum ReleaseDate {
+    #[serde(deserialize_with = "deserialize_date_ymd")]
+    Day(NaiveDate),
+    #[serde(deserialize_with = "deserialize_date_ym")]
+    Month(NaiveDate),
+    #[serde(deserialize_with = "deserialize_date_y")]
+    Year(NaiveDate),
+}
+
+impl Debug for ReleaseDate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Day(d) => write!(f, "{}", d.format("%Y-%m-%d")),
+            Self::Month(d) => write!(f, "{}", d.format("%Y-%m")),
+            Self::Year(d) => write!(f, "{}", d.format("%Y")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct Album {
+    /// The type of the album.
+    pub album_type: AlbumType,
+    /// The number of tracks in the album.
+    pub total_tracks: usize,
+    // TODO: Use a list of enums??
+    /// The markets in which the album is available: [ISO 3166-1 alpha-2 country codes](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). _**NOTE:**_ an album is considered available in a market when at least 1 of its tracks is available in that market.
+    #[serde(default="Vec::new")]
+    pub available_markets: Vec<String>,
+    /// Known external URLs for this album.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the album.
+    pub href: String,
     /// The Spotify ID for the album.
     pub id: String,
     /// The cover art for the album in various sizes, widest first.
     pub images: Vec<Image>,
     /// The name of the album. In case of an album takedown, the value may be an empty string.
     pub name: String,
+
     /// The date the album was first released.
-    pub release_date: String,
-    // The precision with which release_date value is known.
-    pub release_date_precision: DatePrecision,
+    #[serde(flatten)]
+    pub release: ReleaseDate,
+    
     /// Included in the response when a content restriction is applied.
     pub restrictions: Option<Restrictions>,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the album.
@@ -523,6 +636,7 @@ pub struct Track {
     /// The artists who performed the track. Each artist object includes a link in href to more detailed information about the artist.
     pub artists: Vec<SimplifiedArtist>,
     /// A list of countries in which the track can be played, identified by their [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+    #[serde(default="Vec::new")]
     pub available_markets: Vec<String>,
     /// The disc number (usually 1 unless the album consists of more than one disc).
     pub disc_number: u8,
@@ -622,8 +736,9 @@ pub struct AlbumTracks {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct SavedAlbum {
-    pub added_at: String,
-    pub added_at_precision: Option<DatePrecision>,
+    /// The date and time the album was saved Timestamps are returned in ISO 8601 format as Coordinated Universal Time (UTC) with a zero offset: YYYY-MM-DDTHH:MM:SSZ.
+    #[serde(deserialize_with = "deserialize_added_at")]
+    pub added_at: DateTime<Local>,
     pub album: Album,
 }
 
@@ -642,4 +757,173 @@ pub struct SavedAlbums {
     /// The total number of items available to return.
     pub total: usize,
     pub items: Vec<SavedAlbum>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ArtistAlbums {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<SimplifiedAlbum>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct CopyRight {
+    /// The copyright text for this content.
+    pub text: String,
+    /// The type of copyright: [C] = the copyright, [P] = the sound recording (performance) copyright.
+    #[serde(rename = "type")]
+    pub typ: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct ResumePoint {
+    /// Whether or not the episode has been fully played by the user.
+    pub fully_played: bool,
+    /// The user's most recent position in the episode in milliseconds.
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub resume_position: chrono::Duration,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct SimplifiedChapter {
+    /// A URL to a 30 second preview (MP3 format) of the chapter. null if not available.
+    /// 
+    /// # Important Policy Notes
+    /// - Spotify Audio preview clips [can not be a standalone service](https://developer.spotify.com/policy/#ii-respect-content-and-creators).
+    #[serde(rename = "audio_preview_url")]
+    pub preview_url: Option<String>,
+    /// A list of the countries in which the chapter can be played, identified by their [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code.
+    #[serde(default="Vec::new")]
+    pub available_markets: Vec<String>,
+    /// The number of the chapter
+    pub chapter_number: usize,
+    /// A description of the chapter. HTML tags are stripped away from this field, use html_description field in case HTML tags are needed.
+    pub description: String,
+    /// A description of the chapter. This field may contain HTML tags.
+    pub html_description: String,
+    /// The chapter length.
+    #[serde(rename = "duration_ms", deserialize_with = "deserialize_duration")]
+    pub duration: chrono::Duration,
+    /// Whether or not the chapter has explicit content (true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// External URLs for this chapter.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the chapter.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the chapter.
+    pub id: String,
+    /// The cover art for the chapter in various sizes, widest first.
+    #[serde(default="Vec::new")]
+    pub images: Vec<Image>,
+    /// True if the chapter is playable in the given market. Otherwise false.
+    #[serde(default)]
+    pub is_playable: bool,
+    /// A list of the languages used in the chapter, identified by their ISO 639-1 code.
+    #[serde(default="Vec::new")]
+    pub languages: Vec<String>,
+    /// The name of the chapter.
+    pub name: String,
+
+    /// The date the chapter was first released, for example "1981-12-15". Depending on the precision, it might be shown as "1981" or "1981-12".
+    #[serde(flatten)]
+    pub release: ReleaseDate,
+
+    /// The user's most recent position in the chapter. Set if the supplied access token is a user token and has the scope 'user-read-playback-position'.
+    #[serde(default)]
+    pub resume_point: ResumePoint,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the chapter.
+    pub uri: Uri,
+    /// Included in the response when a content restriction is applied.
+    pub restrictions: Option<Restrictions>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Chapters {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<SimplifiedChapter>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Audiobook {
+    /// The author(s) for the audiobook.
+    #[serde(default="Vec::new", deserialize_with="deserialize_named_objects")]
+    pub authors: Vec<String>,
+    /// A list of the countries in which the audiobook can be played, identified by their [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code.
+    pub available_markets: Vec<String>,
+    /// The copyright statements of the audiobook.
+    #[serde(default="Vec::new")]
+    pub copyrights: Vec<CopyRight>,
+    /// A description of the audiobook. HTML tags are stripped away from this field, use html_description field in case HTML tags are needed.
+    pub description: String,
+    /// A description of the audiobook. This field may contain HTML tags.
+    pub html_description: String,
+    /// The edition of the audiobook.
+    pub edition: String,
+    /// Whether or not the audiobook has explicit content (true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// Known external URLs for this audiobook.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the audiobook.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the audiobook.
+    pub id: String,
+    /// The cover art for the audiobook in various sizes, widest first.
+    pub images: Vec<Image>,
+    /// A list of the languages used in the audiobook, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
+    pub languages: Vec<String>,
+    /// The media type of the audiobook.
+    pub media_type: String,
+    /// The name of the audiobook.
+    pub name: String,
+    /// The narrator(s) for the audiobook.
+    #[serde(default="Vec::new", deserialize_with="deserialize_named_objects")]
+    pub narrators: Vec<String>,
+    /// The publisher of the audiobook.
+    pub publisher: String,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the audiobook.
+    pub uri: Uri,
+    /// The number of chapters in this audiobook.
+    #[serde(default)]
+    pub total_chapters: Option<usize>,
+
+    /// Not documented in official Spotify docs, however most audiobooks do contain this field
+    pub is_externally_hosted: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SavedAudiobooks {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<Audiobook>,
 }

@@ -1,3 +1,6 @@
+pub use super::markets::Market;
+use super::IntoSpotifyParam;
+
 #[macro_export]
 macro_rules! spotify_request {
     ($type: ident, $url: literal) => {
@@ -65,6 +68,12 @@ impl IntoSpotifyId for String {
     }
 }
 
+impl IntoSpotifyId for &String {
+    fn into_spotify_id(self) -> String {
+        self.to_string()
+    }
+}
+
 impl IntoSpotifyId for &str {
     fn into_spotify_id(self) -> String {
         self.to_string()
@@ -72,6 +81,12 @@ impl IntoSpotifyId for &str {
 }
 
 impl IntoSpotifyId for Uri {
+    fn into_spotify_id(self) -> String {
+        self.id().to_string()
+    }
+}
+
+impl IntoSpotifyId for &Uri {
     fn into_spotify_id(self) -> String {
         self.id().to_string()
     }
@@ -91,5 +106,30 @@ impl Display for TimeRange {
             TimeRange::Medium => write!(f, "medium_term"),
             TimeRange::Long => write!(f, "long_term"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum IncludeGroup {
+    Album,
+    Single,
+    AppearsOn,
+    Compilation,
+}
+
+impl Display for IncludeGroup {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IncludeGroup::Album => write!(f, "album"),
+            IncludeGroup::Single => write!(f, "single"),
+            IncludeGroup::AppearsOn => write!(f, "appears_on"),
+            IncludeGroup::Compilation => write!(f, "compilation"),
+        }
+    }
+}
+
+impl IntoSpotifyParam for IncludeGroup {
+    fn into_spotify_param(self) -> Option<String> {
+        Some(self.to_string())
     }
 }

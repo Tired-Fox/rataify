@@ -3,8 +3,8 @@
 ## Sections
 
 - [x] Albums
-- [ ] Artists
-- [ ] Audiobooks
+- [x] Artists
+- [x] Audiobooks
 - [ ] Categories
 - [ ] Chapters
 - [ ] Episodes

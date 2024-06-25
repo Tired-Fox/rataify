@@ -1,8 +1,6 @@
 use tupy::{
     api::{
-        auth::OAuth,
-        flow::{Credentials, AuthCode},
-        scopes, PublicApi, Spotify, UserApi,
+        auth::OAuth, flow::{Pkce, Credentials}, request::Market, scopes, PublicApi, Spotify, UserApi
     },
     Pagination,
 };
@@ -12,10 +10,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     let oauth = OAuth::from_env([
         scopes::USER_LIBRARY_READ,
-        scopes::USER_LIBRARY_MODIFY
+        scopes::USER_LIBRARY_MODIFY,
     ]).unwrap();
 
-    let spotify = Spotify::<AuthCode>::new(Credentials::from_env().unwrap(), oauth, "tupy").await?;
+    let spotify = Spotify::<Pkce>::new(Credentials::from_env().unwrap(), oauth, "tupy").await?;
 
     let mut top_items = spotify.api.new_releases::<2>()?;
     while let Some(page) = top_items.next().await? {
@@ -29,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!();
 
-    let album = spotify.api.album("4muEF5biWb506ZojGMfHb7", None).await?; // Ado ~ Kyougen
+    let album = spotify.api.album("4muEF5biWb506ZojGMfHb7", Market::US).await?; // Ado ~ Kyougen
     println!("{:?} ~ {} by {} (\x1b]8;;{}\x1b\\Cover\x1b]8;;\x1b\\)", album.album_type, album.name, album.artists[0].name, album.images.first().unwrap().url);
     println!();
 
@@ -38,13 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "2tGokYNjX87AAodtbLBYuf", // Ado ~ Utattemita
         "7Ixqxq13tWhrbnIabk3172", // Uta's Songs ~ One Piece Film Red
     ];
-    for album in spotify.api.albums(albums, None).await? {
+    for album in spotify.api.albums(albums, Market::US).await? {
         println!(" - {:?} ~ {} by {} (\x1b]8;;{}\x1b\\Cover\x1b]8;;\x1b\\)", album.album_type, album.name, album.artists[0].name, album.images.first().unwrap().url);
     }
     println!();
 
     println!("[Tracks: Ado ~ Utattemita]");
-    let mut tracks = spotify.api.album_tracks::<5, _, _>("2tGokYNjX87AAodtbLBYuf", None)?;
+    let mut tracks = spotify.api.album_tracks::<5, _, _>("2tGokYNjX87AAodtbLBYuf", Market::US)?;
     while let Some(page) = tracks.next().await? {
         for track in page.items {
             println!(" - {:0>2}:{:0>2} {}", track.duration.num_minutes(), track.duration.num_seconds() % 60, track.name);
@@ -53,10 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     println!("[Saved Albums]");
-    let mut tracks = spotify.api.saved_albums::<5, _>(None)?;
+    let mut tracks = spotify.api.saved_albums::<5, _>(Market::US)?;
     while let Some(page) = tracks.next().await? {
         for saved_album in page.items {
-            println!(" - {} {}", saved_album.added_at, saved_album.album.name);
+            println!(" - {}   {}", saved_album.added_at.format("%l-%M %P %b %e, %Y"), saved_album.album.name);
         }
     }
     println!();

@@ -43,5 +43,7 @@ serde_path_to_error = "0.1.16"
 serde_qs = "0.13.0"
 serde_urlencoded = "0.7.1"
 sha2 = "0.10.8"
+strum = { version = "0.26.3", features = ["strum_macros", "derive", "phf"] }
+strum_macros = "0.26.4"
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "net", "signal", "signal-hook-registry", "time", "macros", "fs", "bytes"] }
 uuid = { version = "1.8.0", features = ["v4", "serde", "fast-rng"] }

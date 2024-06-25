@@ -8,7 +8,7 @@ use crate::{pares, Error};
 use super::{
     flow::AuthFlow,
     request::{self, IntoSpotifyId, TimeRange},
-    response::{FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, TopItems},
+    response::{FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, SavedAudiobooks, TopItems},
     scopes, validate_scope, IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
 
@@ -56,7 +56,11 @@ pub trait UserApi: AuthFlow {
             |c: TopItems<T>| {
                 let next = c.next.clone();
                 let previous = c.previous.clone();
-                (c, previous, next)
+                if c.items.is_empty() || (c.offset + c.limit >= c.total) {
+                    (c, previous, None)
+                } else {
+                    (c, previous, next)
+                }
             },
         ))
     }
@@ -347,7 +351,11 @@ pub trait UserApi: AuthFlow {
             |c: SavedAlbums| {
                 let next = c.next.clone();
                 let previous = c.previous.clone();
-                (c, previous, next)
+                if c.items.is_empty() || (c.offset + c.limit >= c.total) {
+                    (c, previous, None)
+                } else {
+                    (c, previous, next)
+                }
             },
         ))
     }
@@ -434,6 +442,80 @@ pub trait UserApi: AuthFlow {
                         .join(","),
                 )
                 .send(token)
+                .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Get a list of the audiobooks saved in the current Spotify user's 'Your Music' library.
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    fn saved_audiobooks<const N: usize>(&self) -> Result<Paginated<SavedAudiobooks, SavedAudiobooks, Self, N>, Error> {
+        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        Ok(Paginated::new(
+            self.clone(),
+            Some(format!("{API_BASE_URL}/me/audiobooks?limit={N}")),
+            None,
+            |c: SavedAudiobooks| {
+                let next = c.next.clone();
+                let previous = c.previous.clone();
+                if c.items.is_empty() || (c.offset + c.limit >= c.total) {
+                    (c, previous, None)
+                } else {
+                    (c, previous, next)
+                }
+            },
+        ))
+    }
+
+    /// Save one or more audiobooks to the current Spotify user's library.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn save_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            let ids = ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(",");
+            request::put!("me/audiobooks")
+                .param("ids", ids)
+                .send(self.token().await?)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Remove one or more audiobooks from the Spotify user's library.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn remove_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            request::delete!("me/audiobooks")
+                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(","))
+                .send(self.token().await?)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Check if one or more audiobooks are already saved in the current Spotify user's library.
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    fn check_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+
+            let SpotifyResponse { body, .. } = request::get!("me/audiobooks/contains")
+                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(","))
+                .send(self.token().await?)
                 .await?;
 
             Ok(pares!(&body)?)

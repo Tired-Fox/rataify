@@ -197,7 +197,7 @@ impl AuthFlow for Flow {
                         .iter()
                         .cloned()
                         .collect::<Vec<_>>()
-                        .join("%20")
+                        .join(" ")
                 ),
                 ("code_challenge_method", "S256".to_string()),
                 ("code_challenge", self.code.challenge.clone()),

@@ -160,7 +160,7 @@ impl AuthFlow for Flow {
                         .iter()
                         .cloned()
                         .collect::<Vec<_>>()
-                        .join("%20")
+                        .join(" ")
                 ),
                 ("redirect_uri", self.oauth.redirect.clone()),
                 ("state", self.oauth.state.to_string()),

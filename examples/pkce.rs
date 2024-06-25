@@ -19,6 +19,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "tupy"
     ).await?;
 
-    println!("{:#?}", spotify.api.get_current_user_profile().await?);
+    println!("{:#?}", spotify.api.current_user_profile().await?);
     Ok(())
 }

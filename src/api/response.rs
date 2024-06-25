@@ -1,13 +1,9 @@
 use std::{fmt::{Debug, Display}, str::FromStr};
 
 use hyper::Method;
-use serde::{de::IntoDeserializer, Deserialize, Deserializer};
-use serde_path_to_error::deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::{Error, Pagination};
-//use crate::api::datetime::{
-//    deserialize_date, deserialize_datetime, NaiveDate, NaiveDateTime
-//};
 
 use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse};
 
@@ -28,6 +24,14 @@ macro_rules! pares {
 }
 
 pub use crate::pares;
+
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<chrono::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let ms = i64::deserialize(deserializer)?;
+    Ok(chrono::Duration::milliseconds(ms))
+}
 
 pub struct Paginated<R, T, F, const N: usize>
 where
@@ -66,6 +70,14 @@ where
     pub fn page_size(&self) -> usize {
         self.page_size
     }
+
+    /// Get the total number of items fetched so far.
+    ///
+    /// If `prev` is called this value decreases.
+    /// This value is equivalent to `page * page_size`.
+    pub fn item_count(&self) -> usize {
+        self.page_size() * self.page()
+    }
 }
 
 impl<R, P: Deserialize<'static>, F, const N: usize> Pagination for Paginated<R, P, F, N>
@@ -82,6 +94,7 @@ where
         };
 
         let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token().await?).await?;
+        let eb = body.clone();
         let body = body.into_boxed_str();
         match pares!(P: Box::leak(body)) {
             Ok(item) => {
@@ -90,7 +103,10 @@ where
                 self.prev = prev;
                 Ok(Some(result))
             },
-            Err(e) => Err(Error::custom(e))
+            Err(e) => {
+                eprintln!("{eb:?}");
+                Err(Error::custom(e))
+            }
         }
     }
 
@@ -151,13 +167,10 @@ pub struct Followers {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Image {
     /// The source URL of the image
-    /// Example: "https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228"
     pub url: String,
     /// The image height in pixels.
-    /// Example: 300
     pub height: u32,
     /// The image width in pixels.
-    /// Example: 300
     pub width: u32,
 }
 
@@ -269,7 +282,7 @@ impl<'de> Deserialize<'de> for Uri {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        let parts = s.splitn(2, ':').collect::<Vec<_>>();
+        let parts = s.splitn(3, ':').collect::<Vec<_>>();
         let id = parts[2].to_string();
         Ok(Self {
             resource: Resource::from_str(parts[1]).map_err(serde::de::Error::custom)?,
@@ -291,12 +304,25 @@ impl Uri {
 }
 
 /// Album types
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
-#[serde(rename_all = "UPPERCASE")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AlbumType {
     Album,
     Single,
     Compilation,
+}
+
+impl<'de> Deserialize<'de> for AlbumType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de> {
+        let s = String::deserialize(deserializer)?;
+        match s.to_ascii_lowercase().as_str() {
+            "album" => Ok(Self::Album),
+            "single" => Ok(Self::Single),
+            "compilation" => Ok(Self::Compilation),
+            _ => Err(serde::de::Error::custom("Invalid album type {s:?}: expected one of 'album', 'single' or 'compilation' (case-insensitive)")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -339,27 +365,63 @@ pub struct Restrictions {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct SimplifiedArtist {
-    /// Known external URLs for this artist.
-    external_urls: ExternalUrls,
-    /// A link to the Web API endpoint providing full details of the artist.
-    href: String,
-    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
-    id: String,
-    /// The name of the artist.
-    name: String,
-    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
-    /// Example: "spotify:artist:4iV5W9uYEdYUVa79Axb7Rh"
-    uri: Uri,
+pub struct SimplifiedTrack {
+    /// The artists who performed the track. Each artist object includes a link in href to more detailed information about the artist.
+    pub artists: Vec<SimplifiedArtist>,
+    /// A list of the countries in which the track can be played, identified by their [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+    #[serde(default="Vec::new")]
+    pub available_markets: Vec<String>,
+    /// The disc number (usually 1 unless the album consists of more than one disc).
+    pub disc_number: u8,
+    /// The track length in milliseconds.
+    #[serde(rename = "duration_ms", deserialize_with = "deserialize_duration")]
+    pub duration: chrono::Duration,
+    /// Whether or not the track has explicit lyrics ( true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// Known external URLs for this track.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the track.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the track.
+    pub id: String,
+    /// Part of the response when [Track Relinking](https://developer.spotify.com/documentation/web-api/concepts/track-relinking) is applied. If true, the track is playable in the given market. Otherwise false.
+    #[serde(default="bool::default")]
+    pub is_playable: bool,
+    /// Part of the response when [Track Relinking](https://developer.spotify.com/documentation/web-api/concepts/track-relinking) is applied, and the requested track has been replaced with different track. The track in the linked_from object contains information about the originally requested track.
+    pub linked_from: Option<Box<Track>>,
+    /// Included in the response when a content restriction is applied.
+    pub restrictions: Option<Restrictions>,
+    /// The name of the track.
+    pub name: String,
+    /// A link to a 30 second preview (MP3 format) of the track.
+    pub preview_url: Option<String>,
+    /// The number of the track. If an album has several discs, the track number is the number on the specified disc.
+    pub track_number: u8,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the track.
+    pub uri: Uri,
+    /// Whether or not the track is from a local file.
+    pub is_local: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct SimplifiedArtist {
+    /// Known external URLs for this artist.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the artist.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
+    pub id: String,
+    /// The name of the artist.
+    pub name: String,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
+    pub uri: Uri,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Album {
     /// The type of the album.
-    /// Example: "compilation"
     pub album_type: AlbumType,
     /// The number of tracks in the album.
-    /// Example: 9
     pub total_tracks: usize,
     // TODO: Use a list of enums??
     /// The markets in which the album is available: [ISO 3166-1 alpha-2 country codes](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). _**NOTE:**_ an album is considered available in a market when at least 1 of its tracks is available in that market.
@@ -369,25 +431,24 @@ pub struct Album {
     /// A link to the Web API endpoint providing full details of the album.
     pub href: String,
     /// The Spotify ID for the album.
-    /// Example: "2up3OPMp9Tb4dAKM2erWXQ"
     pub id: String,
     /// The cover art for the album in various sizes, widest first.
-    images: Vec<Image>,
+    pub images: Vec<Image>,
     /// The name of the album. In case of an album takedown, the value may be an empty string.
     pub name: String,
     /// The date the album was first released.
-    /// Example: "1981-12"
     pub release_date: String,
     // The precision with which release_date value is known.
-    // Example: "year"
     pub release_date_precision: DatePrecision,
     /// Included in the response when a content restriction is applied.
     pub restrictions: Option<Restrictions>,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the album.
-    /// Example: "spotify:album:2up3OPMp9Tb4dAKM2erWXQ"
     pub uri: Uri,
     /// The artists of the album. Each artist object includes a link in href to more detailed information about the artist.
     pub artists: Vec<SimplifiedArtist>,
+    /// Not documented in official Spotify docs, however most albums do contain this field
+    pub label: Option<String>
+
 }
 
 //#[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -398,22 +459,16 @@ pub struct Album {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct NewReleases {
     /// The maximum number of items in the response (as set in the query or by default).
-    /// Example: 20
     pub limit: usize,
     /// The offset of the items returned (as set in the query or by default)
-    /// Example: 0
     pub offset: usize,
     /// URL to the next page of items. ( null if none)
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=1&limit=1"
     pub next: Option<String>,
     /// URL to the previous page of items. ( null if none)
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=1&limit=1"
     pub previous: Option<String>,
     /// A link to the Web API endpoint returning the full result of the request
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=0&limit=20"
     pub href: String,
     /// The total number of items available to return.
-    /// Example: 4
     pub total: usize,
     pub items: Vec<Album>,
 }
@@ -443,7 +498,6 @@ pub struct Artist {
     /// The popularity of the artist. The value will be between 0 and 100, with 100 being the most popular. The artist's popularity is calculated from the popularity of all the artist's tracks.
     pub popularity: u8,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the artist.
-    /// Example: "spotify:artist:4iV5W9uYEdYUVa79Axb7Rh"
     pub uri: Uri,
 }
 impl IntoUserTopItemType for Artist {
@@ -473,8 +527,8 @@ pub struct Track {
     /// The disc number (usually 1 unless the album consists of more than one disc).
     pub disc_number: u8,
     /// The track length in milliseconds.
-    #[serde(rename = "duration_ms")]
-    pub durations: usize,
+    #[serde(rename = "duration_ms", deserialize_with = "deserialize_duration")]
+    pub duration: chrono::Duration,
     /// Whether or not the track has explicit lyrics ( true = yes it does; false = no it does not OR unknown).
     pub explicit: bool,
     /// Known external IDs for the track.
@@ -484,7 +538,6 @@ pub struct Track {
     /// A link to the Web API endpoint providing full details of the track.
     pub href: String,
     /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the track.
-    /// Example: "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
     pub id: String,
     /// Part of the response when [Track Relinking](https://developer.spotify.com/documentation/web-api/concepts/track-relinking) is applied. If true, the track is playable in the given market. Otherwise false.
     #[serde(default="bool::default")]
@@ -500,7 +553,6 @@ pub struct Track {
     /// The number of the track. If an album has several discs, the track number is the number on the specified disc.
     pub track_number: u8,
     /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the track.
-    /// Example: "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
     pub uri: Uri,
     /// Whether or not the track is from a local file.
     pub is_local: bool,
@@ -514,22 +566,16 @@ impl IntoUserTopItemType for Track {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TopItems<T: Debug + Clone + PartialEq> {
     /// A link to the Web API endpoint returning the full result of the request
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=0&limit=20"
     pub href: String,
     /// The maximum number of items in the response (as set in the query or by default).
-    /// Example: 20
     pub limit: usize,
     /// The offset of the items returned (as set in the query or by default)
-    /// Example: 0
     pub offset: usize,
     /// URL to the next page of items. ( null if none)
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=1&limit=1"
     pub next: Option<String>,
     /// URL to the previous page of items. ( null if none)
-    /// Example: "https://api.spotify.com/v1/me/shows?offset=1&limit=1"
     pub previous: Option<String>,
     /// The total number of items available to return.
-    /// Example: 4
     pub total: usize,
     pub items: Vec<T>,
 }
@@ -555,4 +601,45 @@ pub struct FollowedArtists {
     /// The total number of items available to return.
     pub total: usize,
     pub items: Vec<Artist>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct AlbumTracks {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<SimplifiedTrack>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SavedAlbum {
+    pub added_at: String,
+    pub added_at_precision: Option<DatePrecision>,
+    pub album: Album,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct SavedAlbums {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<SavedAlbum>,
 }

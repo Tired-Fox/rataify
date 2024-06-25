@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "tupy"
     ).await?;
 
-    let mut new_releases = spotify.api.get_new_releases::<1>()?;
+    let mut new_releases = spotify.api.new_releases::<1>()?;
     if let Some(page) = new_releases.next().await {
         println!("Page [{}]", new_releases.page());
         for item in page.albums.items {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::{Debug, Display}, future::Future};
+use std::{collections::HashMap, fmt::Debug, future::Future};
 
 use serde::Deserialize;
 use serde_json::json;
@@ -7,9 +7,9 @@ use crate::{pares, Error};
 
 use super::{
     flow::AuthFlow,
-    request::{self, TimeRange},
-    response::{FollowedArtists, IntoUserTopItemType, Paginated, Profile, TopItems},
-    scopes, validate_scope, SpotifyResponse, API_BASE_URL,
+    request::{self, IntoSpotifyId, TimeRange},
+    response::{FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, TopItems},
+    scopes, validate_scope, IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
 
 pub trait UserApi: AuthFlow {
@@ -18,7 +18,7 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `user-read-private` [optional]: Access to the `product`, `explicit_content`, and `country` fields
     /// - `user-read-email` [optional]: Access to the `email` field
-    fn get_current_user_profile(&self) -> impl Future<Output = Result<Profile, Error>> {
+    fn current_user_profile(&self) -> impl Future<Output = Result<Profile, Error>> {
         async {
             // Get the token: This will refresh it if needed
             let token = self.token().await?;
@@ -34,12 +34,12 @@ pub trait UserApi: AuthFlow {
     ///
     /// <N> Is the number of items to return per page.
     /// <T> Is the type of items to return. [Artist, Track]
-    fn get_user_top_items<T, const N: usize>(
+    fn user_top_items<T, const N: usize>(
         &self,
         time_range: TimeRange,
     ) -> Result<Paginated<TopItems<T>, TopItems<T>, Self, N>, Error>
     where
-        T: IntoUserTopItemType + Deserialize<'static> + Debug + Clone + PartialEq
+        T: IntoUserTopItemType + Deserialize<'static> + Debug + Clone + PartialEq,
     {
         validate_scope(self.scopes(), &[scopes::USER_TOP_READ])?;
         Ok(Paginated::new(
@@ -62,10 +62,15 @@ pub trait UserApi: AuthFlow {
     }
 
     /// Get public profile information about a Spotify user.
-    fn get_user_profile<D: Display>(&self, user_id: D) -> impl Future<Output = Result<Profile, Error>> {
+    fn user_profile<I: IntoSpotifyId>(
+        &self,
+        user_id: I,
+    ) -> impl Future<Output = Result<Profile, Error>> {
         async move {
             let token = self.token().await?;
-            let SpotifyResponse { body, .. } = request::get!("users/{}", user_id).send(token).await?;
+            let SpotifyResponse { body, .. } = request::get!("users/{}", user_id.into_spotify_id())
+                .send(token)
+                .await?;
             Ok(pares!(&body)?)
         }
     }
@@ -79,11 +84,21 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage `public` playlists
     /// - `playlist-modify-private`: Manage `private` playlists
-    fn follow_playlist<D: Display>(&self, playlist_id: D, public: bool) -> impl Future<Output = Result<(), Error>> {
+    fn follow_playlist<I: IntoSpotifyId>(
+        &self,
+        playlist_id: I,
+        public: bool,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PUBLIC, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PUBLIC,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
             let token = self.token().await?;
-            request::put!("playlists/{playlist_id}/followers")
+            request::put!("playlists/{}/followers", playlist_id.into_spotify_id())
                 .body(format!("{{\"public\":{}}}", public))
                 .send(token)
                 .await?;
@@ -99,23 +114,33 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage `public` playlists
     /// - `playlist-modify-private`: Manage `private` playlists
-    fn unfollow_playlist<D: Display>(&self, playlist_id: D) -> impl Future<Output = Result<(), Error>> {
+    fn unfollow_playlist<I: IntoSpotifyId>(
+        &self,
+        playlist_id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PUBLIC, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PUBLIC,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
             let token = self.token().await?;
-            request::delete!("playlists/{playlist_id}/followers")
+            request::delete!("playlists/{}/followers", playlist_id.into_spotify_id())
                 .send(token)
                 .await?;
             Ok(())
         }
     }
 
-
     /// Get the current user's followed artists.
     ///
     /// # Scopes
     /// - `user-follow-read`: Access your followers and who you are following.
-    fn get_followed_artists<const N: usize>(&self) -> Result<Paginated<FollowedArtists, HashMap<String, FollowedArtists>, Self, N>, Error> {
+    fn followed_artists<const N: usize>(
+        &self,
+    ) -> Result<Paginated<FollowedArtists, HashMap<String, FollowedArtists>, Self, N>, Error> {
         validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
         Ok(Paginated::new(
             self.clone(),
@@ -140,14 +165,20 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-modify`: Manage your saved content.
-    fn follow_artists<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn follow_artists<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token().await?;
             request::put!("me/following?type=artist")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>()
-                }}.to_string())
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
                 .send(token)
                 .await?;
             Ok(())
@@ -161,14 +192,20 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-modify`: Manage your saved content.
-    fn unfollow_artists<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn unfollow_artists<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token().await?;
             request::delete!("me/following?type=artist")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>()
-                }}.to_string())
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
                 .send(token)
                 .await?;
             Ok(())
@@ -183,14 +220,20 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-modify`: Manage your saved content.
-    fn follow_users<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn follow_users<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token().await?;
             request::put!("me/following?type=user")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>()
-                }}.to_string())
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
                 .send(token)
                 .await?;
             Ok(())
@@ -204,14 +247,20 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-modify`: Manage your saved content.
-    fn unfollow_users<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn unfollow_users<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token().await?;
             request::delete!("me/following?type=user")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>()
-                }}.to_string())
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
                 .send(token)
                 .await?;
             Ok(())
@@ -225,15 +274,21 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-read`: Access your followers and who you are following.
-    fn check_follow_artists<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_follow_artists<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
             let SpotifyResponse { body, .. } = request::get!(
                 "me/following/contains?type=artist&ids={}",
-                ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(",")
+                ids.into_iter()
+                    .map(|s| s.into_spotify_id())
+                    .collect::<Vec<String>>()
+                    .join(",")
             )
-                .send(self.token().await?)
-                .await?;
+            .send(self.token().await?)
+            .await?;
 
             Ok(pares!(&body)?)
         }
@@ -246,14 +301,139 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-follow-read`: Access your followers and who you are following.
-    fn check_follow_users<S: AsRef<str>, I: IntoIterator<Item=S>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_follow_users<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
             let SpotifyResponse { body, .. } = request::get!(
                 "me/following/contains?type=user&ids={}",
-                ids.into_iter().map(|s| s.as_ref().to_string()).collect::<Vec<String>>().join(",")
+                ids.into_iter()
+                    .map(|s| s.into_spotify_id())
+                    .collect::<Vec<String>>()
+                    .join(",")
             )
-                .send(self.token().await?)
+            .send(self.token().await?)
+            .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Get a list of the albums saved in the current Spotify user's 'Your Music' library.
+    ///
+    /// # Arguments
+    /// - <N> Is the number of items to return per page.
+    /// - `market`: An ISO 3166-1 alpha-2 country code. Provide this parameter if you want to apply [Track Relinking](https://developer.spotify.com/documentation/general/guides/track-relinking-guide/).
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    fn saved_albums<const N: usize, M: IntoSpotifyParam>(
+        &self,
+        market: M,
+    ) -> Result<Paginated<SavedAlbums, SavedAlbums, Self, N>, Error> {
+        let mut url = format!("{}/me/albums?limit={N}", API_BASE_URL,);
+
+        if let Some(market) = market.into_spotify_param() {
+            url.push_str(&format!("&market={}", market));
+        }
+
+        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        Ok(Paginated::new(
+            self.clone(),
+            Some(url),
+            None,
+            |c: SavedAlbums| {
+                let next = c.next.clone();
+                let previous = c.previous.clone();
+                (c, previous, next)
+            },
+        ))
+    }
+
+    /// Save one or more albums to the current user's 'Your Music' library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the albums. Maximum: 50 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn save_albums<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            let token = self.token().await?;
+            request::put!("me/albums")
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
+                .send(token)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Remove one or more albums from the current user's 'Your Music' library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the albums. Maximum: 50 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn remove_saved_albums<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            let token = self.token().await?;
+            request::delete!("me/albums")
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>()
+                    }}
+                    .to_string(),
+                )
+                .send(token)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Check if one or more albums is already saved in the current Spotify user's 'Your Music' library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the albums. Maximum: 20 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    fn check_saved_albums<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+
+            let token = self.token().await?;
+            let SpotifyResponse { body, .. } = request::get!("me/albums/contains")
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<String>>()
+                        .join(","),
+                )
+                .send(token)
                 .await?;
 
             Ok(pares!(&body)?)

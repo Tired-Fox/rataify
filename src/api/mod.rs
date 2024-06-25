@@ -6,7 +6,7 @@ pub mod response;
 mod user;
 mod public;
 
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, fmt::Display};
 
 use flow::AuthFlow;
 use auth::{OAuth, Token};
@@ -97,6 +97,29 @@ impl SpotifyRequest<String> {
     }
 }
 
+pub trait IntoSpotifyParam {
+    fn into_spotify_param(self) -> Option<String>;
+}
+
+impl IntoSpotifyParam for Option<()> {
+    fn into_spotify_param(self) -> Option<String> {
+        self.map(|_| String::new())
+    }
+}
+
+impl IntoSpotifyParam for String {
+    fn into_spotify_param(self) -> Option<String> {
+        Some(self.clone())
+    }
+}
+
+impl IntoSpotifyParam for &str {
+    fn into_spotify_param(self) -> Option<String> {
+        Some(self.to_string())
+    }
+}
+
+
 impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
     pub fn header<V: AsRef<str>>(mut self, key: HeaderName, value: V) -> Self {
         self.headers.insert(key, value.as_ref().to_string());
@@ -112,20 +135,24 @@ impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
         self
     }
 
-    pub fn param<K: AsRef<str>, V: AsRef<str>>(mut self, key: K, value: V) -> Self {
-        self.params
-            .insert(key.as_ref().to_string(), value.as_ref().to_string());
+    pub fn param<K: AsRef<str>, V: IntoSpotifyParam>(mut self, key: K, value: V) -> Self {
+        if let Some(value) = value.into_spotify_param() {
+            self.params.insert(key.as_ref().to_string(), value);
+        }
         self
     }
 
-    pub fn params<K: AsRef<str>, V: AsRef<str>, I: IntoIterator<Item = (K, V)>>(
+    pub fn params<K: AsRef<str>, V: IntoSpotifyParam, I: IntoIterator<Item = (K, V)>>(
         mut self,
         items: I,
     ) -> Self {
         self.params.extend(
             items
                 .into_iter()
-                .map(|(k, v)| (k.as_ref().to_string(), v.as_ref().to_string())),
+                .filter_map(|(k, v)| {
+                    let v = v.into_spotify_param()?;
+                    Some((k.as_ref().to_string(), v))
+                }),
         );
         self
     }

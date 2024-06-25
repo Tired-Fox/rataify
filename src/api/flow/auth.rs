@@ -4,7 +4,7 @@ use tokio::net::TcpListener;
 
 use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token, Credentials};
 use crate::{
-    api::{SpotifyResponse, UserApi},
+    api::{PublicApi, SpotifyResponse, UserApi},
     Error, Locked, Shared,
 };
 
@@ -164,6 +164,7 @@ impl AuthFlow for Flow {
                 ),
                 ("redirect_uri", self.oauth.redirect.clone()),
                 ("state", self.oauth.state.to_string()),
+                ("show_dialog", true.to_string()),
             ])?
         ))
     }
@@ -221,3 +222,4 @@ impl AuthFlow for Flow {
 
 // API Implementations for this specific workflow
 impl UserApi for Flow {}
+impl PublicApi for Flow {}

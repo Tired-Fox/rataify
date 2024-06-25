@@ -2,7 +2,7 @@
 
 ## Sections
 
-- [ ] Albums
+- [x] Albums
 - [ ] Artists
 - [ ] Audiobooks
 - [ ] Categories

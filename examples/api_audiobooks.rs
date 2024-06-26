@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chapters = spotify.api.audiobook_chapters::<10, _, _>(&audiobook.uri, None)?;
     if let Some(page) = chapters.next().await? {
         for chapter in page.items {
-            println!(" - {}", chapter.name);
+            println!(" - {} ({})", chapter.name, chapter.id);
         }
 
         if chapters.item_count() < page.total {

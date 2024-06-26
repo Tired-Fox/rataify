@@ -3,7 +3,6 @@ pub mod flow;
 
 pub mod request;
 pub mod response;
-pub(crate) mod markets;
 mod user;
 mod public;
 
@@ -101,9 +100,23 @@ impl SpotifyRequest<String> {
     }
 }
 
+macro_rules! impl_into_spotify_param {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl IntoSpotifyParam for $ty {
+                fn into_spotify_param(self) -> Option<String> {
+                    Some(self.to_string())
+                }
+            }
+        )*
+    }
+}
+
 pub trait IntoSpotifyParam {
     fn into_spotify_param(self) -> Option<String>;
 }
+
+impl_into_spotify_param!(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, usize, isize, bool);
 
 impl<I: IntoSpotifyId> IntoSpotifyParam for I {
     fn into_spotify_param(self) -> Option<String> {

@@ -795,6 +795,59 @@ pub struct ResumePoint {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Chapter {
+    /// A URL to a 30 second preview (MP3 format) of the chapter. null if not available.
+    /// 
+    /// # Important Policy Notes
+    /// - Spotify Audio preview clips [can not be a standalone service](https://developer.spotify.com/policy/#ii-respect-content-and-creators).
+    #[serde(rename = "audio_preview_url")]
+    pub preview_url: Option<String>,
+    /// A list of the countries in which the chapter can be played, identified by their [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code.
+    #[serde(default="Vec::new")]
+    pub available_markets: Vec<String>,
+    /// The number of the chapter
+    pub chapter_number: usize,
+    /// A description of the chapter. HTML tags are stripped away from this field, use html_description field in case HTML tags are needed.
+    pub description: String,
+    /// A description of the chapter. This field may contain HTML tags.
+    pub html_description: String,
+    /// The chapter length.
+    #[serde(rename = "duration_ms", deserialize_with = "deserialize_duration")]
+    pub duration: chrono::Duration,
+    /// Whether or not the chapter has explicit content (true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// External URLs for this chapter.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the chapter.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the chapter.
+    pub id: String,
+    /// The cover art for the chapter in various sizes, widest first.
+    #[serde(default="Vec::new")]
+    pub images: Vec<Image>,
+    /// True if the chapter is playable in the given market. Otherwise false.
+    #[serde(default)]
+    pub is_playable: bool,
+    /// A list of the languages used in the chapter, identified by their ISO 639-1 code.
+    #[serde(default="Vec::new")]
+    pub languages: Vec<String>,
+    /// The name of the chapter.
+    pub name: String,
+    /// The date the chapter was first released, for example "1981-12-15". Depending on the precision, it might be shown as "1981" or "1981-12".
+    #[serde(flatten)]
+    pub release: ReleaseDate,
+    /// The user's most recent position in the chapter. Set if the supplied access token is a user token and has the scope 'user-read-playback-position'.
+    #[serde(default)]
+    pub resume_point: ResumePoint,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the chapter.
+    pub uri: Uri,
+    /// Included in the response when a content restriction is applied.
+    pub restrictions: Option<Restrictions>,
+    /// The audiobook for which the chapter belongs.
+    pub audiobook: Audiobook,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct SimplifiedChapter {
     /// A URL to a 30 second preview (MP3 format) of the chapter. null if not available.
     /// 
@@ -833,11 +886,9 @@ pub struct SimplifiedChapter {
     pub languages: Vec<String>,
     /// The name of the chapter.
     pub name: String,
-
     /// The date the chapter was first released, for example "1981-12-15". Depending on the precision, it might be shown as "1981" or "1981-12".
     #[serde(flatten)]
     pub release: ReleaseDate,
-
     /// The user's most recent position in the chapter. Set if the supplied access token is a user token and has the scope 'user-read-playback-position'.
     #[serde(default)]
     pub resume_point: ResumePoint,
@@ -870,6 +921,7 @@ pub struct Audiobook {
     #[serde(default="Vec::new", deserialize_with="deserialize_named_objects")]
     pub authors: Vec<String>,
     /// A list of the countries in which the audiobook can be played, identified by their [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code.
+    #[serde(default="Vec::new")]
     pub available_markets: Vec<String>,
     /// The copyright statements of the audiobook.
     #[serde(default="Vec::new")]
@@ -926,4 +978,145 @@ pub struct SavedAudiobooks {
     /// The total number of items available to return.
     pub total: usize,
     pub items: Vec<Audiobook>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Category {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The category icon, in various sizes.
+    pub icons: Vec<Image>,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the category.
+    pub id: String,
+    /// The name of the category.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Categories {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<Category>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Show {
+    /// A list of the countries in which the show can be played, identified by their [ISO 3166-1 alpha-2](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code.
+    pub available_markets: Vec<String>,
+    /// The copyright statements of the show.
+    pub copyrights: Vec<CopyRight>,
+    /// A description of the show. HTML tags are stripped away from this field, use html_description field in case HTML tags are needed.
+    pub description: String,
+    /// A description of the show. This field may contain HTML tags.
+    pub html_description: String,
+    /// Whether or not the show has explicit content (true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// Known external URLs for this show.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the show.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the show.
+    pub id: String,
+    /// The cover art for the show in various sizes, widest first.
+    pub images: Vec<Image>,
+    /// True if all of the shows episodes are hosted outside of Spotify's CDN.
+    #[serde(default)]
+    pub is_externally_hosted: bool,
+    /// A list of the languages used in the show, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
+    #[serde(default="Vec::new")]
+    pub languages: Vec<String>,
+    /// The media type of the show.
+    pub media_type: String,
+    /// The name of the show.
+    pub name: String,
+    /// The publisher of the show.
+    pub publisher: Option<String>,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the show.
+    pub uri: Uri,
+    /// The total number of episodes in this show.
+    #[serde(default)]
+    pub total_episodes: usize,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Episode {
+    /// A URL to a 30 second preview (MP3 format) of the episode.
+    #[serde(rename = "audio_preview_url")]
+    pub preview_url: Option<String>,
+    /// A description of the episode. HTML tags are stripped away from this field, use html_description field in case HTML tags are needed.
+    pub description: String,
+    /// A description of the episode. This field may contain HTML tags.
+    pub html_description: String,
+    /// The episode length.
+    #[serde(rename = "duration_ms", deserialize_with = "deserialize_duration")]
+    pub duration: chrono::Duration,
+    /// Whether or not the episode has explicit content (true = yes it does; false = no it does not OR unknown).
+    pub explicit: bool,
+    /// External URLs for this episode.
+    pub external_urls: ExternalUrls,
+    /// A link to the Web API endpoint providing full details of the episode.
+    pub href: String,
+    /// The [Spotify ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the episode.
+    pub id: String,
+    /// The cover art for the episode in various sizes, widest first.
+    pub images: Vec<Image>,
+    /// True if the episode is playable in the given market. Otherwise false.
+    #[serde(default)]
+    pub is_playable: bool,
+    /// True if the episode is hosted outside of Spotify's CDN.
+    #[serde(default)]
+    pub is_externally_hosted: bool,
+    /// A list of the languages used in the episode, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
+    #[serde(default="Vec::new")]
+    pub languages: Vec<String>,
+    /// The name of the episode.
+    pub name: String,
+    /// The date the episode was first released, for example "1981-12-15". Depending on the precision, it might be shown as "1981" or "1981-12".
+    #[serde(flatten)]
+    pub release: ReleaseDate,
+    /// The user's most recent position in the episode. Set if the supplied access token is a user token and has the scope 'user-read-playback-position'.
+    #[serde(default)]
+    pub resume_point: ResumePoint,
+    /// The [Spotify URI](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) for the episode.
+    pub uri: Uri,
+    /// Included in the response when a content restriction is applied.
+    pub restrictions: Option<Restrictions>,
+
+    /// The show on which the episode belongs.
+    pub show: Show,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct SavedEpisode {
+    /// The date and time the episode was saved. Timestamps are returned in ISO 8601 format as Coordinated Universal Time (UTC) with a zero offset: YYYY-MM-DDTHH:MM:SSZ.
+    #[serde(deserialize_with = "deserialize_added_at")]
+    pub added_at: DateTime<Local>,
+    pub episode: Episode,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct SavedEpisodes {
+    /// A link to the Web API endpoint returning the full result of the request
+    pub href: String,
+    /// The maximum number of items in the response (as set in the query or by default).
+    pub limit: usize,
+    /// URL to the next page of items.
+    pub next: Option<String>,
+    /// The offset of the items returned (as set in the query or by default)
+    pub offset: usize,
+    /// URL to the previous page of items.
+    pub previous: Option<String>,
+    /// The total number of items available to return.
+    pub total: usize,
+    pub items: Vec<SavedEpisode>,
 }

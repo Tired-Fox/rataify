@@ -8,7 +8,7 @@ use crate::{pares, Error};
 use super::{
     flow::AuthFlow,
     request::{self, IntoSpotifyId, TimeRange},
-    response::{FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, SavedAudiobooks, TopItems},
+    response::{Episode, FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, SavedAudiobooks, SavedEpisodes, TopItems},
     scopes, validate_scope, IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
 
@@ -515,6 +515,102 @@ pub trait UserApi: AuthFlow {
 
             let SpotifyResponse { body, .. } = request::get!("me/audiobooks/contains")
                 .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(","))
+                .send(self.token().await?)
+                .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Get a list of the episodes saved in the current Spotify user's library.
+    ///
+    /// # Arguments
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    /// - `user-read-playback-position` [Optional]: Read your position in content you have played.
+    fn saved_episodes<const N: usize, M: IntoSpotifyParam>(&self, market: M) -> Result<Paginated<SavedEpisodes, SavedEpisodes, Self, N>, Error> {
+        let mut url = format!("{API_BASE_URL}/me/episodes?limit={N}");
+
+        if let Some(market) = market.into_spotify_param() {
+            url.push_str(&format!("&market={}", market));
+        }
+
+        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        Ok(Paginated::new(
+            self.clone(),
+            Some(url),
+            None,
+            |c: SavedEpisodes| {
+                let next = c.next.clone();
+                let previous = c.previous.clone();
+                if c.items.is_empty() || (c.offset + c.limit >= c.total) {
+                    (c, previous, None)
+                } else {
+                    (c, previous, next)
+                }
+            },
+        ))
+    }
+    
+    /// Save one or more episodes to the current user's library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the episodes. Maximum: 50 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn save_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            request::put!("me/episodes")
+                .body(json!{{
+                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                }}.to_string())
+                .send(self.token().await?)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Remove one or more episodes from the current user's library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the episodes. Maximum: 50 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-modify`: Manage your saved content.
+    fn remove_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            request::delete!("me/episodes")
+                .body(json!{{
+                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                }}.to_string())
+                .send(self.token().await?)
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Check if one or more episodes is already saved in the current Spotify user's 'Your Episodes' library.
+    ///
+    /// # Arguments
+    /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the episodes. Maximum: 50 IDs.
+    ///
+    /// # Scopes
+    /// - `user-library-read`: Access your saved content.
+    fn check_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+
+            let SpotifyResponse { body, .. } = request::get!("me/episodes/contains")
+                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
                 .send(self.token().await?)
                 .await?;
 

@@ -1,0 +1,38 @@
+   Compiling tupy v0.1.0 (C:\Users\dorkd\Repo\Rust\rataify)
+warning: unused import: `Episode`
+  --> src\api\user.rs:11:16
+   |
+11 |     response::{Episode, FollowedArtists, IntoUserTopItemType, Paginated, Profile, SavedAlbums, SavedAudiobooks, SavedEpisodes, TopItems},
+   |                ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: fields `status` and `headers` are never read
+  --> src\api\mod.rs:40:5
+   |
+39 | pub struct SpotifyResponse {
+   |            --------------- fields in this struct
+40 |     status: StatusCode,
+   |     ^^^^^^
+41 |     headers: HashMap<String, String>,
+   |     ^^^^^^^
+   |
+   = note: `SpotifyResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `tupy` (lib) generated 2 warnings (run `cargo fix --lib -p tupy` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.80s
+     Running `target\debug\examples\api_episodes.exe`
+Not Another D&D Podcast @ Ep. 4: Keep Creepers (The Moonstone Saga)
+
+[Episodes]
+ - Not Another D&D Podcast @ Ep. 4: Keep Creepers (The Moonstone Saga)
+ - Mythical Monsters @ The Mothman Pt. 2
+ - Stuff You Should Know @ Whistling!
+
+[Saved Episodes]
+ - C01 - Ep. 01 - Infinight Interns - Welcome to Boulderay
+ - The Key - S1E1
+ - Medea Pt. 1 
+ - Medea Pt. 2
+

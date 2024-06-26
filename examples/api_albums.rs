@@ -1,6 +1,6 @@
 use tupy::{
     api::{
-        auth::OAuth, flow::{Pkce, Credentials}, request::Market, scopes, PublicApi, Spotify, UserApi
+        auth::OAuth, flow::{Pkce, Credentials}, scopes, PublicApi, Spotify, UserApi
     },
     Pagination,
 };
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!();
 
-    let album = spotify.api.album("4muEF5biWb506ZojGMfHb7", Market::US).await?; // Ado ~ Kyougen
+    let album = spotify.api.album("4muEF5biWb506ZojGMfHb7", None).await?; // Ado ~ Kyougen
     println!("{:?} ~ {} by {} (\x1b]8;;{}\x1b\\Cover\x1b]8;;\x1b\\)", album.album_type, album.name, album.artists[0].name, album.images.first().unwrap().url);
     println!();
 
@@ -36,13 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "2tGokYNjX87AAodtbLBYuf", // Ado ~ Utattemita
         "7Ixqxq13tWhrbnIabk3172", // Uta's Songs ~ One Piece Film Red
     ];
-    for album in spotify.api.albums(albums, Market::US).await? {
+    for album in spotify.api.albums(albums, None).await? {
         println!(" - {:?} ~ {} by {} (\x1b]8;;{}\x1b\\Cover\x1b]8;;\x1b\\)", album.album_type, album.name, album.artists[0].name, album.images.first().unwrap().url);
     }
     println!();
 
     println!("[Tracks: Ado ~ Utattemita]");
-    let mut tracks = spotify.api.album_tracks::<5, _, _>("2tGokYNjX87AAodtbLBYuf", Market::US)?;
+    let mut tracks = spotify.api.album_tracks::<5, _, _>("2tGokYNjX87AAodtbLBYuf", None)?;
     while let Some(page) = tracks.next().await? {
         for track in page.items {
             println!(" - {:0>2}:{:0>2} {}", track.duration.num_minutes(), track.duration.num_seconds() % 60, track.name);
@@ -51,8 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     println!("[Saved Albums]");
-    let mut tracks = spotify.api.saved_albums::<5, _>(Market::US)?;
     while let Some(page) = tracks.next().await? {
+        let mut tracks = spotify.api.saved_albums::<5, _>(None)?;
         for saved_album in page.items {
             println!(" - {}   {}", saved_album.added_at.format("%l-%M %P %b %e, %Y"), saved_album.album.name);
         }

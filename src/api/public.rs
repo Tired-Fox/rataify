@@ -5,7 +5,7 @@ use crate::{pares, Error};
 use super::{
     flow::AuthFlow,
     request::{self, IncludeGroup, IntoSpotifyId},
-    response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, NewReleases, Paginated, Track},
+    response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Categories, Category, Chapter, Chapters, Episode, NewReleases, Paginated, Track},
     IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
 
@@ -383,5 +383,178 @@ pub trait PublicApi: AuthFlow {
                 }
             },
         ))
+    }
+
+    /// Get a list of categories used to tag items in Spotify (on, for example, the Spotify player’s “Browse” tab).
+    ///
+    /// # Arguments
+    /// - `locale`: The desired language, consisting of a lowercase ISO 639-1 language code and an uppercase ISO 3166-1 alpha-2 country code, joined by an underscore.
+    fn browse_categories<const N: usize, L: IntoSpotifyParam>(&self, locale: L) -> Result<Paginated<Categories, HashMap<String, Categories>, Self, N>, Error> {
+        let mut url = format!("{API_BASE_URL}/browse/categories?limit={N}");
+
+        if let Some(locale) = locale.into_spotify_param() {
+            url.push_str(&format!("&locale={}", locale));
+        }
+
+        Ok(Paginated::new(
+            self.clone(),
+            Some(url),
+            None,
+            |c: HashMap<String, Categories>| {
+                let c = c.get("categories").unwrap().to_owned();
+                let next = c.next.clone();
+                let previous = c.previous.clone();
+                if c.items.is_empty() || (c.offset + c.limit >= c.total) {
+                    (c, previous, None)
+                } else {
+                    (c, previous, next)
+                }
+            },
+        ))
+    }
+
+    /// Get a single category used to tag items in Spotify (on, for example, the Spotify player’s “Browse” tab).
+    ///
+    /// # Arguments
+    /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the category.
+    /// - `locale`: The desired language, consisting of a lowercase ISO 639-1 language code and an uppercase ISO 3166-1 alpha-2 country code, joined by an underscore.
+    fn browse_category<I: IntoSpotifyId, L: IntoSpotifyParam>(&self, id: I, locale: L) -> impl Future<Output = Result<Category, Error>> {
+        async move {
+            let token = self.token().await?;
+
+            let SpotifyResponse { body, .. } = request::get!("browse/categories/{}", id.into_spotify_id())
+                .param("locale", locale)
+                .send(token)
+                .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+    
+    /// Get Spotify catalog information for a single audiobook chapter. Chapters are only available within the US, UK, Canada, Ireland, New Zealand and Australia markets.
+    ///
+    /// # Important Policy Notes
+    /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
+    fn chapter<I: IntoSpotifyId, M: IntoSpotifyParam>(&self, id: I, market: M) -> impl Future<Output = Result<Chapter, Error>> {
+        async move {
+            let token = self.token().await?;
+
+            let SpotifyResponse { body, .. } = request::get!("chapters/{}", id.into_spotify_id())
+                .param("market", market)
+                .send(token)
+                .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Get Spotify catalog information for several audiobook chapters identified by their Spotify IDs. Chapters are only available within the US, UK, Canada, Ireland, New Zealand and Australia markets.
+    ///
+    /// # Important Policy Notes
+    /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
+    fn chapters<D, I, M>(&self, id: I, market: M) -> impl Future<Output = Result<Vec<Chapter>, Error>>
+    where
+        D: IntoSpotifyId,
+        I: IntoIterator<Item = D>,
+        M: IntoSpotifyParam,
+    {
+        async move {
+            let token = self.token().await?;
+
+            let SpotifyResponse { body, .. } = request::get!("chapters")
+                .param("ids", id.into_iter().map(|id| id.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param("market", market)
+                .send(token)
+                .await?;
+
+            let chapters: HashMap<String, Vec<Chapter>> = pares!(&body)?;
+            Ok(chapters.get("chapters").unwrap().to_owned())
+        }
+    }
+
+    /// Get Spotify catalog information for a single episode identified by its unique Spotify ID.
+    ///
+    /// # Arguments
+    /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the episode.
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    ///
+    /// # Scopes
+    /// - `user-read-playback-position` [Optional]: Read your position in content you have played.
+    ///
+    /// # Important Policy Notes
+    /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
+    fn episode<I: IntoSpotifyId, M: IntoSpotifyParam>(&self, id: I, market: M) -> impl Future<Output = Result<Episode, Error>> {
+        async move {
+            let token = self.token().await?;
+            let SpotifyResponse { body, .. } = request::get!("episodes/{}", id.into_spotify_id())
+                .param("market", market)
+                .send(token)
+                .await?;
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Get Spotify catalog information for a single episode identified by its unique Spotify ID.
+    ///
+    /// # Arguments
+    /// - `ids`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the episodes.
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    ///
+    /// # Scopes
+    /// - `user-read-playback-position` [Optional]: Read your position in content you have played.
+    ///
+    /// # Important Policy Notes
+    /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
+    fn episodes<D, I, M>(&self, id: I, market: M) -> impl Future<Output = Result<Vec<Episode>, Error>>
+    where
+        D: IntoSpotifyId,
+        I: IntoIterator<Item = D>,
+        M: IntoSpotifyParam,
+    {
+        async move {
+            let token = self.token().await?;
+            let SpotifyResponse { body, .. } = request::get!("episodes")
+                .param("ids", id.into_iter().map(|id| id.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param("market", market)
+                .send(token)
+                .await?;
+
+            let episodes: HashMap<String, Vec<Episode>> = pares!(&body)?;
+            Ok(episodes.get("episodes").unwrap().to_owned())
+        }
+    }
+
+    /// Retrieve a list of available genres seed parameter values for [recommendations](https://developer.spotify.com/documentation/web-api/reference/get-recommendations).
+    fn available_genre_seeds(&self) -> impl Future<Output = Result<Vec<String>, Error>> {
+        async move {
+            let token = self.token().await?;
+            let SpotifyResponse { body, .. } = request::get!("recommendations/available-genre-seeds")
+                .send(token)
+                .await?;
+
+            let seeds: HashMap<String, Vec<String>> = pares!(&body)?;
+            Ok(seeds.get("genres").unwrap().to_owned())
+        }
+    }
+
+    /// Get the list of markets where Spotify is available.
+    fn available_markets(&self) -> impl Future<Output = Result<Vec<String>, Error>> {
+        async move {
+            let token = self.token().await?;
+            let SpotifyResponse { body, .. } = request::get!("markets")
+                .send(token)
+                .await?;
+
+            let seeds: HashMap<String, Vec<String>> = pares!(&body)?;
+            Ok(seeds.get("markets").unwrap().to_owned())
+        }
     }
 }

@@ -5,11 +5,11 @@
 - [x] Albums
 - [x] Artists
 - [x] Audiobooks
-- [ ] Categories
-- [ ] Chapters
-- [ ] Episodes
-- [ ] Genres
-- [ ] Markets
+- [x] Categories
+- [x] Chapters
+- [x] Episodes
+- [x] Genres
+- [x] Markets
 - [ ] Player
 - [ ] Playlists
 - [ ] Search

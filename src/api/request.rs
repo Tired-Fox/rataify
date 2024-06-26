@@ -1,4 +1,3 @@
-pub use super::markets::Market;
 use super::IntoSpotifyParam;
 
 #[macro_export]

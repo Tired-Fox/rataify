@@ -1,3 +1,5 @@
+use serde::{Serializer, Serialize, ser::SerializeMap};
+
 use super::IntoSpotifyParam;
 
 #[macro_export]
@@ -28,8 +30,8 @@ macro_rules! spotify_request_get {
 
 #[macro_export]
 macro_rules! spotify_request_post {
-    ($(rest: tt)*) => {
-        $crate::spotify_request!(post, $(rest)*)
+    ($($rest: tt)*) => {
+        $crate::spotify_request!(post, $($rest)*)
     }
 }
 
@@ -47,6 +49,7 @@ macro_rules! spotify_request_delete {
     }
 }
 
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
@@ -54,6 +57,7 @@ pub use crate::spotify_request_get as get;
 pub use crate::spotify_request_post as post;
 pub use crate::spotify_request_put as put;
 pub use crate::spotify_request_delete as delete;
+use crate::Error;
 
 use super::response::Uri;
 
@@ -132,3 +136,375 @@ impl IntoSpotifyParam for IncludeGroup {
         Some(self.to_string())
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QueryTag {
+    New,
+    Hipster
+}
+
+impl Display for QueryTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QueryTag::New => write!(f, "new"),
+            QueryTag::Hipster => write!(f, "hipster"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Query {
+    Text(String),
+    Artist(String),
+    Album(String),
+    Track(String),
+    Upc(String),
+    Isrc(String),
+    Genre(String),
+    Tag(QueryTag),
+    Year(String),
+}
+
+impl Query {
+    pub fn text<S: Display>(text: S) -> Self {
+        Self::Text(text.to_string())
+    }
+
+    pub fn artist<S: Display>(artist: S) -> Self {
+        Self::Artist(artist.to_string())
+    }
+
+    pub fn album<S: Display>(album: S) -> Self {
+        Self::Album(album.to_string())
+    }
+
+    pub fn track<S: Display>(track: S) -> Self {
+        Self::Track(track.to_string())
+    }
+
+    pub fn upc<S: Display>(upc: S) -> Self {
+        Self::Upc(upc.to_string())
+    }
+
+    pub fn isrc<S: Display>(isrc: S) -> Self {
+        Self::Isrc(isrc.to_string())
+    }
+
+    pub fn genre<S: Display>(genre: S) -> Self {
+        Self::Genre(genre.to_string())
+    }
+
+    pub fn tag(tag: QueryTag) -> Self {
+        Self::Tag(tag)
+    }
+
+    pub fn year<S: Display>(year: S) -> Self {
+        Self::Year(year.to_string())
+    }
+}
+
+impl Display for Query {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Query::Text(s) => write!(f, "{}", s),
+            Query::Artist(s) => write!(f, "artist:{}", s),
+            Query::Album(s) => write!(f, "album:{}", s),
+            Query::Track(s) => write!(f, "track:{}", s),
+            Query::Upc(s) => write!(f, "upc:{}", s),
+            Query::Isrc(s) => write!(f, "isrc:{}", s),
+            Query::Genre(s) => write!(f, "genre:{}", s),
+            Query::Tag(s) => write!(f, "tag:{}", s),
+            Query::Year(s) => write!(f, "year:{}", s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum SearchType {
+    Album,
+    Artist,
+    Playlist,
+    Track,
+    Show,
+    Episode,
+    Audiobook,
+}
+
+impl SearchType {
+    #[inline]
+    pub fn all() -> &'static [SearchType] {
+        &[
+            SearchType::Album,
+            SearchType::Artist,
+            SearchType::Playlist,
+            SearchType::Track,
+            SearchType::Show,
+            SearchType::Episode,
+            SearchType::Audiobook,
+        ]
+    }
+}
+
+impl Display for SearchType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchType::Album => write!(f, "album"),
+            SearchType::Artist => write!(f, "artist"),
+            SearchType::Playlist => write!(f, "playlist"),
+            SearchType::Track => write!(f, "track"),
+            SearchType::Show => write!(f, "show"),
+            SearchType::Episode => write!(f, "episode"),
+            SearchType::Audiobook => write!(f, "audiobook"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SeedId {
+    Artist(String),
+    Track(String),
+    Genre(String),
+}
+
+impl SeedId {
+    pub fn artist<S: Display>(artist: S) -> Self {
+        Self::Artist(artist.to_string())
+    }
+
+    pub fn track<S: Display>(track: S) -> Self {
+        Self::Track(track.to_string())
+    }
+
+    pub fn genre<S: Display>(genre: S) -> Self {
+        Self::Genre(genre.to_string())
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct RecommendationSeed {
+    pub seed_ids: Vec<SeedId>,
+    pub min_acousticness: Option<f32>,
+    pub min_danceability: Option<f32>,
+    pub min_duration_ms: Option<u32>,
+    pub min_energy: Option<f32>,
+    pub min_instrumentalness: Option<f32>,
+    pub min_key: Option<u32>,
+    pub min_liveness: Option<f32>,
+    pub min_loudness: Option<f32>,
+    pub min_mode: Option<u32>,
+    pub min_popularity: Option<f32>,
+    pub min_speechiness: Option<f32>,
+    pub min_tempo: Option<f32>,
+    pub min_time_signature: Option<u32>,
+    pub min_valence: Option<f32>,
+    pub max_acousticness: Option<f32>,
+    pub max_danceability: Option<f32>,
+    pub max_duration_ms: Option<u32>,
+    pub max_energy: Option<f32>,
+    pub max_instrumentalness: Option<f32>,
+    pub max_key: Option<u32>,
+    pub max_liveness: Option<f32>,
+    pub max_loudness: Option<f32>,
+    pub max_mode: Option<u32>,
+    pub max_popularity: Option<f32>,
+    pub max_speechiness: Option<f32>,
+    pub max_tempo: Option<f32>,
+    pub max_time_signature: Option<u32>,
+    pub max_valence: Option<f32>,
+    pub target_acousticness: Option<f32>,
+    pub target_danceability: Option<f32>,
+    pub target_duration_ms: Option<u32>,
+    pub target_energy: Option<f32>,
+    pub target_instrumentalness: Option<f32>,
+    pub target_key: Option<u32>,
+    pub target_liveness: Option<f32>,
+    pub target_loudness: Option<f32>,
+    pub target_mode: Option<u32>,
+    pub target_popularity: Option<f32>,
+    pub target_speechiness: Option<f32>,
+    pub target_tempo: Option<f32>,
+    pub target_time_signature: Option<u32>,
+    pub target_valence: Option<f32>,
+}
+
+struct Params(HashMap<String, String>);
+impl Params {
+    pub fn add<K: AsRef<str>, V: Display>(&mut self, key: K, value: V) -> &mut Self {
+        self.0.insert(key.as_ref().to_string(), value.to_string());
+        self
+    }
+
+    pub fn add_opt<K: AsRef<str>, V: Display>(&mut self, key: K, value: Option<V>) -> &mut Self {
+        if let Some(v) = value {
+            self.add(key, v);
+        }
+        self
+    }
+}
+
+impl RecommendationSeed {
+    pub fn into_params(&self) -> Result<String, Error> {
+        if self.seed_ids.len() > 5 {
+            return Err(Error::InvalidArgument("seed", "Seed must contain at most 5 seed IDs".to_string()))
+        } else if self.seed_ids.is_empty() {
+            return Err(Error::InvalidArgument("seed", "Seed must contain at least one seed ID".to_string()))
+        }
+
+        let mut params = Params(HashMap::new());
+        let artists = self.seed_ids.iter().filter_map(|id| match id {
+            SeedId::Artist(a) => Some(a.as_ref()),
+            _ => None,
+        }).collect::<Vec<&str>>();
+        let tracks = self.seed_ids.iter().filter_map(|id| match id {
+            SeedId::Track(t) => Some(t.as_ref()),
+            _ => None,
+        }).collect::<Vec<&str>>();
+        let genres = self.seed_ids.iter().filter_map(|id| match id {
+            SeedId::Genre(g) => Some(g.as_ref()),
+            _ => None,
+        }).collect::<Vec<&str>>();
+
+        if !artists.is_empty() {
+            params.add("seed_artists", artists.join(","));
+        }
+
+        if !tracks.is_empty() {
+            params.add("seed_tracks", tracks.join(","));
+        }
+
+        if !genres.is_empty() {
+            params.add("seed_genres", genres.join(","));
+        }
+
+        params
+            .add_opt("min_acousticness", self.min_acousticness)
+            .add_opt("min_danceability", self.min_danceability)
+            .add_opt("min_duration_ms", self.min_duration_ms)
+            .add_opt("min_energy", self.min_energy)
+            .add_opt("min_instrumentalness", self.min_instrumentalness)
+            .add_opt("min_key", self.min_key)
+            .add_opt("min_liveness", self.min_liveness)
+            .add_opt("min_loudness", self.min_loudness)
+            .add_opt("min_mode", self.min_mode)
+            .add_opt("min_popularity", self.min_popularity)
+            .add_opt("min_speechiness", self.min_speechiness)
+            .add_opt("min_tempo", self.min_tempo)
+            .add_opt("min_time_signature", self.min_time_signature)
+            .add_opt("min_valence", self.min_valence)
+            .add_opt("max_acousticness", self.max_acousticness)
+            .add_opt("max_danceability", self.max_danceability)
+            .add_opt("max_duration_ms", self.max_duration_ms)
+            .add_opt("max_energy", self.max_energy)
+            .add_opt("max_instrumentalness", self.max_instrumentalness)
+            .add_opt("max_key", self.max_key)
+            .add_opt("max_liveness", self.max_liveness)
+            .add_opt("max_loudness", self.max_loudness)
+            .add_opt("max_mode", self.max_mode)
+            .add_opt("max_popularity", self.max_popularity)
+            .add_opt("max_speechiness", self.max_speechiness)
+            .add_opt("max_tempo", self.max_tempo)
+            .add_opt("max_time_signature", self.max_time_signature)
+            .add_opt("max_valence", self.max_valence)
+            .add_opt("target_acousticness", self.target_acousticness)
+            .add_opt("target_danceability", self.target_danceability)
+            .add_opt("target_duration_ms", self.target_duration_ms)
+            .add_opt("target_energy", self.target_energy)
+            .add_opt("target_instrumentalness", self.target_instrumentalness)
+            .add_opt("target_key", self.target_key)
+            .add_opt("target_liveness", self.target_liveness)
+            .add_opt("target_loudness", self.target_loudness)
+            .add_opt("target_mode", self.target_mode)
+            .add_opt("target_popularity", self.target_popularity)
+            .add_opt("target_speechiness", self.target_speechiness)
+            .add_opt("target_tempo", self.target_tempo)
+            .add_opt("target_time_signature", self.target_time_signature)
+            .add_opt("target_valence", self.target_valence);
+
+        Ok(serde_urlencoded::to_string(&params.0)?)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct PlaylistDetails {
+    pub name: Option<String>,
+    pub public: Option<bool>,
+    pub collaborative: Option<bool>,
+    pub description: Option<String>,
+}
+
+impl PlaylistDetails {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn name<S: Display>(mut self, name: S) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn public(mut self, public: bool) -> Self {
+        self.public = Some(public);
+        self
+    }
+
+    pub fn collaborative(mut self, collaborative: bool) -> Self {
+        self.collaborative = Some(collaborative);
+        self
+    }
+
+    pub fn description<S: Display>(mut self, description: S) -> Self {
+        self.description = Some(description.to_string());
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlaylistAction {
+    /// Reorders the items in a playlist
+    Reorder {
+        /// The index of the first item to move
+        start: usize,
+        /// The number of items to move
+        length: usize,
+        /// The index to insert the item(s) before
+        insert: usize,
+    },
+    /// Replaces all items in a playlist
+    Uris(Vec<Uri>)
+}
+
+impl Serialize for PlaylistAction {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            PlaylistAction::Reorder { start, length, insert } => {
+                let mut map = serializer.serialize_map(Some(3))?;
+                map.serialize_entry("range_start", start)?;
+                map.serialize_entry("range_length", length)?;
+                map.serialize_entry("insert_before", insert)?;
+                map.end()
+            }
+            PlaylistAction::Uris(uris) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("uris", &uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())?;
+                map.end()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UriWrapper(pub Uri);
+impl Serialize for UriWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry("uri", &self.0.to_string())?;
+        map.end()
+    }
+}
+

@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         for item in page.items {
             println!(" - {}", item.name);
         }
-        if top_items.item_count() >= 4 {
+        if top_items.progress() >= 4 {
             break;
         }
     }

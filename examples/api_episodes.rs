@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!(" - {} @ {}", saved_episode.episode.show.name, saved_episode.episode.name);
         }
 
-        if saved_episodes.item_count() >= 6 {
+        if saved_episodes.progress() >= 6 {
             break;
         }
     }

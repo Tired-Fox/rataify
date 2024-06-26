@@ -50,6 +50,7 @@ impl From<StatusCode> for SpotifyErrorType {
 pub enum Error {
     Other(String),
     ScopesNotGranted(Vec<String>),
+    InvalidArgument(&'static str, String),
     Auth {
         code: u16,
         error: String,
@@ -73,6 +74,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             Error::Other(msg) => msg.clone(),
+            Error::InvalidArgument(name, msg) => format!("invalid argument '{}': {}", name, msg),
             Error::ScopesNotGranted(scopes) => format!(
                 "the following scopes are required but not granted: {}",
                 scopes.join(", ")

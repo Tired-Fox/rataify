@@ -40,8 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!(" - {} ({})", chapter.name, chapter.id);
         }
 
-        if chapters.item_count() < page.total {
-            println!(" - ...{} More Chapters...", page.total - chapters.item_count());
+        if chapters.progress() < page.total {
+            println!(" - ...{} More Chapters...", page.total - chapters.progress());
         }
     }
     println!();

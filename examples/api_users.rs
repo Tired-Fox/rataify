@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!(" - {}", artist.name);
         }
 
-        if followed_artists.item_count() >= 10 {
+        if followed_artists.progress() >= 10 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_secs(1));

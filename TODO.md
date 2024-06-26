@@ -10,10 +10,10 @@
 - [x] Episodes
 - [x] Genres
 - [x] Markets
+- [x] Search
+- [x] Shows
+- [x] Tracks
+- [x] Playlists
 - [ ] Player
-- [ ] Playlists
-- [ ] Search
-- [ ] Shows
-- [ ] Tracks
 - [x] Users
 

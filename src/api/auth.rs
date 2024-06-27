@@ -1,20 +1,20 @@
 use base64::Engine;
 use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{api::SpotifyResponse, Error};
+use crate::{api::{SpotifyResponse, uuid, alphabet}, Error};
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
     path::Path,
 };
-use uuid::Uuid;
 
+/// OAuth2 handler for scopes and redirect urls
 #[derive(Debug, Clone)]
 pub struct OAuth {
-    pub(crate) redirect: String,
-    pub(crate) state: Uuid,
-    pub(crate) scopes: HashSet<String>,
+    pub redirect: String,
+    pub state: String,
+    pub scopes: HashSet<String>,
 }
 
 pub trait IntoScopes {
@@ -55,7 +55,7 @@ impl OAuth {
     pub fn new<S: IntoScopes>(redirect: String, scopes: S) -> Self {
         Self {
             redirect,
-            state: Uuid::new_v4(),
+            state: uuid::<43>(alphabet::STATE),
             scopes: scopes.into_scopes(),
         }
     }
@@ -68,7 +68,7 @@ impl OAuth {
 
         Some(Self {
             redirect: std::env::var("TUPY_REDIRECT_URI").ok()?,
-            state: Uuid::new_v4(),
+            state: uuid::<43>(alphabet::STATE),
             scopes: scopes.into_scopes(),
         })
     }
@@ -97,7 +97,8 @@ where
         .ok_or(serde::de::Error::custom("Invalid date"))
 }
 
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// Spotify authentication token
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
     pub(crate) access_token: String,
     pub(crate) token_type: String,
@@ -116,6 +117,10 @@ impl Token {
     }
     pub fn ttype(&self) -> &str {
         &self.token_type
+    }
+
+    pub fn is_expired(&self) -> bool {
+        self.expires <= Local::now()
     }
 
     pub fn save(&self, path: &Path, id: &str) -> Result<(), Error> {

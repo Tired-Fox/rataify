@@ -1,16 +1,24 @@
 use std::{collections::HashMap, fmt::Debug, future::Future};
 
 use base64::Engine;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::{pares, Error};
+use crate::{pares, Error, api::{Uri, scopes}};
 
 use super::{
     flow::AuthFlow,
-    request::{self, IntoSpotifyId, PlaylistAction, PlaylistDetails, TimeRange, UriWrapper},
-    response::{FeaturedPlaylists, FollowedArtists, IntoUserTopItemType, PagedPlaylists, Paginated, Playlist, PlaylistItems, Profile, SavedAlbums, SavedAudiobooks, SavedEpisodes, SavedShows, SavedTracks, TopItems, Uri},
-    scopes, validate_scope, IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
+    request::{
+        self, IntoDuration, IntoSpotifyId, Play, PlaylistAction, PlaylistDetails, TimeRange,
+        Timestamp, UriWrapper, SUPPORTED_ITEMS
+    },
+    response::{
+        Device, FollowedArtists, IntoUserTopItemType, PagedPlaylists, Paginated, Playback,
+        Playlist, PlaylistItems, Profile, Queue, RecentlyPlayed, Repeat, SavedAlbums,
+        SavedAudiobooks, SavedEpisodes, SavedShows, SavedTracks, TopItems,
+    },
+    validate_scope, IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
 
 pub trait UserApi: AuthFlow {
@@ -22,7 +30,7 @@ pub trait UserApi: AuthFlow {
     fn current_user_profile(&self) -> impl Future<Output = Result<Profile, Error>> {
         async {
             // Get the token: This will refresh it if needed
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me").send(token).await?;
             Ok(pares!(&body)?)
         }
@@ -64,7 +72,7 @@ pub trait UserApi: AuthFlow {
         user_id: I,
     ) -> impl Future<Output = Result<Profile, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("users/{}", user_id.into_spotify_id())
                 .send(token)
                 .await?;
@@ -94,7 +102,7 @@ pub trait UserApi: AuthFlow {
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
             )?;
-            let token = self.token().await?;
+            let token = self.token();
             request::put!("playlists/{}/followers", playlist_id.into_spotify_id())
                 .body(format!("{{\"public\":{}}}", public))
                 .send(token)
@@ -123,7 +131,7 @@ pub trait UserApi: AuthFlow {
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
             )?;
-            let token = self.token().await?;
+            let token = self.token();
             request::delete!("playlists/{}/followers", playlist_id.into_spotify_id())
                 .send(token)
                 .await?;
@@ -167,7 +175,7 @@ pub trait UserApi: AuthFlow {
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
-            let token = self.token().await?;
+            let token = self.token();
             request::put!("me/following?type=artist")
                 .body(
                     json! {{
@@ -194,7 +202,7 @@ pub trait UserApi: AuthFlow {
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
-            let token = self.token().await?;
+            let token = self.token();
             request::delete!("me/following?type=artist")
                 .body(
                     json! {{
@@ -222,7 +230,7 @@ pub trait UserApi: AuthFlow {
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
-            let token = self.token().await?;
+            let token = self.token();
             request::put!("me/following?type=user")
                 .body(
                     json! {{
@@ -249,7 +257,7 @@ pub trait UserApi: AuthFlow {
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
-            let token = self.token().await?;
+            let token = self.token();
             request::delete!("me/following?type=user")
                 .body(
                     json! {{
@@ -283,7 +291,7 @@ pub trait UserApi: AuthFlow {
                     .collect::<Vec<String>>()
                     .join(",")
             )
-            .send(self.token().await?)
+            .send(self.token())
             .await?;
 
             Ok(pares!(&body)?)
@@ -310,7 +318,7 @@ pub trait UserApi: AuthFlow {
                     .collect::<Vec<String>>()
                     .join(",")
             )
-            .send(self.token().await?)
+            .send(self.token())
             .await?;
 
             Ok(pares!(&body)?)
@@ -358,7 +366,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
-            let token = self.token().await?;
+            let token = self.token();
             request::put!("me/albums")
                 .body(
                     json! {{
@@ -387,7 +395,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
-            let token = self.token().await?;
+            let token = self.token();
             request::delete!("me/albums")
                 .body(
                     json! {{
@@ -416,7 +424,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/albums/contains")
                 .param(
                     "ids",
@@ -439,7 +447,9 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn saved_audiobooks<const N: usize>(&self) -> Result<Paginated<SavedAudiobooks, SavedAudiobooks, Self, N>, Error> {
+    fn saved_audiobooks<const N: usize>(
+        &self,
+    ) -> Result<Paginated<SavedAudiobooks, SavedAudiobooks, Self, N>, Error> {
         validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
@@ -453,14 +463,21 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn save_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn save_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
-            let ids = ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(",");
+            let ids = ids
+                .into_iter()
+                .map(|s| s.into_spotify_id())
+                .collect::<Vec<String>>()
+                .join(",");
             request::put!("me/audiobooks")
                 .param("ids", ids)
-                .send(self.token().await?)
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -471,13 +488,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn remove_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn remove_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/audiobooks")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(","))
-                .send(self.token().await?)
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<String>>()
+                        .join(","),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -488,13 +514,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn check_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_saved_audiobooks<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/audiobooks/contains")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<String>>().join(","))
-                .send(self.token().await?)
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<String>>()
+                        .join(","),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(pares!(&body)?)
@@ -510,7 +545,10 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
     /// - `user-read-playback-position` [Optional]: Read your position in content you have played.
-    fn saved_episodes<const N: usize, M: IntoSpotifyParam>(&self, market: M) -> Result<Paginated<SavedEpisodes, SavedEpisodes, Self, N>, Error> {
+    fn saved_episodes<const N: usize, M: IntoSpotifyParam>(
+        &self,
+        market: M,
+    ) -> Result<Paginated<SavedEpisodes, SavedEpisodes, Self, N>, Error> {
         let mut url = format!("{API_BASE_URL}/me/episodes?limit={N}");
 
         if let Some(market) = market.into_spotify_param() {
@@ -525,7 +563,7 @@ pub trait UserApi: AuthFlow {
             |c: SavedEpisodes| c,
         ))
     }
-    
+
     /// Save one or more episodes to the current user's library.
     ///
     /// # Arguments
@@ -533,15 +571,21 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn save_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn save_episodes<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/episodes")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
-                }}.to_string())
-                .send(self.token().await?)
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                    }}
+                    .to_string(),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -555,15 +599,21 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn remove_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn remove_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/episodes")
-                .body(json!{{
-                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
-                }}.to_string())
-                .send(self.token().await?)
+                .body(
+                    json! {{
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                    }}
+                    .to_string(),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -577,13 +627,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn check_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item=D>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_saved_episodes<D: IntoSpotifyId, I: IntoIterator<Item = D>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/episodes/contains")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
-                .send(self.token().await?)
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(pares!(&body)?)
@@ -597,7 +656,9 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn saved_shows<const N: usize>(&self) -> Result<Paginated<SavedShows, SavedShows, Self, N>, Error> {
+    fn saved_shows<const N: usize>(
+        &self,
+    ) -> Result<Paginated<SavedShows, SavedShows, Self, N>, Error> {
         validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
@@ -614,13 +675,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn save_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn save_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/shows")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
-                .send(self.token().await?)
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -634,13 +704,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn remove_saved_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn remove_saved_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/shows")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
-                .send(self.token().await?)
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -654,13 +733,22 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn check_saved_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_saved_shows<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/shows/contains")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
                 .send(token)
                 .await?;
 
@@ -676,7 +764,10 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn saved_tracks<const N: usize, M: IntoSpotifyParam>(&self, market: M) -> Result<Paginated<SavedTracks, SavedTracks, Self, N>, Error> {
+    fn saved_tracks<const N: usize, M: IntoSpotifyParam>(
+        &self,
+        market: M,
+    ) -> Result<Paginated<SavedTracks, SavedTracks, Self, N>, Error> {
         let mut url = format!("{API_BASE_URL}/me/tracks?limit={N}");
 
         if let Some(market) = market.into_spotify_param() {
@@ -693,21 +784,27 @@ pub trait UserApi: AuthFlow {
     }
 
     /// Save one or more tracks to the current user's 'Your Music' library.
-    /// 
+    ///
     /// # Arguments
     /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the tracks. Maximum: 50 IDs.
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn save_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn save_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/tracks")
-                .body(json!({
-                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
-                }).to_string())
-                .send(self.token().await?)
+                .body(
+                    json!({
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                    })
+                    .to_string(),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -721,15 +818,21 @@ pub trait UserApi: AuthFlow {
     ///
     /// # Scopes
     /// - `user-library-modify`: Manage your saved content.
-    fn remove_saved_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<(), Error>> {
+    fn remove_saved_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/tracks")
-                .body(json!({
-                    "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
-                }).to_string())
-                .send(self.token().await?)
+                .body(
+                    json!({
+                        "ids": ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>()
+                    })
+                    .to_string(),
+                )
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -737,19 +840,28 @@ pub trait UserApi: AuthFlow {
     }
 
     /// Check if one or more tracks is already saved in the current Spotify user's 'Your Music' library.
-    /// 
+    ///
     /// # Arguments
     /// - `ids`: A list of the [Spotify IDs](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the tracks. Maximum: 50 IDs.
     ///
     /// # Scopes
     /// - `user-library-read`: Access your saved content.
-    fn check_saved_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(&self, ids: I) -> impl Future<Output = Result<Vec<bool>, Error>> {
+    fn check_saved_tracks<S: IntoSpotifyId, I: IntoIterator<Item = S>>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
             validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/tracks/contains")
-                .param("ids", ids.into_iter().map(|s| s.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|s| s.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
                 .send(token)
                 .await?;
 
@@ -768,12 +880,19 @@ pub trait UserApi: AuthFlow {
     /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
     /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
     /// - Spotify [content may not be used to train machine learning or AI models](https://developer.spotify.com/terms#section-iv-restrictions)
-    fn playlist_items<const N: usize, I, M>(&self, id: I, market: M) -> Result<Paginated<PlaylistItems, PlaylistItems, Self, N>, Error>
+    fn playlist_items<const N: usize, I, M>(
+        &self,
+        id: I,
+        market: M,
+    ) -> Result<Paginated<PlaylistItems, PlaylistItems, Self, N>, Error>
     where
         I: IntoSpotifyId,
         M: IntoSpotifyParam,
     {
-        let mut url = format!("{API_BASE_URL}/playlists/{}/tracks?limit={N}&additional_types=track,episode", id.into_spotify_id());
+        let mut url = format!(
+            "{API_BASE_URL}/playlists/{}/tracks?limit={N}&additional_types={SUPPORTED_ITEMS}",
+            id.into_spotify_id()
+        );
 
         if let Some(m) = market.into_spotify_param() {
             url.push_str(&format!("&market={}", m));
@@ -796,13 +915,23 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage your public playlists.
     /// - `playlist-modify-private`: Manage your private playlists.
-    fn update_playlist_details<I: IntoSpotifyId>(&self, id: I, details: PlaylistDetails) -> impl Future<Output = Result<(), Error>> {
+    fn update_playlist_details<I: IntoSpotifyId>(
+        &self,
+        id: I,
+        details: PlaylistDetails,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PRIVATE, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
 
             request::put!("playlists/{}", id.into_spotify_id())
                 .body(serde_json::to_string(&details)?)
-                .send(self.token().await?)
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -818,13 +947,23 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage your public playlists.
     /// - `playlist-modify-private`: Manage your private playlists.
-    fn update_playlist_items<I: IntoSpotifyId>(&self, id: I, action: PlaylistAction) -> impl Future<Output = Result<(), Error>> {
+    fn update_playlist_items<I: IntoSpotifyId>(
+        &self,
+        id: I,
+        action: PlaylistAction,
+    ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PRIVATE, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
 
             request::put!("playlists/{}/tracks", id.into_spotify_id())
                 .body(serde_json::to_string(&action)?)
-                .send(self.token().await?)
+                .send(self.token())
                 .await?;
 
             Ok(())
@@ -841,24 +980,42 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage your public playlists.
     /// - `playlist-modify-private`: Manage your private playlists.
-    fn add_items<I, U>(&self, id: I, uris: U, at: Option<usize>) -> impl Future<Output = Result<String, Error>>
+    fn add_items<I, U>(
+        &self,
+        id: I,
+        uris: U,
+        at: Option<usize>,
+    ) -> impl Future<Output = Result<String, Error>>
     where
         I: IntoSpotifyId,
         U: IntoIterator<Item = Uri>,
     {
         let mut body: HashMap<&str, serde_json::Value> = HashMap::new();
-        body.insert("uris", uris.into_iter().map(|u| u.to_string().into()).collect::<Vec<serde_json::Value>>().into());
+        body.insert(
+            "uris",
+            uris.into_iter()
+                .map(|u| u.to_string().into())
+                .collect::<Vec<serde_json::Value>>()
+                .into(),
+        );
         if let Some(at) = at {
             body.insert("position", at.into());
         }
 
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PRIVATE, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
 
-            let SpotifyResponse { body, .. } = request::post!("playlists/{}/tracks", id.into_spotify_id())
-                .body(serde_json::to_string(&body)?)
-                .send(self.token().await?)
-                .await?;
+            let SpotifyResponse { body, .. } =
+                request::post!("playlists/{}/tracks", id.into_spotify_id())
+                    .body(serde_json::to_string(&body)?)
+                    .send(self.token())
+                    .await?;
 
             let result: HashMap<String, String> = pares!(&body)?;
             Ok(result.get("snapshot_id").unwrap().to_owned())
@@ -881,15 +1038,27 @@ pub trait UserApi: AuthFlow {
         U: IntoIterator<Item = Uri>,
     {
         let mut body: HashMap<&str, Vec<UriWrapper>> = HashMap::new();
-        body.insert("tracks", uris.into_iter().map(|u| UriWrapper(u)).collect::<Vec<UriWrapper>>());
+        body.insert(
+            "tracks",
+            uris.into_iter()
+                .map(|u| UriWrapper(u))
+                .collect::<Vec<UriWrapper>>(),
+        );
 
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PRIVATE, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
 
-            let SpotifyResponse { body, .. } = request::delete!("playlists/{}/tracks", id.into_spotify_id())
-                .body(serde_json::to_string(&body)?)
-                .send(self.token().await?)
-                .await?;
+            let SpotifyResponse { body, .. } =
+                request::delete!("playlists/{}/tracks", id.into_spotify_id())
+                    .body(serde_json::to_string(&body)?)
+                    .send(self.token())
+                    .await?;
 
             let result: HashMap<String, String> = pares!(&body)?;
             Ok(result.get("snapshot_id").unwrap().to_owned())
@@ -905,12 +1074,24 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-read-private` (Current and Other user): Access your private playlists.
     /// - `playlist-read-collaborative` (Other user): Access your collaborative playlists.
-    fn playlists<const N: usize, I: IntoSpotifyId>(&self, id: Option<I>) -> Result<Paginated<PagedPlaylists, PagedPlaylists, Self, N>, Error> {
+    fn playlists<const N: usize, I: IntoSpotifyId>(
+        &self,
+        id: Option<I>,
+    ) -> Result<Paginated<PagedPlaylists, PagedPlaylists, Self, N>, Error> {
         if let Some(id) = id {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_READ_PRIVATE, scopes::PLAYLIST_READ_COLLABORATIVE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_READ_PRIVATE,
+                    scopes::PLAYLIST_READ_COLLABORATIVE,
+                ],
+            )?;
             Ok(Paginated::new(
                 self.clone(),
-                Some(format!("{API_BASE_URL}/users/{}/playlists?limit={N}", id.into_spotify_id())),
+                Some(format!(
+                    "{API_BASE_URL}/users/{}/playlists?limit={N}",
+                    id.into_spotify_id()
+                )),
                 None,
                 |c: PagedPlaylists| c,
             ))
@@ -926,7 +1107,7 @@ pub trait UserApi: AuthFlow {
     }
 
     /// Create a playlist for a Spotify user. (The playlist will be empty until you add tracks.) Each user is generally limited to a maximum of 11000 playlists.
-    /// 
+    ///
     /// # Arguments
     /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the user.
     /// - `details`: The playlist details to create.
@@ -934,14 +1115,25 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-modify-public`: Manage your public playlists.
     /// - `playlist-modify-private`: Manage your private playlists.
-    fn create_playlist<I: IntoSpotifyId>(&self, id: I, details: PlaylistDetails) -> impl Future<Output = Result<Playlist, Error>> {
+    fn create_playlist<I: IntoSpotifyId>(
+        &self,
+        id: I,
+        details: PlaylistDetails,
+    ) -> impl Future<Output = Result<Playlist, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_MODIFY_PUBLIC, scopes::PLAYLIST_MODIFY_PRIVATE])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::PLAYLIST_MODIFY_PUBLIC,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                ],
+            )?;
 
-            let SpotifyResponse { body, .. } = request::post!("users/{}/playlists", id.into_spotify_id())
-                .body(serde_json::to_string(&details)?)
-                .send(self.token().await?)
-                .await?;
+            let SpotifyResponse { body, .. } =
+                request::post!("users/{}/playlists", id.into_spotify_id())
+                    .body(serde_json::to_string(&details)?)
+                    .send(self.token())
+                    .await?;
 
             Ok(pares!(&body)?)
         }
@@ -958,18 +1150,450 @@ pub trait UserApi: AuthFlow {
     /// - `ugc-image-upload`: Upload images to Spotify on your behalf.
     /// - `playlist-modify-public`: Manage your public playlists.
     /// - `playlist-modify-private`: Manage your private playlists.
-    fn add_playlist_cover_image<I: IntoSpotifyId, D: AsRef<[u8]>>(&self, id: I, image: D) -> impl Future<Output = Result<(), Error>> {
+    fn add_playlist_cover_image<I: IntoSpotifyId, D: AsRef<[u8]>>(
+        &self,
+        id: I,
+        image: D,
+    ) -> impl Future<Output = Result<(), Error>> {
         let image = base64::engine::general_purpose::STANDARD.encode(image);
         async move {
             if image.bytes().len() > (256 * 1024) {
-                return Err(Error::InvalidArgument("image", "Image size is too large. Max size is 256KB after base64 encoding".to_string()))
+                return Err(Error::InvalidArgument(
+                    "image",
+                    "Image size is too large. Max size is 256KB after base64 encoding".to_string(),
+                ));
             }
 
-            validate_scope(self.scopes(), &[scopes::UGC_IMAGE_UPLOAD, scopes::PLAYLIST_MODIFY_PRIVATE, scopes::PLAYLIST_MODIFY_PUBLIC])?;
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::UGC_IMAGE_UPLOAD,
+                    scopes::PLAYLIST_MODIFY_PRIVATE,
+                    scopes::PLAYLIST_MODIFY_PUBLIC,
+                ],
+            )?;
 
             request::put!("playlists/{}/images", id.into_spotify_id())
                 .body(serde_json::to_string(&image)?)
-                .send(self.token().await?)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    ///Get information about the user’s current playback state, including track or episode, progress, and active device.
+    ///
+    /// # Arguments
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    ///
+    /// # Scopes
+    /// - `user-read-playback-state`: Read your currently playing content and Spotify Connect devices information.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn playback_state<M: IntoSpotifyParam>(
+        &self,
+        market: M,
+    ) -> impl Future<Output = Result<Option<Playback>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_READ_PLAYBACK_STATE])?;
+
+            let token = self.token();
+            let SpotifyResponse { body, status, .. } = request::get!("me/player")
+                .param("market", market)
+                .param("additional_types", SUPPORTED_ITEMS)
+                .send(token)
+                .await?;
+
+            if status == StatusCode::NO_CONTENT {
+                Ok(None)
+            } else {
+                Ok(Some(pares!(&body)?))
+            }
+        }
+    }
+
+    /// Transfer playback to a new device and optionally begin playback. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to which playback should be transferred.
+    /// - `play`: If `true` the new device should start playing immediately.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    fn transfer_playback<I: IntoSpotifyId>(
+        &self,
+        id: I,
+        play: bool,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player")
+                .body(
+                    json!({
+                        "device_ids": [id.into_spotify_id()],
+                        "play": play
+                    })
+                    .to_string(),
+                )
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Get information about a user’s available Spotify Connect devices. Some device models are not supported and will not be listed in the API response.
+    ///
+    /// # Scopes
+    /// - `user-read-playback-state`: Read your currently playing content and Spotify Connect devices information.
+    fn devices(&self) -> impl Future<Output = Result<Vec<Device>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_READ_PLAYBACK_STATE])?;
+
+            let SpotifyResponse { body, .. } = request::get!("me/player/devices")
+                .send(self.token())
+                .await?;
+
+            let devices: HashMap<String, Vec<Device>> = pares!(&body)?;
+            Ok(devices.get("devices").unwrap().to_owned())
+        }
+    }
+
+    /// Get the object currently being played on the user's Spotify account.
+    ///
+    /// # Arguments
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    ///
+    /// # Scopes
+    /// - `user-read-currently-playing`: Read your currently playing content.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn currently_playing<M: IntoSpotifyParam>(
+        &self,
+        market: M,
+    ) -> impl Future<Output = Result<Option<Playback>, Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_READ_CURRENTLY_PLAYING])?;
+
+            let SpotifyResponse { body, .. } = request::get!("me/player/currently-playing")
+                .param("market", market)
+                .param("additional_types", SUPPORTED_ITEMS)
+                .send(self.token())
+                .await?;
+
+            Ok(Some(pares!(&body)?))
+        }
+    }
+
+    /// Start a new context or resume current playback on the user's active device. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    /// - `action`: The action to perform. Whether this is playing an artist, album, or playlist. Playing multiple tracks, episodes, or chapters. Or just resuming playback.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    fn play<I: IntoSpotifyParam>(
+        &self,
+        action: Play,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/play")
+                .param("device_id", id)
+                .body(serde_json::to_string(&action)?)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Pause playback on the user's account. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn pause<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/pause")
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Skips to next track in the user’s queue. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn next<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::post!("me/player/next")
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Skips to previous track in the user’s queue. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn prev<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::post!("me/player/previous")
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Seeks to the given position in the user’s currently playing track. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn seek<I: IntoSpotifyParam, P: IntoDuration>(
+        &self,
+        position: P,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/seek")
+                .param("position_ms", position.into_duration().num_milliseconds())
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Set the repeat mode for the user's playback. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `repeat`: The new repeat mode
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    fn repeat<I: IntoSpotifyParam>(
+        &self,
+        repeat: Repeat,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/repeat")
+                .param("state", repeat)
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    ///Set the volume for the user’s current playback device. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `volume`: The new volume, in the range 0..100
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    fn volume<I: IntoSpotifyParam>(
+        &self,
+        volume: u8,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/volume")
+                .param("volume_percent", volume)
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Toggle shuffle on or off for user’s playback. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `shuffle`: The new shuffle mode
+    /// - `id` [Optional]: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the device to target.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    fn shuffle<I: IntoSpotifyParam>(
+        &self,
+        shuffle: bool,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::put!("me/player/shuffle")
+                .param("state", shuffle)
+                .param("device_id", id)
+                .send(self.token())
+                .await?;
+
+            Ok(())
+        }
+    }
+
+    /// Get tracks from the current user's recently played tracks. Note: Currently doesn't support podcast episodes.
+    ///
+    /// # Arguments
+    /// - `timestamp`: A timestamp in ISO 8601 format: yyyy-MM-ddTHH:mm:ss. Use this parameter to specify the user’s playback position. If no timestamp is specified, the most recent position is assumed.
+    /// <N> Is the number of items to return per page. Maximum: 50
+    ///
+    /// # Scopes
+    /// - `user-read-recently-played`: Read a user’s recently played tracks.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn recently_played<const N: usize>(
+        &self,
+        timestamp: Timestamp,
+    ) -> Result<Paginated<RecentlyPlayed, RecentlyPlayed, Self, N>, Error> {
+        validate_scope(self.scopes(), &[scopes::USER_READ_RECENTLY_PLAYED])?;
+
+        Ok(Paginated::new(
+            self.clone(),
+            Some(format!(
+                "{API_BASE_URL}/me/player/recently-played?limit={N}&{}={}",
+                timestamp.name(),
+                timestamp.into_spotify_param().unwrap()
+            )),
+            None,
+            |c: RecentlyPlayed| c,
+        ))
+    }
+
+    /// Get the list of objects that make up the user's queue.
+    ///
+    /// # Scopes
+    /// - `user-read-currently-playing`: Read your currently playing content.
+    /// - `user-read-playback-state`: Read your currently playing content and Spotify Connect devices information.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn queue(&self) -> impl Future<Output = Result<Queue, Error>> {
+        async move {
+            validate_scope(
+                self.scopes(),
+                &[
+                    scopes::USER_READ_CURRENTLY_PLAYING,
+                    scopes::USER_READ_PLAYBACK_STATE,
+                ],
+            )?;
+
+            let SpotifyResponse { body, .. } = request::get!("me/player/queue")
+                .send(self.token())
+                .await?;
+
+            Ok(pares!(&body)?)
+        }
+    }
+
+    /// Add an item to the end of the user's current playback queue. This API only works for users who have Spotify Premium. The order of execution is not guaranteed when you use this API with other Player API endpoints.
+    ///
+    /// # Arguments
+    /// - `uri`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the item to add to the queue.
+    ///
+    /// # Scopes
+    /// - `user-modify-playback-state`: Control playback on your Spotify clients and Spotify Connect devices.
+    ///
+    /// # Important Policy Notes
+    /// - Streaming [aplication may not be commercial](https://developer.spotify.com/policy/#iv-streaming-and-commercial-use:~:text=Commercial%20use%20restrictions,Streaming%20SDA%20itself.)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Do not [synchronize Spotify content](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20synchronize%20any%20sound%20recordings%20with%20any%20visual%20media,.)
+    /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
+    fn add_to_queue<I: IntoSpotifyParam>(
+        &self,
+        uri: Uri,
+        id: I,
+    ) -> impl Future<Output = Result<(), Error>> {
+        async move {
+            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+
+            request::post!("me/player/queue")
+                .param("uri", uri)
+                .param("device_id", id)
+                .send(self.token())
                 .await?;
 
             Ok(())

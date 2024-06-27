@@ -1,5 +1,7 @@
 # TODO
 
+- 7AXnDxOcbYCymLv2krA3Hx
+
 ## Sections
 
 - [x] Albums
@@ -14,6 +16,14 @@
 - [x] Shows
 - [x] Tracks
 - [x] Playlists
-- [ ] Player
+- [x] Player
 - [x] Users
+
+## Tasks
+
+- [ ] Cleanup
+    - [ ] Consolidate Response and Request types and structure
+    - [ ] Input to methods account for outputs of other methods
+    - [ ] Max flexibility with parameter inputs without requiring to many manual explicit type declarations
+- [ ] Interactive TUI examples 
 

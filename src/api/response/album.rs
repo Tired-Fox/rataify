@@ -1,7 +1,8 @@
 use serde::Deserialize;
 use crate::impl_paged;
+use crate::api::Uri;
 
-use super::{deserialize_added_at, SimplifiedTrack, ExternalUrls, Image, ReleaseDate, Restrictions, SimplifiedArtist, Uri};
+use super::{deserialize_added_at, SimplifiedTrack, ExternalUrls, Image, ReleaseDate, Restrictions, SimplifiedArtist};
 use chrono::{DateTime, Local};
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]

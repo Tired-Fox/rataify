@@ -1,12 +1,14 @@
 use base64::Engine;
-use chrono::Local;
 use sha2::{Digest, Sha256};
-use std::{collections::HashSet, fmt::Debug, net::SocketAddr, str::FromStr};
-use tokio::net::TcpListener;
+use std::{collections::HashSet, fmt::Debug};
 
-use super::{AuthFlow, CacheToken, Callback, Config, OAuth, Token, Credentials};
+use super::{AuthFlow, Config, Credentials, OAuth, Token};
+
+#[cfg(feature = "caching")]
+use super::CacheToken;
+
 use crate::{
-    api::{PublicApi, SpotifyResponse, UserApi},
+    api::{PublicApi, SpotifyResponse, UserApi, uuid, alphabet},
     Error, Locked, Shared,
 };
 
@@ -16,22 +18,7 @@ pub struct CodeChallenge {
     pub(crate) verifier: String,
 }
 
-static PKCE_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
-
 impl CodeChallenge {
-    fn verifier<const N: usize>(alphabet: &[u8]) -> String {
-        debug_assert!(N >= 43);
-        debug_assert!(N <= 128);
-
-        let mut buf = [0u8; N];
-        getrandom::getrandom(&mut buf).unwrap();
-        let range = alphabet.len();
-
-        buf.iter()
-            .map(|b| alphabet[*b as usize % range] as char)
-            .collect()
-    }
-
     fn sha256<S: AsRef<[u8]>>(value: S) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(value);
@@ -43,7 +30,7 @@ impl CodeChallenge {
     }
 
     pub fn new() -> Self {
-        let verifier = Self::verifier::<43>(PKCE_ALPHABET);
+        let verifier = uuid::<43>(alphabet::PKCE);
         let challenge = Self::base64encode(Self::sha256(&verifier));
         Self {
             verifier,
@@ -52,71 +39,73 @@ impl CodeChallenge {
     }
 
     pub fn refresh(&mut self) {
-        self.verifier = Self::verifier::<43>(PKCE_ALPHABET);
+        self.verifier = uuid::<43>(alphabet::PKCE);
         self.challenge = Self::base64encode(Self::sha256(&self.verifier));
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Flow {
-    pub(crate) credentials: Credentials,
-    pub(crate) oauth: OAuth,
+    pub credentials: Credentials,
+    pub oauth: OAuth,
     pub(crate) config: Config,
     pub(crate) token: Shared<Locked<Token>>,
     pub(crate) code: CodeChallenge,
 }
 
+#[cfg(feature = "caching")]
 impl CacheToken for Flow {
     fn id() -> &'static str {
         "pkce"
     }
 }
 
-impl Flow {
-    pub async fn new_authentication_code(&self) -> Result<String, Error> {
-        let uri = hyper::Uri::from_str(self.oauth.redirect.as_str())?;
+impl AuthFlow for Flow {
+    type Credentials = Credentials;
 
-        // Mini http server to serve callback and parse auth code from spotify
-        let addr = SocketAddr::from(([127, 0, 0, 1], uri.port_u16().unwrap_or(8888)));
-        let listener = TcpListener::bind(addr).await?;
+    fn setup(credentials: Credentials, oauth: OAuth, config: Config) -> Result<Self, Error> {
+        #[cfg(feature = "caching")]
+        {
+            let flow = Self {
+                config,
+                token: Shared::new(Locked::new(Token::default())),
+                credentials,
+                oauth,
+                code: CodeChallenge::new(),
+            };
 
-        println!("Listening on {}", addr);
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-
-        let callback = Callback::new(self.oauth.state, tx);
-        let handle = tokio::task::spawn(async move {
-            loop {
-                let (stream, _) = listener.accept().await.unwrap();
-                let io = hyper_util::rt::TokioIo::new(stream);
-
-                let cb = callback.clone();
-                tokio::task::spawn(async move {
-                    if let Err(err) = hyper::server::conn::http1::Builder::new()
-                        .serve_connection(io, cb)
-                        .await
-                    {
-                        eprintln!("Error serving connection to spotify callback: {:?}", err);
-                    }
-                });
-            }
-        });
-
-        // Open the default browser to the spotify login/authentication page.
-        // When it is successful, the callback will be triggered and the result is returned
-        open::that(self.authorization_url()?)?;
-
-        let result = rx.recv().await.ok_or("Spotify did not send a response")?;
-        handle.abort();
-        Ok(result)
+            if flow
+                .config
+                .cache_path()
+                .join(format!("spotify.{}.token", Flow::id()))
+                .exists()
+                || flow.config.caching()
+            {
+                match Token::load(flow.config.cache_path(), Flow::id()) {
+                    Ok(token) => {
+                        *flow.token.lock().unwrap() = token;
+                    },
+                    _ => log::debug!("Failed to load cached token"),
+                }
+            };
+            Ok(flow)
+        }
+        #[cfg(not(feature = "caching"))]
+        {
+            Ok(Self {
+                config,
+                token: Shared::new(Locked::new(Token::default())),
+                credentials,
+                oauth,
+                code: CodeChallenge::new(),
+            })
+        }
     }
 
-    async fn new_token(&self) -> Result<(), Error> {
-        let authentication_code = self.new_authentication_code().await?;
-
+    async fn request_access_token(&self, auth_code: &str) -> Result<(), Error> {
         let body = serde_urlencoded::to_string([
             ("grant_type", "authorization_code".to_string()),
-            ("code", authentication_code.clone()),
+            ("code", auth_code.to_string()),
             ("redirect_uri", self.oauth.redirect.clone()),
             ("client_id", self.credentials.id.clone()),
             ("code_verifier", self.code.verifier.to_string()),
@@ -130,6 +119,8 @@ impl Flow {
             .await?;
 
         let token = Token::from_auth(SpotifyResponse::from_response(result).await?)?;
+
+        #[cfg(feature = "caching")]
         if self.config.caching() {
             token.save(self.config.cache_path(), Flow::id())?;
         }
@@ -141,48 +132,8 @@ impl Flow {
         *self.token.lock().unwrap() = token;
         Ok(())
     }
-}
 
-impl AuthFlow for Flow {
-    type Credentials = Credentials;
-
-    async fn setup(
-        credentials: Credentials,
-        oauth: OAuth,
-        config: Config,
-    ) -> Result<Self, Error> {
-        let flow = Self {
-            config,
-            token: Shared::new(Locked::new(Token::default())),
-            credentials,
-            oauth,
-            code: CodeChallenge::new(),
-        };
-
-        if !flow
-            .config
-            .cache_path()
-            .join(format!("spotify.{}.token", Flow::id()))
-            .exists()
-            || !flow.config.caching()
-        {
-            flow.new_token().await?;
-        } else {
-            match Token::load(flow.config.cache_path(), Flow::id()) {
-                Ok(token) => {
-                    *flow.token.lock().unwrap() = token;
-                }
-                Err(err) => {
-                    log::debug!("Failed to load cached token: {:?}", err);
-                    flow.new_token().await?;
-                }
-            }
-        };
-
-        Ok(flow)
-    }
-
-    fn authorization_url(&self) -> Result<String, serde_urlencoded::ser::Error> {
+    fn authorization_url(&self, _show_dialog: bool) -> Result<String, serde_urlencoded::ser::Error> {
         Ok(format!(
             "https://accounts.spotify.com/authorize?{}",
             serde_urlencoded::to_string([
@@ -210,7 +161,6 @@ impl AuthFlow for Flow {
     }
 
     async fn refresh(&self) -> Result<(), Error> {
-        log::warn!("Refreshing token");
         let refresh_token = self.token.lock().unwrap().refresh_token.clone();
         if let Some(refresh_token) = refresh_token {
             let client = reqwest::Client::new();
@@ -224,36 +174,37 @@ impl AuthFlow for Flow {
                     ("client_id", self.credentials.id.clone()),
                 ])?)
                 .send()
-                .await?;
+                .await.map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?;
 
-            let body = String::from_utf8(response.bytes().await?.to_vec())?;
-            let result = self.token.lock().unwrap().parse_refresh(&body);
-            if let Err(err) = result {
-                log::error!("{:?}", err);
-                self.new_token().await?;
-                return Ok(());
-            }
+            let body = String::from_utf8(
+                response.bytes().await.map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?
+                    .to_vec()).map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?;
+            self.token.lock().unwrap().parse_refresh(&body).map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?;
+            {
+                let token = self.token.lock().unwrap();
 
-            let token = self.token.lock().unwrap();
-            if let Some(callback) = self.config.callback() {
-                callback.call(token.clone())?;
+                #[cfg(feature = "caching")]
+                if self.config.caching() {
+                    token.save(self.config.cache_path(), Flow::id()).map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?;
+                }
+
+                if let Some(callback) = self.config.callback() {
+                    callback.call(token.clone()).map_err(|e| Error::refresh(e, self.oauth.redirect.clone(), self.oauth.state.clone()))?;
+                }
             }
-            token.save(self.config.cache_path(), Flow::id())?;
         } else {
-            self.new_token().await?;
+            return Err(Error::refresh("Missing refresh token", self.oauth.redirect.clone(), self.oauth.state.clone()));
         }
 
         Ok(())
     }
 
-    async fn token(&self) -> Result<Token, Error> {
-        if self.token.lock().unwrap().scopes != self.oauth.scopes {
-            self.new_token().await?;
-        } else if self.token.lock().unwrap().expires <= Local::now() {
-            self.refresh().await?;
-        }
+    fn token(&self) -> Token {
+        self.token.lock().unwrap().clone()
+    }
 
-        Ok(self.token.lock().unwrap().clone())
+    fn set_token(&self, token: Token) {
+        *self.token.lock().unwrap() = token;
     }
 }
 

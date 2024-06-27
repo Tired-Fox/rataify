@@ -1,6 +1,6 @@
 use std::{fmt::Display, future::Future, pin::Pin, string::FromUtf8Error, sync::{Arc, Mutex}};
 
-use hyper::StatusCode;
+use reqwest::StatusCode;
 
 pub mod api;
 
@@ -49,6 +49,11 @@ impl From<StatusCode> for SpotifyErrorType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     Other(String),
+    TokenRefresh {
+        message: String,
+        redirect: String,
+        state: String,
+    },
     ScopesNotGranted(Vec<String>),
     InvalidArgument(&'static str, String),
     Auth {
@@ -67,6 +72,9 @@ impl Error {
     pub fn custom<S: Display>(msg: S) -> Self {
         Error::Other(msg.to_string())
     }
+    pub fn refresh<S: Display>(msg: S, redirect: String, state: String) -> Self {
+        Error::TokenRefresh { message: msg.to_string(), redirect, state }
+    }
 }
 
 impl std::error::Error for Error {}
@@ -74,6 +82,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
             Error::Other(msg) => msg.clone(),
+            Error::TokenRefresh { message, .. } => format!("failed to refresh spotify auth access token: {message}"),
             Error::InvalidArgument(name, msg) => format!("invalid argument '{}': {}", name, msg),
             Error::ScopesNotGranted(scopes) => format!(
                 "the following scopes are required but not granted: {}",
@@ -105,12 +114,6 @@ impl From<serde_json::Error> for Error {
 
 impl From<serde_path_to_error::Error<serde_json::Error>> for Error {
     fn from(err: serde_path_to_error::Error<serde_json::Error>) -> Self {
-        Self::custom(err)
-    }
-}
-
-impl From<hyper::http::uri::InvalidUri> for Error {
-    fn from(err: hyper::http::uri::InvalidUri) -> Self {
         Self::custom(err)
     }
 }

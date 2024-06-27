@@ -1,11 +1,12 @@
 use crate::impl_paged;
 use chrono::{DateTime, Duration, Local};
 use serde::Deserialize;
+use crate::api::Uri;
 
 use super::{
     deserialize_added_at, deserialize_duration, deserialize_duration_seconds,
     deserialize_timestamp, Album, ExternalIds, ExternalUrls, IntoUserTopItemType, Restrictions,
-    SimplifiedArtist, Uri,
+    SimplifiedArtist,
 };
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

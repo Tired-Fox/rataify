@@ -1,7 +1,8 @@
 use serde::Deserialize;
 use crate::impl_paged;
+use crate::api::Uri;
 
-use super::{Cursor, ExternalUrls, Followers, Image, IntoUserTopItemType, Paged, SimplifiedAlbum, Uri};
+use super::{Cursors, ExternalUrls, Followers, Image, IntoUserTopItemType, Paged, SimplifiedAlbum};
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Artist {
@@ -55,7 +56,7 @@ pub struct FollowedArtists {
     /// URL to the next page of items.
     pub next: Option<String>,
     /// The cursors used to find the next set of items.
-    pub cursors: Cursor,
+    pub cursors: Cursors,
     /// The total number of items available to return.
     pub total: usize,
     pub items: Vec<Artist>,

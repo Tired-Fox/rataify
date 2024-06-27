@@ -7,6 +7,7 @@ mod search;
 mod track;
 mod user;
 mod playlist;
+mod player;
 
 pub use album::*;
 pub use artist::*;
@@ -17,11 +18,12 @@ pub use search::*;
 pub use track::*;
 pub use user::*;
 pub use playlist::*;
+pub use player::*;
 
-use std::{fmt::{Debug, Display}, rc::Rc, str::FromStr};
+use std::{fmt::Debug, rc::Rc};
 
 use chrono::{DateTime, Local, MappedLocalTime, NaiveDate, NaiveDateTime, TimeZone};
-use hyper::Method;
+use reqwest::Method;
 use serde::{Deserialize, Deserializer};
 
 use crate::{Error, Pagination};
@@ -92,6 +94,15 @@ where
     Ok(Local.from_utc_datetime(&naive))
 }
 
+pub fn deserialize_datetime<'de, D>(deserializer: D) -> Result<DateTime<Local>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    let naive = NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%.3fZ").map_err(serde::de::Error::custom)?;
+    Ok(Local.from_utc_datetime(&naive))
+}
+
 pub fn deserialize_added_at_opt<'de, D>(deserializer: D) -> Result<Option<DateTime<Local>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -124,6 +135,16 @@ where
 {
     let ms = i64::deserialize(deserializer)?;
     Ok(chrono::Duration::milliseconds(ms))
+}
+
+pub fn deserialize_duration_opt<'de, D>(deserializer: D) -> Result<Option<chrono::Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(match Option::<i64>::deserialize(deserializer)? {
+        Some(ms) => Some(chrono::Duration::milliseconds(ms)),
+        None => None,
+    })
 }
 
 pub fn deserialize_duration_seconds<'de, D>(deserializer: D) -> Result<chrono::Duration, D::Error>
@@ -232,17 +253,15 @@ where
 {
     type Item = R;
     async fn next(&mut self) -> Result<Option<Self::Item>, Error> {
-        self.offset += 1;
-
         let next = match self.next.as_ref() {
             Some(next) => next,
             None => return Ok(None),
         };
 
-        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token().await?).await?;
+        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token()).await?;
         let eb = body.clone();
         let body = body.into_boxed_str();
-        match pares!(P: Box::leak(body)) {
+        let response = match pares!(P: Box::leak(body)) {
             Ok(item) => {
                 let result = (self.resolve)(item);
                 self.total = result.total();
@@ -261,23 +280,24 @@ where
                 eprintln!("{eb:?}");
                 Err(Error::custom(e))
             }
-        }
+        };
+        self.offset += 1;
+        response
     }
 
     async fn prev(&mut self) -> Result<Option<Self::Item>, Error> {
         if self.offset < 1 {
             return Ok(None);
         }
-        self.offset -= 1;
 
         let prev = match self.prev.as_ref() {
             Some(prev) => prev,
             None => return Ok(None),
         };
 
-        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, prev).send_raw(self.flow.token().await?).await?;
+        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, prev).send_raw(self.flow.token()).await?;
         let body = body.into_boxed_str();
-        match pares!(P: Box::leak(body)) {
+        let response = match pares!(P: Box::leak(body)) {
             Ok(item) => {
                 let result = (self.resolve)(item);
                 self.total = result.total();
@@ -293,7 +313,9 @@ where
                 Ok(Some(result))
             },
             Err(e) => Err(Error::custom(e))
-        }
+        };
+        self.offset -= 1;
+        response
     }
 }
 
@@ -327,123 +349,6 @@ pub struct Image {
     /// The image width in pixels.
     #[serde(default, deserialize_with = "deserialize_optional_usize")]
     pub width: usize,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Resource {
-  Artist,
-  Album,
-  Track,
-  Playlist,
-  User,
-  Show,
-  Episode,
-  Collection,
-  CollectionYourEpisodes,
-}
-
-impl Display for Resource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Resource::Album => "album",
-            Resource::Artist => "artist",
-            Resource::Track => "track",
-            Resource::Playlist => "playlist",
-            Resource::User => "user",
-            Resource::Show => "show",
-            Resource::Episode => "episode",
-            Resource::Collection => "collection",
-            Resource::CollectionYourEpisodes => "collectionyourepisodes",
-        })
-    }
-}
-
-impl FromStr for Resource {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "album" => Ok(Self::Album),
-            "artist" => Ok(Self::Artist),
-            "track" => Ok(Self::Track),
-            "playlist" => Ok(Self::Playlist),
-            "user" => Ok(Self::User),
-            "show" => Ok(Self::Show),
-            "episode" => Ok(Self::Episode),
-            "collection" => Ok(Self::Collection),
-            "collectionyourepisodes" => Ok(Self::CollectionYourEpisodes),
-            _ => Err("Invalid spotify uri".into()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Uri {
-    resource: Resource,
-    id: String,
-}
-
-impl Display for Uri {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "spotify:{}:{}", self.resource, self.id)
-    }
-}
-
-impl<'de> Deserialize<'de> for Uri {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        let parts = s.splitn(3, ':').collect::<Vec<_>>();
-        let id = parts[2].to_string();
-        Ok(Self {
-            resource: Resource::from_str(parts[1]).map_err(serde::de::Error::custom)?,
-            id
-        })
-    }
-}
-
-impl Uri {
-    /// Id of the spotify uri
-    pub fn id(&self) -> &str {
-        self.id.as_str()
-    }
-
-    /// Type of the spotify uri
-    pub fn resource(&self) -> Resource {
-        self.resource
-    }
-
-    pub fn artist<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Artist, id: id.to_string() }
-    }
-
-    pub fn album<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Album, id: id.to_string() }
-    }
-
-    pub fn track<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Track, id: id.to_string() }
-    }
-
-    pub fn playlist<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Playlist, id: id.to_string() }
-    }
-
-    pub fn user<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::User, id: id.to_string() }
-    }
-
-    pub fn show<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Show, id: id.to_string() }
-    }
-
-    pub fn episode<S: Display>(id: S) -> Self {
-        Uri { resource: Resource::Episode, id: id.to_string() }
-    }
-
 }
 
 impl<'de> Deserialize<'de> for AlbumType {
@@ -598,7 +503,7 @@ pub struct ExternalIds {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct Cursor {
+pub struct Cursors {
     /// The cursor to use as key to find the next page of items.
     pub after: Option<String>,
     /// The cursor to use as key to find the previous page of items.
@@ -621,4 +526,11 @@ pub struct ResumePoint {
     /// The user's most recent position in the episode in milliseconds.
     #[serde(deserialize_with = "deserialize_duration")]
     pub resume_position: chrono::Duration,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Item {
+    Track(Box<Track>),
+    Episode(Box<Episode>),
 }

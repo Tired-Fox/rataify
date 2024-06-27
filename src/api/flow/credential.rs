@@ -2,6 +2,9 @@ use std::{env, fmt::Display};
 
 use base64::Engine;
 
+/// User credentials to authenticate with the Spotify API.
+///
+/// Note: The Pkce flow does not require a client secret. All other flows require a client secret.
 #[derive(Debug, Clone)]
 pub struct Credentials { 
     pub(crate) id: String,

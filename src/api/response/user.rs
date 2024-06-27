@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 
 use serde::Deserialize;
+use crate::api::Uri;
 
-use super::{ExternalUrls, Followers, Image, Paged, Uri};
+use super::{ExternalUrls, Followers, Image, Paged};
 
 
 /// Explicit content settings

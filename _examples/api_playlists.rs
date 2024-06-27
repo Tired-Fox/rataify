@@ -2,7 +2,8 @@ use std::env::args;
 
 use tupy::{
     api::{
-        auth::OAuth, flow::{Credentials, Pkce}, request::{PlaylistAction, PlaylistDetails}, response::{PlaylistItem, Uri}, scopes, PublicApi, Spotify, UserApi
+        Uri,
+        auth::OAuth, flow::{Credentials, Pkce}, request::{PlaylistAction, PlaylistDetails}, response::Item, scopes, PublicApi, Spotify, UserApi
     },
     Pagination,
 };
@@ -32,8 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(page) = items.next().await? {
         for item in page.items {
             match item.item {
-                PlaylistItem::Track(track) => println!(" - {}", track.name),
-                PlaylistItem::Episode(episode) => println!(" - {}", episode.name),
+                Item::Track(track) => println!(" - {}", track.name),
+                Item::Episode(episode) => println!(" - {}", episode.name),
             }
         }
     }
@@ -57,8 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(page) = items.next().await? {
             for item in page.items {
                 match item.item {
-                    PlaylistItem::Track(track) => println!(" - {}", track.name),
-                    PlaylistItem::Episode(episode) => println!(" - {}", episode.name),
+                    Item::Track(track) => println!(" - {}", track.name),
+                    Item::Episode(episode) => println!(" - {}", episode.name),
                 }
             }
         }
@@ -72,8 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(page) = items.next().await? {
             for item in page.items {
                 match item.item {
-                    PlaylistItem::Track(track) => println!(" - {}", track.name),
-                    PlaylistItem::Episode(episode) => println!(" - {}", episode.name),
+                    Item::Track(track) => println!(" - {}", track.name),
+                    Item::Episode(episode) => println!(" - {}", episode.name),
                 }
             }
         }
@@ -95,8 +96,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(page) = items.next().await? {
         for item in page.items {
             match item.item {
-                PlaylistItem::Track(track) => current_items.push(track.uri.clone()),
-                PlaylistItem::Episode(episode) => current_items.push(episode.uri.clone()),
+                Item::Track(track) => current_items.push(track.uri.clone()),
+                Item::Episode(episode) => current_items.push(episode.uri.clone()),
             }
         }
     }

@@ -1,4 +1,9 @@
+use chrono::DateTime;
+use chrono::Duration;
+use chrono::Local;
 use serde::{Serializer, Serialize, ser::SerializeMap};
+use serde_json::json;
+use serde_json::Value;
 
 use super::IntoSpotifyParam;
 
@@ -6,17 +11,17 @@ use super::IntoSpotifyParam;
 macro_rules! spotify_request {
     ($type: ident, $url: literal) => {
         paste::paste! {
-            $crate::api::SpotifyRequest::<String>::new(hyper::Method::[<$type:upper>], format!($url))
+            $crate::api::SpotifyRequest::<String>::new(reqwest::Method::[<$type:upper>], format!($url))
         }
     };
     ($type: ident, $url: expr) => {
         paste::paste! {
-            $crate::api::SpotifyRequest::<String>::new(hyper::Method::[<$type:upper>], $url)
+            $crate::api::SpotifyRequest::<String>::new(reqwest::Method::[<$type:upper>], $url)
         }
     };
     ($type: ident, $url: literal, $($param: expr),*) => {
         paste::paste! {
-            $crate::api::SpotifyRequest::<String>::new(hyper::Method::[<$type:upper>], format!($url, $($param,)*))
+            $crate::api::SpotifyRequest::<String>::new(reqwest::Method::[<$type:upper>], format!($url, $($param,)*))
         }
     }
 }
@@ -59,7 +64,9 @@ pub use crate::spotify_request_put as put;
 pub use crate::spotify_request_delete as delete;
 use crate::Error;
 
-use super::response::Uri;
+use super::Uri;
+
+pub static SUPPORTED_ITEMS: &str = "track,episode";
 
 pub trait IntoSpotifyId {
     fn into_spotify_id(self) -> String;
@@ -505,6 +512,187 @@ impl Serialize for UriWrapper {
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry("uri", &self.0.to_string())?;
         map.end()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Play {
+    Artist(String),
+    Album {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Playlist {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Queue {
+        uris: Vec<Uri>,
+        position: Duration,
+    },
+    Resume
+}
+
+pub trait IntoDuration {
+    fn into_duration(self) -> Duration;
+}
+
+macro_rules! impl_into_duration {
+    ($($typ: ty),* , |$self: ident| { $impl: expr }) => {
+        $(
+            impl IntoDuration for $typ {
+                fn into_duration($self) -> Duration {
+                    $impl
+                }
+            }
+        )*
+    }
+}
+
+impl_into_duration!(u8, i8, u16, i16, u32, i32, u64, i64, usize, isize, |self| { Duration::milliseconds(self as i64) });
+impl_into_duration!(f32, f64, |self| {
+    Duration::seconds(self as i64) + Duration::milliseconds((self.fract() * 1000.0) as i64)
+});
+
+impl IntoDuration for Duration {
+    fn into_duration(self) -> Duration {
+        self
+    }
+}
+
+impl Play {
+    pub fn artist<I: IntoSpotifyId>(id: I) -> Self {
+        Self::Artist(id.into_spotify_id())
+    }
+
+    pub fn album<P, I>(id: I, offset: Option<usize>, position: P) -> Self
+    where
+        P: IntoDuration,
+        I: IntoSpotifyId,
+    {
+        Self::Album {
+            id: id.into_spotify_id(),
+            offset,
+            position: position.into_duration(),
+        }
+    }
+
+    pub fn playlist<P, I>(id: I, offset: Option<usize>, position: P) -> Self
+    where
+        P: IntoDuration,
+        I: IntoSpotifyId,
+    {
+        Self::Playlist {
+            id: id.into_spotify_id(),
+            offset,
+            position: position.into_duration(),
+        }
+    }
+
+    pub fn queue<U, P>(uris: U, position: P) -> Self
+    where
+        U: IntoIterator<Item = Uri>,
+        P: IntoDuration,
+    {
+        Self::Queue {
+            uris: uris.into_iter().collect(),
+            position: position.into_duration(),
+        }
+    }
+}
+
+impl Serialize for Play {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer {
+        
+        match self {
+            Play::Artist(id) => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("context_uri", &format!("spotify:artist:{id}"))?;
+                map.serialize_entry("position", &0)?;
+                map.end()
+            },
+            Play::Album { id, offset, position } => {
+                let mut values = HashMap::from([
+                    ("context_uri", Value::from(format!("spotify:album:{id}"))),
+                    ("position", Value::from(position.num_milliseconds())),
+                ]);
+
+                if let Some(offset) = offset {
+                    values.insert("offset", json!({
+                        "position": offset
+                    }));
+                }
+
+                let mut map = serializer.serialize_map(Some(values.len()))?;
+                for (k, v) in values {
+                    map.serialize_entry(k, &v)?;
+                }
+                map.end()
+            },
+            Play::Playlist { id, offset, position } => {
+                let mut values = HashMap::from([
+                    ("context_uri", Value::from(format!("spotify:playlist:{id}"))),
+                    ("position", Value::from(position.num_milliseconds())),
+                ]);
+
+                if let Some(offset) = offset {
+                    values.insert("offset", json!({
+                        "position": offset
+                    }));
+                }
+
+                let mut map = serializer.serialize_map(Some(values.len()))?;
+                for (k, v) in values {
+                    map.serialize_entry(k, &v)?;
+                }
+                map.end()
+            },
+            Play::Queue { uris, position } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("uris", &uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())?;
+                map.serialize_entry("position", &position.num_milliseconds())?;
+                map.end()
+            },
+            Play::Resume => {
+                serializer.serialize_map(Some(0))?.end()
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Timestamp {
+    Before(DateTime<Local>),
+    After(DateTime<Local>),
+}
+
+impl Timestamp {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Timestamp::Before(_) => "before",
+            Timestamp::After(_) => "after",
+        }
+    }
+
+    pub fn before_now() -> Self {
+        Self::Before(Local::now())
+    }
+
+    pub fn after_now() -> Self {
+        Self::After(Local::now())
+    }
+}
+
+impl IntoSpotifyParam for Timestamp {
+    fn into_spotify_param(self) -> Option<String> {
+        Some(match self {
+            Timestamp::Before(dt) => dt.timestamp_millis().to_string(),
+            Timestamp::After(dt) => dt.timestamp_millis().to_string(),
+        })
     }
 }
 

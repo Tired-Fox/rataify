@@ -1,8 +1,9 @@
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Deserializer};
 use crate::impl_paged;
+use crate::api::Uri;
 
-use super::{deserialize_added_at_opt, Episode, ExternalUrls, Followers, Image, Track, Uri};
+use super::{deserialize_added_at_opt, ExternalUrls, Followers, Image, Item};
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct TracksLink {
@@ -30,13 +31,6 @@ pub struct Owner {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum PlaylistItem {
-    Track(Box<Track>),
-    Episode(Box<Episode>),
-}
-
-#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct PlaylistItemInfo {
     /// The date and time the track or episode was added. Note: some very old playlists may return null in this field
     #[serde(deserialize_with = "deserialize_added_at_opt")]
@@ -46,7 +40,7 @@ pub struct PlaylistItemInfo {
     /// Whether this track or episode is a [local file](https://developer.spotify.com/documentation/web-api/concepts/playlists#local-files) or not.
     pub  is_local: bool,
     #[serde(rename = "track")]
-    pub item: PlaylistItem,
+    pub item: Item,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Default)]

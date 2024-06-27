@@ -1,7 +1,8 @@
 use serde::Deserialize;
 use crate::impl_paged;
+use crate::api::Uri;
 
-use super::{deserialize_duration, ExternalUrls, Image, ReleaseDate, Restrictions, ResumePoint, Uri, CopyRight, deserialize_added_at};
+use super::{deserialize_duration, ExternalUrls, Image, ReleaseDate, Restrictions, ResumePoint, CopyRight, deserialize_added_at};
 use chrono::{Duration, DateTime, Local};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

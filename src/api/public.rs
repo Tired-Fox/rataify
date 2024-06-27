@@ -4,9 +4,11 @@ use crate::{pares, Error};
 
 use super::{
     flow::AuthFlow,
-    request::{self, IncludeGroup, IntoSpotifyId, Query, RecommendationSeed, SearchType},
+    request::{self, IncludeGroup, IntoSpotifyId, Query, RecommendationSeed, SearchType, SUPPORTED_ITEMS},
     response::{
-        Album, AlbumTracks, Artist, ArtistAlbums, AudioAnalysis, AudioFeatures, Audiobook, Categories, Category, Chapter, Chapters, Episode, FeaturedPlaylists, Image, NewReleases, PagedPlaylists, Paginated, Playlist, Recommendations, Search, Show, ShowEpisodes, Track
+        Album, AlbumTracks, Artist, ArtistAlbums, AudioAnalysis, AudioFeatures, Audiobook,
+        Categories, Category, Chapter, Chapters, Episode, FeaturedPlaylists, Image, NewReleases,
+        PagedPlaylists, Paginated, Playlist, Recommendations, Search, Show, ShowEpisodes, Track,
     },
     IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
@@ -25,7 +27,7 @@ pub trait PublicApi: AuthFlow {
                 "playlists/{}/followers/contains",
                 playlist_id.into_spotify_id()
             )
-            .send(self.token().await?)
+            .send(self.token())
             .await?;
             let values: Vec<bool> = pares!(&body)?;
             Ok(*values.first().unwrap_or(&false))
@@ -67,7 +69,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Album, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } =
                 request::get!("albums/{}", album_id.into_spotify_id())
@@ -95,7 +97,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Vec<Album>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("albums")
                 .param(
@@ -163,7 +165,7 @@ pub trait PublicApi: AuthFlow {
     /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
     fn artist<I: IntoSpotifyId>(&self, id: I) -> impl Future<Output = Result<Artist, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("artists/{}", id.into_spotify_id())
                 .send(token)
@@ -187,7 +189,7 @@ pub trait PublicApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<Artist>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("artists")
                 .param(
@@ -252,7 +254,7 @@ pub trait PublicApi: AuthFlow {
             self.clone(),
             Some(url),
             None,
-            |c: ArtistAlbums| c, 
+            |c: ArtistAlbums| c,
         ))
     }
 
@@ -276,7 +278,7 @@ pub trait PublicApi: AuthFlow {
         M: IntoSpotifyParam,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } =
                 request::get!("artists/{}/top-tracks", id.into_spotify_id())
@@ -303,7 +305,7 @@ pub trait PublicApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<Vec<Artist>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } =
                 request::get!("artists/{}/related-artists", id.into_spotify_id())
@@ -331,7 +333,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Audiobook, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("audiobooks/{}", id.into_spotify_id())
                 .param("market", market)
@@ -358,7 +360,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Vec<Audiobook>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("audiobooks")
                 .param(
@@ -444,7 +446,7 @@ pub trait PublicApi: AuthFlow {
         locale: L,
     ) -> impl Future<Output = Result<Category, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } =
                 request::get!("browse/categories/{}", id.into_spotify_id())
@@ -468,7 +470,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Chapter, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("chapters/{}", id.into_spotify_id())
                 .param("market", market)
@@ -496,7 +498,7 @@ pub trait PublicApi: AuthFlow {
         M: IntoSpotifyParam,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("chapters")
                 .param(
@@ -534,7 +536,7 @@ pub trait PublicApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Episode, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("episodes/{}", id.into_spotify_id())
                 .param("market", market)
                 .send(token)
@@ -567,7 +569,7 @@ pub trait PublicApi: AuthFlow {
         M: IntoSpotifyParam,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("episodes")
                 .param(
                     "ids",
@@ -588,7 +590,7 @@ pub trait PublicApi: AuthFlow {
     /// Retrieve a list of available genres seed parameter values for [recommendations](https://developer.spotify.com/documentation/web-api/reference/get-recommendations).
     fn available_genre_seeds(&self) -> impl Future<Output = Result<Vec<String>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } =
                 request::get!("recommendations/available-genre-seeds")
                     .send(token)
@@ -602,7 +604,7 @@ pub trait PublicApi: AuthFlow {
     /// Get the list of markets where Spotify is available.
     fn available_markets(&self) -> impl Future<Output = Result<Vec<String>, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("markets").send(token).await?;
 
             let seeds: HashMap<String, Vec<String>> = pares!(&body)?;
@@ -618,17 +620,31 @@ pub trait PublicApi: AuthFlow {
         include_external: bool,
     ) -> Result<Search<N, Self>, Error> {
         if query.is_empty() {
-            return Err(Error::InvalidArgument("query", "Query must contain at least one search term".to_string()))
+            return Err(Error::InvalidArgument(
+                "query",
+                "Query must contain at least one search term".to_string(),
+            ));
         }
 
         if types.is_empty() {
-            return Err(Error::InvalidArgument("types", "Types must contain at least one result type to search for".to_string()))
+            return Err(Error::InvalidArgument(
+                "types",
+                "Types must contain at least one result type to search for".to_string(),
+            ));
         }
 
-        let mut url = format!("{API_BASE_URL}/search?{}",
+        let mut url = format!(
+            "{API_BASE_URL}/search?{}",
             serde_urlencoded::to_string([
                 ("limit", N.to_string()),
-                ("q", query.iter().map(|q| q.to_string()).collect::<Vec<_>>().join(" ")),
+                (
+                    "q",
+                    query
+                        .iter()
+                        .map(|q| q.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
             ])?
         );
 
@@ -656,9 +672,13 @@ pub trait PublicApi: AuthFlow {
     /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
     /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
     /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
-    fn show<I: IntoSpotifyId, M: IntoSpotifyParam>(&self, id: I, market: M) -> impl Future<Output = Result<Show, Error>> {
+    fn show<I: IntoSpotifyId, M: IntoSpotifyParam>(
+        &self,
+        id: I,
+        market: M,
+    ) -> impl Future<Output = Result<Show, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("shows/{}", id.into_spotify_id())
                 .param("market", market)
                 .send(token)
@@ -684,9 +704,15 @@ pub trait PublicApi: AuthFlow {
         M: IntoSpotifyParam,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("shows")
-                .param("ids", ids.into_iter().map(|id| id.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|id| id.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
                 .param("market", market)
                 .send(token)
                 .await?;
@@ -737,7 +763,7 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get Spotify catalog information for a single track identified by its unique Spotify ID.
-    /// 
+    ///
     /// # Arguments
     /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the track.
     /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
@@ -746,9 +772,13 @@ pub trait PublicApi: AuthFlow {
     /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
     /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
     /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
-    fn track<I: IntoSpotifyId, M: IntoSpotifyParam>(&self, id: I, market: M) -> impl Future<Output = Result<Track, Error>> {
+    fn track<I: IntoSpotifyId, M: IntoSpotifyParam>(
+        &self,
+        id: I,
+        market: M,
+    ) -> impl Future<Output = Result<Track, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("tracks/{}", id.into_spotify_id())
                 .param("market", market)
                 .send(token)
@@ -758,7 +788,7 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get Spotify catalog information for multiple tracks based on their Spotify IDs.
-    /// 
+    ///
     /// # Arguments
     /// - `ids`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the tracks. Maximum: 100 IDs.
     /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
@@ -774,9 +804,15 @@ pub trait PublicApi: AuthFlow {
         M: IntoSpotifyParam,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("tracks")
-                .param("ids", id.into_iter().map(|id| id.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param(
+                    "ids",
+                    id.into_iter()
+                        .map(|id| id.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
                 .param("market", market)
                 .send(token)
                 .await?;
@@ -787,18 +823,22 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get audio feature information for a single track identified by its unique Spotify ID.
-    /// 
+    ///
     /// # Arguments
     /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the track.
     ///
     /// # Important Policy Notes
     /// - Spotify [content may not be used to train machine learning or AI models](https://developer.spotify.com/terms#section-iv-restrictions)
-    fn track_audio_feature<I: IntoSpotifyId>(&self, id: I) -> impl Future<Output = Result<AudioFeatures, Error>> {
+    fn track_audio_feature<I: IntoSpotifyId>(
+        &self,
+        id: I,
+    ) -> impl Future<Output = Result<AudioFeatures, Error>> {
         async move {
-            let token = self.token().await?;
-            let SpotifyResponse { body, .. } = request::get!("audio-features/{}", id.into_spotify_id())
-                .send(token)
-                .await?;
+            let token = self.token();
+            let SpotifyResponse { body, .. } =
+                request::get!("audio-features/{}", id.into_spotify_id())
+                    .send(token)
+                    .await?;
             Ok(pares!(&body)?)
         }
     }
@@ -811,15 +851,24 @@ pub trait PublicApi: AuthFlow {
     ///
     /// # Important Policy Notes
     /// - Spotify [content may not be used to train machine learning or AI models](https://developer.spotify.com/terms#section-iv-restrictions)
-    fn track_audio_features<D, I>(&self, ids: I) -> impl Future<Output = Result<Vec<AudioFeatures>, Error>>
+    fn track_audio_features<D, I>(
+        &self,
+        ids: I,
+    ) -> impl Future<Output = Result<Vec<AudioFeatures>, Error>>
     where
         D: IntoSpotifyId,
         I: IntoIterator<Item = D>,
     {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("audio-features")
-                .param("ids", ids.into_iter().map(|id| id.into_spotify_id()).collect::<Vec<_>>().join(","))
+                .param(
+                    "ids",
+                    ids.into_iter()
+                        .map(|id| id.into_spotify_id())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                )
                 .send(token)
                 .await?;
 
@@ -829,15 +878,19 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get a low-level audio analysis for a track in the Spotify catalog. The audio analysis describes the track’s structure and musical content, including rhythm, pitch, and timbre.
-    /// 
+    ///
     /// # Arguments
     /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) for the track.
-    fn track_audio_analysis<I: IntoSpotifyId>(&self, id: I) -> impl Future<Output = Result<AudioAnalysis, Error>> {
+    fn track_audio_analysis<I: IntoSpotifyId>(
+        &self,
+        id: I,
+    ) -> impl Future<Output = Result<AudioAnalysis, Error>> {
         async move {
-            let token = self.token().await?;
-            let SpotifyResponse { body, .. } = request::get!("audio-analysis/{}", id.into_spotify_id())
-                .send(token)
-                .await?;
+            let token = self.token();
+            let SpotifyResponse { body, .. } =
+                request::get!("audio-analysis/{}", id.into_spotify_id())
+                    .send(token)
+                    .await?;
             Ok(pares!(&body)?)
         }
     }
@@ -859,16 +912,14 @@ pub trait PublicApi: AuthFlow {
         seed: RecommendationSeed,
     ) -> impl Future<Output = Result<Recommendations, Error>> {
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let mut url = format!("recommendations?limit={N}&{}", seed.into_params()?);
             if let Some(m) = market.into_spotify_param() {
                 url.push_str(&format!("&market={}", m));
             }
 
-            let SpotifyResponse { body, .. } = request::get!(url)
-                .send(token)
-                .await?;
+            let SpotifyResponse { body, .. } = request::get!(url).send(token).await?;
 
             Ok(pares!(&body)?)
         }
@@ -894,12 +945,11 @@ pub trait PublicApi: AuthFlow {
         // be nice but would be very complex to suppport using concrete types.
         // https://open.spotify.com/playlist/7AXnDxOcbYCymLv2krA3Hx?si=fc0115d894bd481f
         async move {
-            let token = self.token().await?;
+            let token = self.token();
 
             let SpotifyResponse { body, .. } = request::get!("playlists/{}", id.into_spotify_id())
                 .param("market", market)
-                // NOTE: This is manually maintained. T
-                .param("additional_types", "track,episode")
+                .param("additional_types", SUPPORTED_ITEMS)
                 .send(token)
                 .await?;
 
@@ -908,14 +958,17 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get a list of Spotify featured playlists (shown, for example, on a Spotify player's 'Browse' tab).
-    /// 
+    ///
     /// # Arguments
     /// - `locale`: The desired language, consisting of an [ISO 639-1 language code](http://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) and an [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2), joined by an underscore. For example: `es_MX`, meaning "Spanish (Mexico)". Provide this parameter if you want the list of returned items to be in a particular language (where available).
     /// <N> Is the number of items to return per page. Maximum: 50
     ///
     /// # Important Policy Notes
     /// - Spotify [data may not be transferred](https://developer.spotify.com/policy/#iii-some-prohibited-applications)
-    fn featured_playlists<const N: usize, L: IntoSpotifyParam>(&self, locale: L) -> Result<Paginated<PagedPlaylists, FeaturedPlaylists, Self, N>, Error> {
+    fn featured_playlists<const N: usize, L: IntoSpotifyParam>(
+        &self,
+        locale: L,
+    ) -> Result<Paginated<PagedPlaylists, FeaturedPlaylists, Self, N>, Error> {
         let mut url = format!("{API_BASE_URL}/browse/featured-playlists?limit={N}");
 
         if let Some(locale) = locale.into_spotify_param() {
@@ -931,14 +984,20 @@ pub trait PublicApi: AuthFlow {
     }
 
     /// Get a list of Spotify playlists tagged with a particular category.
-    /// 
+    ///
     /// # Arguments
     /// - `id`: The [Spotify category ID](https://developer.spotify.com/documentation/web-api/concepts/spotify-uris-ids) of the category.
     /// <N> Is the number of items to return per page. Maximum: 50
-    fn category_playlists<const N: usize, I: IntoSpotifyId>(&self, id: I) -> Result<Paginated<PagedPlaylists, FeaturedPlaylists, Self, N>, Error> {
+    fn category_playlists<const N: usize, I: IntoSpotifyId>(
+        &self,
+        id: I,
+    ) -> Result<Paginated<PagedPlaylists, FeaturedPlaylists, Self, N>, Error> {
         Ok(Paginated::new(
             self.clone(),
-            Some(format!("{API_BASE_URL}/browse/categories/{}/playlists?limit={N}", id.into_spotify_id())),
+            Some(format!(
+                "{API_BASE_URL}/browse/categories/{}/playlists?limit={N}",
+                id.into_spotify_id()
+            )),
             None,
             |c: FeaturedPlaylists| c.playlists,
         ))
@@ -954,12 +1013,15 @@ pub trait PublicApi: AuthFlow {
     /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
     /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
     /// - Spotify [content may not be used to train machine learning or AI models](https://developer.spotify.com/terms#section-iv-restrictions)
-    fn playlist_cover_image<I: IntoSpotifyId>(&self, id: I) -> impl Future<Output = Result<Vec<Image>, Error>> {
+    fn playlist_cover_image<I: IntoSpotifyId>(
+        &self,
+        id: I,
+    ) -> impl Future<Output = Result<Vec<Image>, Error>> {
         async move {
-            let token = self.token().await?;
-            let SpotifyResponse { body, .. } = request::get!("playlists/{}/images", id.into_spotify_id())
-                .send(token)
-                .await?;
+            let SpotifyResponse { body, .. } =
+                request::get!("playlists/{}/images", id.into_spotify_id())
+                    .send(self.token())
+                    .await?;
 
             Ok(pares!(&body)?)
         }

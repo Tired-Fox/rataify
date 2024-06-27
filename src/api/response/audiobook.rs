@@ -1,7 +1,8 @@
 use serde::Deserialize;
 use crate::impl_paged;
+use crate::api::Uri;
 
-use super::{Restrictions, ReleaseDate, ResumePoint, Image, CopyRight, ExternalUrls, Uri, deserialize_duration, deserialize_named_objects};
+use super::{Restrictions, ReleaseDate, ResumePoint, Image, CopyRight, ExternalUrls, deserialize_duration, deserialize_named_objects};
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Chapter {

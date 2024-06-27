@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ]).unwrap();
 
     let spotify = Spotify::<Pkce>::new(Credentials::from_env().unwrap(), oauth, "tupy").await?;
+    spotify.api.new
 
     let mut top_items = spotify.api.new_releases::<2>()?;
     while let Some(page) = top_items.next().await? {

@@ -9,8 +9,11 @@ pub use creds::Flow as Creds;
 pub use pkce::Flow as Pkce;
 
 use std::{
-    collections::HashSet, fmt::Debug, future::Future, path::{Path, PathBuf}
+    collections::HashSet, fmt::Debug, future::Future 
 };
+
+#[cfg(feature = "caching")]
+use std::path::{Path, PathBuf};
 
 use super::{OAuth, Token};
 use crate::{Error, Shared};

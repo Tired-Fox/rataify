@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fmt::Debug};
 
-use super::{AuthFlow, CacheToken, Config, Credentials, OAuth, Token};
+use super::{AuthFlow, Config, Credentials, OAuth, Token};
+#[cfg(feature = "caching")]
+use super::CacheToken;
 use crate::{
     api::{PublicApi, SpotifyResponse, UserApi},
     Error, Locked, Shared,
@@ -14,6 +16,7 @@ pub struct Flow {
     pub(crate) token: Shared<Locked<Token>>,
 }
 
+#[cfg(feature = "caching")]
 impl CacheToken for Flow {
     fn id() -> &'static str {
         "auth-code"

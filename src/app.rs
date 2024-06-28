@@ -366,20 +366,20 @@ impl Widget for State {
                         Line::from("<Advertisement>")
                             .yellow()
                             .centered()
-                            .render(playing[0], buf);
+                            .render(playing[1], buf);
                     }
                     PlaybackItem::Unkown => {
                         Line::from("<Unknown Playback>")
                             .gray()
                             .centered()
-                            .render(playing[0], buf);
+                            .render(playing[1], buf);
                     }
                 },
                 None => {
                     Line::from("<No Playback>")
                         .red()
                         .centered()
-                        .render(playing[0], buf);
+                        .render(playing[1], buf);
                 }
             }
         };

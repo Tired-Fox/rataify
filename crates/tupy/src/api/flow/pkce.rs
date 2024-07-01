@@ -8,7 +8,7 @@ use super::{AuthFlow, Config, Credentials, OAuth, Token};
 use super::CacheToken;
 
 use crate::{
-    api::{alphabet, uuid, validate_scope, PublicApi, SpotifyResponse, UserApi},
+    api::{alphabet, uuid, PublicApi, SpotifyResponse, UserApi},
     Error, Locked, Shared,
 };
 

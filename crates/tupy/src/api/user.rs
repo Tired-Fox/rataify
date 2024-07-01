@@ -10,8 +10,7 @@ use crate::{pares, Error, api::{Uri, scopes}};
 use super::{
     flow::AuthFlow,
     request::{
-        self, IntoDuration, IntoSpotifyId, Play, PlaylistAction, PlaylistDetails, TimeRange,
-        Timestamp, UriWrapper, SUPPORTED_ITEMS
+        self, IntoDuration, IntoSpotifyId, OptionalSpotifyId, Play, PlaylistAction, PlaylistDetails, TimeRange, Timestamp, UriWrapper, SUPPORTED_ITEMS
     },
     response::{
         Device, FollowedArtists, IntoUserTopItemType, PagedPlaylists, Paginated, Playback,
@@ -1074,10 +1073,11 @@ pub trait UserApi: AuthFlow {
     /// # Scopes
     /// - `playlist-read-private` (Current and Other user): Access your private playlists.
     /// - `playlist-read-collaborative` (Other user): Access your collaborative playlists.
-    fn playlists<const N: usize, I: IntoSpotifyId>(
+    fn playlists<const N: usize, I: OptionalSpotifyId>(
         &self,
-        id: Option<I>,
+        id: I,
     ) -> Result<Paginated<PagedPlaylists, PagedPlaylists, Self, N>, Error> {
+        let id = id.optional_spotify_id();
         if let Some(id) = id {
             validate_scope(
                 self.scopes(),

@@ -5,14 +5,9 @@ use crossterm::event::{KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::{Color, Modifier, Style, Stylize},
-    symbols::border,
-    text::{Line, Span, Text},
-    widgets::{
-        block::{Position, Title},
-        Block, Borders, List, ListDirection, ListState, Paragraph, StatefulWidget, Widget,
-    },
+    layout::{Constraint, Direction, Layout},
+    style::Style,
+    widgets::{ListState, StatefulWidget, Widget},
     Terminal,
 };
 use tokio::sync::mpsc;
@@ -21,45 +16,23 @@ use tupy::{
     api::{
         flow::{AuthFlow, Credentials, Pkce},
         request::Play,
-        response::{Device, DeviceType, Item, Playback, PlaybackItem, Queue},
-        scopes, validate_scope, OAuth, Spotify, UserApi,
+        response::Item,
+        scopes, OAuth, Spotify, UserApi,
     },
-    DateTime, Duration, Error, Local,
+    Duration, Local,
 };
 
 use crate::{
     errors::install_hooks,
     spotify_util::listen_for_authentication_code,
+    state::{Countdown, DevicesState, Loading, Modal, Queue, State, Viewport, Window},
     tui,
-    ui::{centered_rect, playback::UiPlayback, window::UiQueue},
-    Locked, Shared,
+    ui::NoPlayback,
 };
 
 static FPS: u8 = 20;
 lazy_static::lazy_static! {
     static ref FPS_DURATION: Duration = Duration::milliseconds((1.0 / FPS as f32) as i64 * 1000);
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Modal {
-    Devices {
-        state: ListState,
-        devices: Vec<Device>,
-    },
-}
-
-#[derive(Default, Debug, Clone, PartialEq)]
-pub enum Window {
-    #[default]
-    Home,
-    Queue(ListState),
-}
-
-#[derive(Default, Debug, Clone, PartialEq)]
-pub enum Viewport {
-    Modal(Modal),
-    #[default]
-    Window,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -88,46 +61,6 @@ pub enum Action {
     SelectDevice,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Countdown {
-    count: usize,
-    _origin: usize,
-}
-impl Countdown {
-    pub fn new(origin: usize) -> Self {
-        Self {
-            count: origin,
-            _origin: origin,
-        }
-    }
-
-    pub fn decrement(&mut self) {
-        self.count = self.count.saturating_sub(1);
-    }
-    pub fn poll(&mut self) -> bool {
-        self.decrement();
-        self.is_ready()
-    }
-    pub fn is_ready(&self) -> bool {
-        self.count == 0
-    }
-    pub fn reset(&mut self) {
-        self.count = self._origin;
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct State {
-    pub viewport: Viewport,
-    pub window: Window,
-
-    pub last_playback_poll: Shared<Locked<DateTime<Local>>>,
-    pub playback_poll: Countdown,
-    pub playback: Shared<Locked<Option<Playback>>>,
-
-    pub queue: Shared<Locked<Option<Queue>>>,
-}
-
 #[derive(Debug)]
 pub struct App {
     pub terminal: tui::Tui,
@@ -144,6 +77,8 @@ impl App {
             scopes::USER_READ_PLAYBACK_STATE,
             scopes::USER_MODIFY_PLAYBACK_STATE,
             scopes::USER_READ_CURRENTLY_PLAYING,
+            scopes::USER_LIBRARY_READ,
+            scopes::USER_READ_PLAYBACK_POSITION,
         ])
         .expect("Failed to get TUPY_CLIENT_ID and TUPY_REDIRECT_URI environment variables.");
 
@@ -164,12 +99,7 @@ impl App {
             },
         };
 
-        if validate_scope(
-            app.spotify.api.scopes(),
-            app.spotify.api.token().scopes.iter().map(|v| v.as_str()),
-        )
-        .is_err()
-        {
+        if app.spotify.api.scopes() != &app.spotify.api.token().scopes {
             eprintln!("Failed to get Spotify token scopes, requesting new token");
             eprintln!("{:?}", app.spotify.api.scopes());
             eprintln!("{:?}", app.spotify.api.token().scopes);
@@ -187,7 +117,12 @@ impl App {
             app.spotify.api.refresh().await?;
         }
 
-        *app.state.playback.lock().unwrap() = app.spotify.api.playback_state(None).await?;
+        *app.state.playback.lock().unwrap() = app
+            .spotify
+            .api
+            .playback_state(None)
+            .await?
+            .map(|pb| pb.into());
         *app.state.last_playback_poll.lock().unwrap() = Local::now();
 
         Ok(app)
@@ -225,12 +160,8 @@ impl App {
                     // Poll to check if playback state should be fetched
                     if self.state.playback_poll.poll() {
                         let playback = self.state.playback.clone();
-                        let fetch_queue = if let Window::Queue(_) = self.state.window {
-                            self.state.viewport == Viewport::Window
-                        } else {
-                            false
-                        };
-                        let queue = self.state.queue.clone();
+                        let fetch_queue = self.state.show_queue();
+                        let window = self.state.window_state.clone();
                         let last_playback_poll = self.state.last_playback_poll.clone();
                         let api = self.spotify.api.clone();
 
@@ -244,12 +175,37 @@ impl App {
                             }
 
                             if let Ok(result) = api.playback_state(None).await {
-                                *playback.lock().unwrap() = result;
+                                *playback.lock().unwrap() = result.map(|pb| pb.into());
                                 *last_playback_poll.lock().unwrap() = Local::now();
                             }
 
                             if fetch_queue {
-                                *queue.lock().unwrap() = Some(api.queue().await.unwrap());
+                                let q = api.queue().await.ok();
+                                match q {
+                                    Some(q) => {
+                                        let tracks = q
+                                            .queue
+                                            .iter()
+                                            .filter_map(|i| match i {
+                                                Item::Track(t) => Some(t.uri.clone()),
+                                                Item::Episode(_) => None,
+                                            })
+                                            .collect::<Vec<_>>();
+
+                                        if tracks.is_empty() {
+                                            window.lock().unwrap().queue.queue =
+                                                Some(Queue::from((q, Vec::new()))).into();
+                                        } else {
+                                            let saved =
+                                                api.check_saved_tracks(tracks).await.unwrap();
+                                            window.lock().unwrap().queue.queue =
+                                                Some(Queue::from((q, saved))).into();
+                                        }
+                                    }
+                                    None => {
+                                        window.lock().unwrap().queue.queue = None.into();
+                                    }
+                                }
                             }
                         });
                         self.state.playback_poll.reset();
@@ -317,77 +273,66 @@ impl App {
                 tx.send(Action::SelectDevice)?;
             }
             Action::Down => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices { state, devices }) => {
-                    next_in_list(state, devices.len());
+                Viewport::Modal(Modal::Devices) => {
+                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
+                    next_in_list(&mut devices.state, devices.devices.len());
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Home => {}
-                    Window::Queue(state) => {
-                        next_in_list(
-                            state,
-                            self.state
-                                .queue
-                                .lock()
-                                .unwrap()
-                                .as_ref()
-                                .unwrap()
-                                .queue
-                                .len(),
-                        );
+                    Window::Queue => {
+                        let queue = &mut self.state.window_state.lock().unwrap().queue;
+                        if let Loading::Some(q) = &mut queue.queue {
+                            next_in_list(&mut queue.state, q.items.len());
+                        }
                     }
                 },
             },
             Action::Up => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices { state, devices }) => {
-                    prev_in_list(state, devices.len());
+                Viewport::Modal(Modal::Devices) => {
+                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
+                    prev_in_list(&mut devices.state, devices.devices.len());
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Home => {}
-                    Window::Queue(state) => {
-                        prev_in_list(
-                            state,
-                            self.state
-                                .queue
-                                .lock()
-                                .unwrap()
-                                .as_ref()
-                                .unwrap()
-                                .queue
-                                .len(),
-                        );
+                    Window::Queue => {
+                        let queue = &mut self.state.window_state.lock().unwrap().queue;
+                        if let Loading::Some(q) = &mut queue.queue {
+                            prev_in_list(&mut queue.state, q.items.len());
+                        }
                     }
                 },
             },
             Action::Select => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices { state, devices }) => {
-                    let device = devices[state.selected().unwrap_or(0).saturating_sub(0)].clone();
+                Viewport::Modal(Modal::Devices) => {
+                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
+                    let device = devices.devices
+                        [devices.state.selected().unwrap_or(0).saturating_sub(0)]
+                    .clone();
                     let api = self.spotify.api.clone();
                     tokio::task::spawn(async move {
                         if api.token().is_expired() {
                             api.refresh().await.unwrap();
                         }
-                        api.transfer_playback(device.id, true).await;
+                        api.transfer_playback(device.id, true).await.unwrap();
                     });
                     self.state.viewport = Viewport::Window;
                 }
-                Viewport::Window => match &mut self.state.window {
-                    Window::Home => {}
-                    Window::Queue(state) => {
-                        let queue = self.state.queue.clone();
+                Viewport::Window => match self.state.window {
+                    Window::Queue => {
+                        let window = self.state.window_state.clone();
+                        let fetch_queue = self.state.show_queue();
+                        let pos = window.lock().unwrap().queue.state.selected().unwrap_or(0);
                         let api = self.spotify.api.clone();
-                        let pos = state.selected().unwrap_or(0);
                         tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
-                            let q = queue.lock().unwrap().clone();
-                            if let Some(queue) = q {
+                            let q = window.lock().unwrap().queue.clone();
+                            if let Loading::Some(queue) = q.queue {
                                 api.play(
                                     Play::Queue {
                                         uris: queue
-                                            .queue
+                                            .items
                                             .iter()
-                                            .map(|q| match q {
+                                            .map(|q| match &q.item {
                                                 Item::Track(t) => t.uri.clone(),
                                                 Item::Episode(e) => e.uri.clone(),
                                             })
@@ -400,7 +345,35 @@ impl App {
                                 .await
                                 .unwrap();
                             }
-                            *queue.lock().unwrap() = Some(api.queue().await.unwrap());
+
+                            if fetch_queue {
+                                let q = api.queue().await.ok();
+                                match q {
+                                    Some(q) => {
+                                        let tracks = q
+                                            .queue
+                                            .iter()
+                                            .filter_map(|i| match i {
+                                                Item::Track(t) => Some(t.uri.clone()),
+                                                Item::Episode(_) => None,
+                                            })
+                                            .collect::<Vec<_>>();
+
+                                        if tracks.is_empty() {
+                                            window.lock().unwrap().queue.queue =
+                                                Some(Queue::from((q, Vec::new()))).into();
+                                        } else {
+                                            let saved =
+                                                api.check_saved_tracks(tracks).await.unwrap();
+                                            window.lock().unwrap().queue.queue =
+                                                Some(Queue::from((q, saved))).into();
+                                        }
+                                    }
+                                    None => {
+                                        window.lock().unwrap().queue.queue = None.into();
+                                    }
+                                }
+                            }
                         });
                         self.state.viewport = Viewport::Window;
                     }
@@ -408,25 +381,20 @@ impl App {
             },
             Action::SelectDevice => {
                 if let Ok(devices) = self.spotify.api.devices().await {
-                    self.state.viewport = Viewport::Modal(Modal::Devices {
+                    self.state.modal_state.lock().unwrap().devices = DevicesState {
                         state: ListState::default(),
                         devices,
-                    });
+                    };
+                    self.state.viewport = Viewport::Modal(Modal::Devices);
                 } else {
                     return Err(eyre!("Failed to get devices"));
                 }
             }
-            Action::Tab => match &self.state.window {
-                Window::Home => {
-                    if self.spotify.api.token().is_expired() {
-                        self.spotify.api.refresh().await.unwrap();
-                    }
-                    self.state.window = Window::Queue(ListState::default());
-                }
-                Window::Queue(_) => {
-                    self.state.window = Window::Home;
-                }
-            },
+            //Action::Tab => match &self.state.window {
+            //    //Window::Queue => {
+            //    //    self.state.window = Window::Home;
+            //    //}
+            //},
             _ => {}
         }
         Ok(())
@@ -506,28 +474,41 @@ impl Widget for State {
             .constraints([Constraint::Fill(1), Constraint::Length(5)])
             .split(area);
 
-        // Viewport State Rendering
-        match &mut self.viewport {
-            Viewport::Modal(modal) => {
-                modal.render(layout[0], buf);
+        //let mut dimmed = if let Viewport::Modal(_) = &self.viewport {
+        //    Style::default().dim()
+        //} else {
+        //    Style::default()
+        //};
+        let mut dimmed = Style::default();
+
+        match &mut self.window {
+            Window::Queue => {
+                let qstate = &mut self.window_state.lock().unwrap().queue;
+                StatefulWidget::render(qstate, layout[0], buf, &mut dimmed);
             }
-            Viewport::Window => match &mut self.window {
-                Window::Home => {}
-                Window::Queue(state) => {
-                    UiQueue {
-                        queue: self.queue.lock().unwrap().clone(),
-                        state: state.clone(),
-                    }
-                    .render(layout[0], buf);
-                }
-            },
         }
 
-        UiPlayback {
-            playback: self.playback.clone(),
-            last_playback_poll: self.last_playback_poll.clone(),
+        // Viewport State Rendering
+        if let Viewport::Modal(modal) = &mut self.viewport {
+            match modal {
+                Modal::Devices => {
+                    let devices = &mut self.modal_state.lock().unwrap().devices;
+                    Widget::render(devices, layout[0], buf);
+                }
+            }
         }
-        .render(layout[1], buf);
+
+        match self.playback.lock().unwrap().as_ref() {
+            Some(playback) => StatefulWidget::render(
+                playback,
+                layout[1],
+                buf,
+                &mut self.last_playback_poll.lock().unwrap().clone(),
+            ),
+            None => {
+                NoPlayback.render(layout[1], buf);
+            }
+        }
     }
 }
 

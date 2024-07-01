@@ -524,7 +524,7 @@ pub struct ResumePoint {
     /// Whether or not the episode has been fully played by the user.
     pub fully_played: bool,
     /// The user's most recent position in the episode in milliseconds.
-    #[serde(deserialize_with = "deserialize_duration")]
+    #[serde(rename = "resume_position_ms", deserialize_with = "deserialize_duration", default="chrono::Duration::zero")]
     pub resume_position: chrono::Duration,
 }
 

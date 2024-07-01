@@ -68,8 +68,24 @@ use super::Uri;
 
 pub static SUPPORTED_ITEMS: &str = "track,episode";
 
+pub trait OptionalSpotifyId {
+    fn optional_spotify_id(self) -> Option<String>;
+}
+
+impl OptionalSpotifyId for Option<()> {
+    fn optional_spotify_id(self) -> Option<String> {
+        self.map(|_| String::new())
+    }
+}
+
 pub trait IntoSpotifyId {
     fn into_spotify_id(self) -> String;
+}
+
+impl<I: IntoSpotifyId> OptionalSpotifyId for I {
+    fn optional_spotify_id(self) -> Option<String> {
+        Some(self.into_spotify_id())
+    }
 }
 
 impl IntoSpotifyId for String {
@@ -523,6 +539,11 @@ pub enum Play {
         offset: Option<usize>,
         position: Duration,
     },
+    Show {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
     Playlist {
         id: String,
         offset: Option<usize>,
@@ -580,6 +601,18 @@ impl Play {
         }
     }
 
+    pub fn show<P, I>(id: I, offset: Option<usize>, position: P) -> Self
+    where
+        P: IntoDuration,
+        I: IntoSpotifyId,
+    {
+        Self::Show {
+            id: id.into_spotify_id(),
+            offset,
+            position: position.into_duration(),
+        }
+    }
+
     pub fn playlist<P, I>(id: I, offset: Option<usize>, position: P) -> Self
     where
         P: IntoDuration,
@@ -592,7 +625,7 @@ impl Play {
         }
     }
 
-    pub fn queue<U, P>(uris: U, position: P, offset: Option<usize>) -> Self
+    pub fn queue<U, P>(uris: U, offset: Option<usize>, position: P) -> Self
     where
         U: IntoIterator<Item = Uri>,
         P: IntoDuration,
@@ -638,6 +671,24 @@ impl Serialize for Play {
             Play::Playlist { id, offset, position } => {
                 let mut values = HashMap::from([
                     ("context_uri", Value::from(format!("spotify:playlist:{id}"))),
+                    ("position", Value::from(position.num_milliseconds())),
+                ]);
+
+                if let Some(offset) = offset {
+                    values.insert("offset", json!({
+                        "position": offset
+                    }));
+                }
+
+                let mut map = serializer.serialize_map(Some(values.len()))?;
+                for (k, v) in values {
+                    map.serialize_entry(k, &v)?;
+                }
+                map.end()
+            },
+            Play::Show { id, offset, position } => {
+                let mut values = HashMap::from([
+                    ("context_uri", Value::from(format!("spotify:show:{id}"))),
                     ("position", Value::from(position.num_milliseconds())),
                 ]);
 

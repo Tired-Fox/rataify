@@ -221,7 +221,8 @@ impl Paged for RecentlyPlayed {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Queue {
     /// The currently playing track or episode. Can be null.
-    pub currently_playing: Item,
+    pub currently_playing: Option<Item>,
     /// The tracks or episodes in the queue. Can be empty.
+    #[serde(default)]
     pub queue: Vec<Item>,
 }

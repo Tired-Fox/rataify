@@ -248,10 +248,10 @@ impl<F: AuthFlow> Spotify<F> {
     }
 }
 
-pub fn validate_scope(scopes: &HashSet<String>, required: &[&'static str]) -> Result<(), Error> {
+pub fn validate_scope<'a, I: IntoIterator<Item = &'a str>>(scopes: &HashSet<String>, required: I) -> Result<(), Error> {
     let missing = required
-        .iter()
-        .filter(|scope| !scopes.contains(**scope))
+        .into_iter()
+        .filter(|scope| !scopes.contains(*scope))
         .map(|scope| scope.to_string())
         .collect::<Vec<_>>();
     if !missing.is_empty() {

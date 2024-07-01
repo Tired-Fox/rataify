@@ -50,7 +50,7 @@ pub trait UserApi: AuthFlow {
     where
         T: IntoUserTopItemType + Deserialize<'static> + Debug + Clone + PartialEq,
     {
-        validate_scope(self.scopes(), &[scopes::USER_TOP_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_TOP_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(format!(
@@ -97,7 +97,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PUBLIC,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -126,7 +126,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PUBLIC,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -149,7 +149,7 @@ pub trait UserApi: AuthFlow {
     fn followed_artists<const N: usize>(
         &self,
     ) -> Result<Paginated<FollowedArtists, HashMap<String, FollowedArtists>, Self, N>, Error> {
-        validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_FOLLOW_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(format!(
@@ -174,7 +174,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token();
             request::put!("me/following?type=artist")
                 .body(
@@ -201,7 +201,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token();
             request::delete!("me/following?type=artist")
                 .body(
@@ -229,7 +229,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token();
             request::put!("me/following?type=user")
                 .body(
@@ -256,7 +256,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_MODIFY])?;
             let token = self.token();
             request::delete!("me/following?type=user")
                 .body(
@@ -283,7 +283,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_READ])?;
             let SpotifyResponse { body, .. } = request::get!(
                 "me/following/contains?type=artist&ids={}",
                 ids.into_iter()
@@ -310,7 +310,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_FOLLOW_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_FOLLOW_READ])?;
             let SpotifyResponse { body, .. } = request::get!(
                 "me/following/contains?type=user&ids={}",
                 ids.into_iter()
@@ -343,7 +343,7 @@ pub trait UserApi: AuthFlow {
             url.push_str(&format!("&market={}", market));
         }
 
-        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(url),
@@ -364,7 +364,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             let token = self.token();
             request::put!("me/albums")
@@ -393,7 +393,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             let token = self.token();
             request::delete!("me/albums")
@@ -422,7 +422,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
             let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/albums/contains")
@@ -450,7 +450,7 @@ pub trait UserApi: AuthFlow {
     fn saved_audiobooks<const N: usize>(
         &self,
     ) -> Result<Paginated<SavedAudiobooks, SavedAudiobooks, Self, N>, Error> {
-        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(format!("{API_BASE_URL}/me/audiobooks?limit={N}")),
@@ -468,7 +468,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             let ids = ids
                 .into_iter()
@@ -493,7 +493,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/audiobooks")
                 .param(
@@ -519,7 +519,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/audiobooks/contains")
                 .param(
@@ -555,7 +555,7 @@ pub trait UserApi: AuthFlow {
             url.push_str(&format!("&market={}", market));
         }
 
-        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(url),
@@ -576,7 +576,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/episodes")
                 .body(
@@ -604,7 +604,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/episodes")
                 .body(
@@ -632,7 +632,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/episodes/contains")
                 .param(
@@ -659,7 +659,7 @@ pub trait UserApi: AuthFlow {
     fn saved_shows<const N: usize>(
         &self,
     ) -> Result<Paginated<SavedShows, SavedShows, Self, N>, Error> {
-        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(format!("{API_BASE_URL}/me/shows?limit={N}")),
@@ -680,7 +680,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/shows")
                 .param(
@@ -709,7 +709,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/shows")
                 .param(
@@ -738,7 +738,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
             let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/shows/contains")
@@ -774,7 +774,7 @@ pub trait UserApi: AuthFlow {
             url.push_str(&format!("&market={}", market));
         }
 
-        validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+        validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
         Ok(Paginated::new(
             self.clone(),
             Some(url),
@@ -795,7 +795,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::put!("me/tracks")
                 .body(
@@ -823,7 +823,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
 
             request::delete!("me/tracks")
                 .body(
@@ -851,7 +851,7 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_LIBRARY_READ])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
             let token = self.token();
             let SpotifyResponse { body, .. } = request::get!("me/tracks/contains")
@@ -923,7 +923,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -955,7 +955,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -1005,7 +1005,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -1048,7 +1048,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -1081,7 +1081,7 @@ pub trait UserApi: AuthFlow {
         if let Some(id) = id {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_READ_PRIVATE,
                     scopes::PLAYLIST_READ_COLLABORATIVE,
                 ],
@@ -1096,7 +1096,7 @@ pub trait UserApi: AuthFlow {
                 |c: PagedPlaylists| c,
             ))
         } else {
-            validate_scope(self.scopes(), &[scopes::PLAYLIST_READ_PRIVATE])?;
+            validate_scope(self.scopes(), [scopes::PLAYLIST_READ_PRIVATE])?;
             Ok(Paginated::new(
                 self.clone(),
                 Some(format!("{API_BASE_URL}/me/playlists?limit={N}")),
@@ -1123,7 +1123,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::PLAYLIST_MODIFY_PUBLIC,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                 ],
@@ -1166,7 +1166,7 @@ pub trait UserApi: AuthFlow {
 
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::UGC_IMAGE_UPLOAD,
                     scopes::PLAYLIST_MODIFY_PRIVATE,
                     scopes::PLAYLIST_MODIFY_PUBLIC,
@@ -1200,7 +1200,7 @@ pub trait UserApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Option<Playback>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_READ_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_READ_PLAYBACK_STATE])?;
 
             let token = self.token();
             let SpotifyResponse { body, status, .. } = request::get!("me/player")
@@ -1231,7 +1231,7 @@ pub trait UserApi: AuthFlow {
         play: bool,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player")
                 .body(
@@ -1254,7 +1254,7 @@ pub trait UserApi: AuthFlow {
     /// - `user-read-playback-state`: Read your currently playing content and Spotify Connect devices information.
     fn devices(&self) -> impl Future<Output = Result<Vec<Device>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_READ_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_READ_PLAYBACK_STATE])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/player/devices")
                 .send(self.token())
@@ -1283,7 +1283,7 @@ pub trait UserApi: AuthFlow {
         market: M,
     ) -> impl Future<Output = Result<Option<Playback>, Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_READ_CURRENTLY_PLAYING])?;
+            validate_scope(self.scopes(), [scopes::USER_READ_CURRENTLY_PLAYING])?;
 
             let SpotifyResponse { body, .. } = request::get!("me/player/currently-playing")
                 .param("market", market)
@@ -1309,7 +1309,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/play")
                 .param("device_id", id)
@@ -1336,7 +1336,7 @@ pub trait UserApi: AuthFlow {
     /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
     fn pause<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/pause")
                 .param("device_id", id)
@@ -1362,7 +1362,7 @@ pub trait UserApi: AuthFlow {
     /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
     fn next<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::post!("me/player/next")
                 .param("device_id", id)
@@ -1388,7 +1388,7 @@ pub trait UserApi: AuthFlow {
     /// - Spotify [content may not be broadcasted](https://developer.spotify.com/policy/#iii-some-prohibited-applications:~:text=Do%20not%20create%20any%20product%20or%20service%20which%20includes%20any%20non,several%20simultaneous%20listeners.)
     fn prev<I: IntoSpotifyParam>(&self, id: I) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::post!("me/player/previous")
                 .param("device_id", id)
@@ -1418,7 +1418,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/seek")
                 .param("position_ms", position.into_duration().num_milliseconds())
@@ -1444,7 +1444,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/repeat")
                 .param("state", repeat)
@@ -1470,7 +1470,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/volume")
                 .param("volume_percent", volume)
@@ -1496,7 +1496,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::put!("me/player/shuffle")
                 .param("state", shuffle)
@@ -1526,7 +1526,7 @@ pub trait UserApi: AuthFlow {
         &self,
         timestamp: Timestamp,
     ) -> Result<Paginated<RecentlyPlayed, RecentlyPlayed, Self, N>, Error> {
-        validate_scope(self.scopes(), &[scopes::USER_READ_RECENTLY_PLAYED])?;
+        validate_scope(self.scopes(), [scopes::USER_READ_RECENTLY_PLAYED])?;
 
         Ok(Paginated::new(
             self.clone(),
@@ -1555,7 +1555,7 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(
                 self.scopes(),
-                &[
+                [
                     scopes::USER_READ_CURRENTLY_PLAYING,
                     scopes::USER_READ_PLAYBACK_STATE,
                 ],
@@ -1588,7 +1588,7 @@ pub trait UserApi: AuthFlow {
         id: I,
     ) -> impl Future<Output = Result<(), Error>> {
         async move {
-            validate_scope(self.scopes(), &[scopes::USER_MODIFY_PLAYBACK_STATE])?;
+            validate_scope(self.scopes(), [scopes::USER_MODIFY_PLAYBACK_STATE])?;
 
             request::post!("me/player/queue")
                 .param("uri", uri)

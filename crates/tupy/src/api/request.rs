@@ -531,6 +531,7 @@ pub enum Play {
     Queue {
         uris: Vec<Uri>,
         position: Duration,
+        offset: Option<usize>,
     },
     Resume
 }
@@ -591,7 +592,7 @@ impl Play {
         }
     }
 
-    pub fn queue<U, P>(uris: U, position: P) -> Self
+    pub fn queue<U, P>(uris: U, position: P, offset: Option<usize>) -> Self
     where
         U: IntoIterator<Item = Uri>,
         P: IntoDuration,
@@ -599,6 +600,7 @@ impl Play {
         Self::Queue {
             uris: uris.into_iter().collect(),
             position: position.into_duration(),
+            offset,
         }
     }
 }
@@ -651,10 +653,22 @@ impl Serialize for Play {
                 }
                 map.end()
             },
-            Play::Queue { uris, position } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("uris", &uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())?;
-                map.serialize_entry("position", &position.num_milliseconds())?;
+            Play::Queue { uris, position, offset } => {
+                let mut values = HashMap::from([
+                    ("uris", Value::from(uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())),
+                    ("position", Value::from(position.num_milliseconds())),
+                ]);
+
+                if let Some(offset) = offset {
+                    values.insert("offset", json!({
+                        "position": offset
+                    }));
+                }
+
+                let mut map = serializer.serialize_map(Some(values.len()))?;
+                for (k, v) in values {
+                    map.serialize_entry(k, &v)?;
+                }
                 map.end()
             },
             Play::Resume => {

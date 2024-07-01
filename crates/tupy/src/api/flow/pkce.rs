@@ -8,7 +8,7 @@ use super::{AuthFlow, Config, Credentials, OAuth, Token};
 use super::CacheToken;
 
 use crate::{
-    api::{PublicApi, SpotifyResponse, UserApi, uuid, alphabet},
+    api::{alphabet, uuid, validate_scope, PublicApi, SpotifyResponse, UserApi},
     Error, Locked, Shared,
 };
 
@@ -161,6 +161,7 @@ impl AuthFlow for Flow {
     }
 
     async fn refresh(&self) -> Result<(), Error> {
+        // If scopes aren't matching then the token should not be refreshed
         let refresh_token = self.token.lock().unwrap().refresh_token.clone();
         if let Some(refresh_token) = refresh_token {
             let client = reqwest::Client::new();

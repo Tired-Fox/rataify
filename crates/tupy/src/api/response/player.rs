@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use chrono::{DateTime, Duration, Local};
 use serde::Deserialize;
@@ -13,6 +13,15 @@ pub enum DeviceType {
     Smartphone,
     Speaker,
     Other(String)
+}
+
+impl Display for DeviceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Other(s) => write!(f, "{}", s),
+            other => write!(f, "{:?}", other),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for DeviceType {

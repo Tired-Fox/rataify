@@ -100,15 +100,15 @@ where
 /// Spotify authentication token
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
-    pub(crate) access_token: String,
-    pub(crate) token_type: String,
-    pub(crate) scopes: HashSet<String>,
-    pub(crate) refresh_token: Option<String>,
+    pub access_token: String,
+    pub token_type: String,
+    pub scopes: HashSet<String>,
+    pub refresh_token: Option<String>,
     #[serde(
         deserialize_with = "deserialize_datetime",
         serialize_with = "serialize_datetime"
     )]
-    pub(crate) expires: DateTime<Local>,
+    pub expires: DateTime<Local>,
 }
 
 impl Token {

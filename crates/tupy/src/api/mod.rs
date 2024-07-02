@@ -260,7 +260,7 @@ pub fn validate_scope<'a, I: IntoIterator<Item = &'a str>>(scopes: &HashSet<Stri
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, PartialOrd)]
 #[serde(rename_all = "lowercase")]
 pub enum Resource {
     Artist,
@@ -316,7 +316,7 @@ impl FromStr for Resource {
 /// The resource identifier of, for example, an artist, album or track. This can be entered in the search box in a Spotify Desktop Client, to navigate to that resource. To find a Spotify URI, right-click (on Windows) or Ctrl-Click (on a Mac) on the artist, album or track name.
 ///
 /// Example: spotify:track:6rqhFgbbKwnb9MLmUQDhG6
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Uri {
     resource: Resource,
     id: String,

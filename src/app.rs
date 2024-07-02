@@ -1,23 +1,24 @@
 use std::{collections::HashMap, io::stderr};
 
 use color_eyre::{eyre::eyre, Result};
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::Style,
-    widgets::{ListState, StatefulWidget, Widget},
+    symbols::border,
+    widgets::{
+        block::{Position, Title},
+        Block, StatefulWidget, TableState, Widget,
+    },
     Terminal,
 };
 use tokio::sync::mpsc;
 
 use tupy::{
     api::{
-        flow::{AuthFlow, Credentials, Pkce},
-        request::Play,
-        response::Item,
-        scopes, OAuth, Spotify, UserApi,
+        flow::{AuthFlow, Credentials, Pkce}, request::Play, response::{Item, PlaybackItem}, scopes, OAuth, Resource, Spotify, UserApi
     },
     Duration, Local,
 };
@@ -27,38 +28,52 @@ use crate::{
     spotify_util::listen_for_authentication_code,
     state::{Countdown, DevicesState, Loading, Modal, Queue, State, Viewport, Window},
     tui,
-    ui::NoPlayback,
+    ui::{action::{GoTo, UiAction}, modal::{actions::ModalActions, goto::UiGoto, add_to_playlist::AddToPlaylist}, NoPlayback},
 };
 
-static FPS: u8 = 20;
+static FPS: u8 = 24;
 lazy_static::lazy_static! {
     static ref FPS_DURATION: Duration = Duration::milliseconds((1.0 / FPS as f32) as i64 * 1000);
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum Action {
+    // Implicit internal actions
     Focus,
     Unfocus,
     Tick,
+    None,
+    GoTo(GoTo),
+
+    UpdateQueue,
+
+    // Close/Quit
     Close,
     Quit,
-    None,
 
-    Mouse(MouseEvent),
-
+    // Playback
     Toggle,
     Next,
     Previous,
+    Play(Play),
 
-    Tab,
-    PrevTab,
+    // Navigation
     Up,
     Down,
     Left,
     Right,
     Select,
 
-    SelectDevice,
+    // Open menu
+    OpenSelectDevice,
+    OpenGoTo,
+    OpenAction,
+    OpenHelp,
+    OpenSearch,
+
+    // Misc input events
+    Key(KeyCode),
+    Mouse(MouseEvent),
 }
 
 #[derive(Debug)]
@@ -74,10 +89,11 @@ pub struct App {
 impl App {
     pub async fn new() -> Result<Self> {
         let oauth = OAuth::from_env([
+            scopes::USER_LIBRARY_READ,
+            scopes::USER_LIBRARY_MODIFY,
+            scopes::USER_READ_CURRENTLY_PLAYING,
             scopes::USER_READ_PLAYBACK_STATE,
             scopes::USER_MODIFY_PLAYBACK_STATE,
-            scopes::USER_READ_CURRENTLY_PLAYING,
-            scopes::USER_LIBRARY_READ,
             scopes::USER_READ_PLAYBACK_POSITION,
         ])
         .expect("Failed to get TUPY_CLIENT_ID and TUPY_REDIRECT_URI environment variables.");
@@ -154,62 +170,31 @@ impl App {
             }
             Action::Tick => {
                 // Only render and poll for updates if the app is focused
-                if self.focused {
-                    self.render()?;
+                self.render()?;
 
-                    // Poll to check if playback state should be fetched
-                    if self.state.playback_poll.poll() {
-                        let playback = self.state.playback.clone();
-                        let fetch_queue = self.state.show_queue();
-                        let window = self.state.window_state.clone();
-                        let last_playback_poll = self.state.last_playback_poll.clone();
-                        let api = self.spotify.api.clone();
+                // Poll to check if playback state should be fetched
+                if self.state.playback_poll.poll() {
+                    let playback = self.state.playback.clone();
+                    let last_playback_poll = self.state.last_playback_poll.clone();
+                    let api = self.spotify.api.clone();
 
-                        tokio::task::spawn(async move {
-                            // TODO: Push errors to error queue for displaying
-                            // Also push it to a error log file that is cleared on startup
-                            // TODO: Probably add a spot in the color_eyre panic hook to log errors
-                            // and push them to the error queue
-                            if api.token().is_expired() {
-                                api.refresh().await.unwrap();
-                            }
+                    tokio::task::spawn(async move {
+                        // TODO: Push errors to error queue for displaying
+                        // Also push it to a error log file that is cleared on startup
+                        // TODO: Probably add a spot in the color_eyre panic hook to log errors
+                        // and push them to the error queue
+                        if api.token().is_expired() {
+                            api.refresh().await.unwrap();
+                        }
 
-                            if let Ok(result) = api.playback_state(None).await {
-                                *playback.lock().unwrap() = result.map(|pb| pb.into());
-                                *last_playback_poll.lock().unwrap() = Local::now();
-                            }
+                        if let Ok(result) = api.playback_state(None).await {
+                            *playback.lock().unwrap() = result.map(|pb| pb.into());
+                            *last_playback_poll.lock().unwrap() = Local::now();
+                        }
+                    });
 
-                            if fetch_queue {
-                                let q = api.queue().await.ok();
-                                match q {
-                                    Some(q) => {
-                                        let tracks = q
-                                            .queue
-                                            .iter()
-                                            .filter_map(|i| match i {
-                                                Item::Track(t) => Some(t.uri.clone()),
-                                                Item::Episode(_) => None,
-                                            })
-                                            .collect::<Vec<_>>();
-
-                                        if tracks.is_empty() {
-                                            window.lock().unwrap().queue.queue =
-                                                Some(Queue::from((q, Vec::new()))).into();
-                                        } else {
-                                            let saved =
-                                                api.check_saved_tracks(tracks).await.unwrap();
-                                            window.lock().unwrap().queue.queue =
-                                                Some(Queue::from((q, saved))).into();
-                                        }
-                                    }
-                                    None => {
-                                        window.lock().unwrap().queue.queue = None.into();
-                                    }
-                                }
-                            }
-                        });
-                        self.state.playback_poll.reset();
-                    }
+                    tx.send(Action::UpdateQueue).unwrap();
+                    self.state.playback_poll.reset();
                 }
             }
             Action::Next => {
@@ -270,42 +255,71 @@ impl App {
                     }
                 }
 
-                tx.send(Action::SelectDevice)?;
+                tx.send(Action::OpenSelectDevice)?;
             }
             Action::Down => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
-                    next_in_list(&mut devices.state, devices.devices.len());
+                    self.state.modal_state.lock().unwrap().devices.next()
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Queue => {
-                        let queue = &mut self.state.window_state.lock().unwrap().queue;
-                        if let Loading::Some(q) = &mut queue.queue {
-                            next_in_list(&mut queue.state, q.items.len());
-                        }
-                    }
+                    Window::Queue => self.state.window_state.lock().unwrap().queue.next(),
+                    _ => {}
                 },
+                _ => {}
             },
             Action::Up => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
-                    prev_in_list(&mut devices.state, devices.devices.len());
+                    self.state.modal_state.lock().unwrap().devices.prev()
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Queue => {
-                        let queue = &mut self.state.window_state.lock().unwrap().queue;
-                        if let Loading::Some(q) = &mut queue.queue {
-                            prev_in_list(&mut queue.state, q.items.len());
+                    Window::Queue => self.state.window_state.lock().unwrap().queue.prev(),
+                    _ => {}
+                },
+                _ => {}
+            },
+            Action::Play(play) => {
+                let api = self.spotify.api.clone();
+                tokio::task::spawn(async move {
+                    if api.token().is_expired() {
+                        api.refresh().await.unwrap();
+                    }
+                    api.play(play, None).await.unwrap();
+                });
+            }
+            Action::UpdateQueue => {
+                let api = self.spotify.api.clone();
+                let window = self.state.window_state.clone();
+                tokio::task::spawn(async move {
+                    match api.queue().await.ok() {
+                        Some(q) => {
+                            let st = api.check_saved_tracks(q
+                                .queue
+                                .iter()
+                                .filter_map(|i| match i {
+                                    Item::Track(t) => Some(t.uri.clone()),
+                                    Item::Episode(_) => None,
+                                })).await.unwrap();
+
+                            let se = api.check_saved_episodes(q
+                                .queue
+                                .iter()
+                                .filter_map(|i| match i {
+                                    Item::Episode(e) => Some(e.uri.clone()),
+                                    Item::Track(_) => None,
+                                })).await.unwrap();
+
+                            window.lock().unwrap().queue.queue =
+                                Some(Queue::from((q, st, se))).into();
+                        }
+                        None => {
+                            window.lock().unwrap().queue.queue = None.into();
                         }
                     }
-                },
-            },
+                });
+            }
             Action::Select => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    let devices = &mut self.state.modal_state.lock().unwrap().devices;
-                    let device = devices.devices
-                        [devices.state.selected().unwrap_or(0).saturating_sub(0)]
-                    .clone();
+                    let device = self.state.modal_state.lock().unwrap().devices.select();
                     let api = self.spotify.api.clone();
                     tokio::task::spawn(async move {
                         if api.token().is_expired() {
@@ -315,74 +329,88 @@ impl App {
                     });
                     self.state.viewport = Viewport::Window;
                 }
+                #[allow(clippy::single_match)]
                 Viewport::Window => match self.state.window {
                     Window::Queue => {
-                        let window = self.state.window_state.clone();
-                        let fetch_queue = self.state.show_queue();
-                        let pos = window.lock().unwrap().queue.state.selected().unwrap_or(0);
-                        let api = self.spotify.api.clone();
-                        tokio::task::spawn(async move {
-                            if api.token().is_expired() {
-                                api.refresh().await.unwrap();
-                            }
-                            let q = window.lock().unwrap().queue.clone();
-                            if let Loading::Some(queue) = q.queue {
-                                api.play(
-                                    Play::Queue {
-                                        uris: queue
-                                            .items
-                                            .iter()
-                                            .map(|q| match &q.item {
-                                                Item::Track(t) => t.uri.clone(),
-                                                Item::Episode(e) => e.uri.clone(),
-                                            })
-                                            .collect(),
-                                        position: Duration::zero(),
-                                        offset: Some(pos),
-                                    },
-                                    None,
-                                )
-                                .await
-                                .unwrap();
-                            }
-
-                            if fetch_queue {
-                                let q = api.queue().await.ok();
-                                match q {
-                                    Some(q) => {
-                                        let tracks = q
-                                            .queue
-                                            .iter()
-                                            .filter_map(|i| match i {
-                                                Item::Track(t) => Some(t.uri.clone()),
-                                                Item::Episode(_) => None,
-                                            })
-                                            .collect::<Vec<_>>();
-
-                                        if tracks.is_empty() {
-                                            window.lock().unwrap().queue.queue =
-                                                Some(Queue::from((q, Vec::new()))).into();
-                                        } else {
-                                            let saved =
-                                                api.check_saved_tracks(tracks).await.unwrap();
-                                            window.lock().unwrap().queue.queue =
-                                                Some(Queue::from((q, saved))).into();
-                                        }
+                        if let Some(item) = self.state.window_state.lock().unwrap().queue.select() {
+                            self.state.modal_state.lock().unwrap().actions = match item.item {
+                                Item::Track(t) => {
+                                    let mut actions = vec![
+                                        UiAction::Play(t.uri.clone()),
+                                        if !item.saved { UiAction::Save(t.uri.clone()) } else { UiAction::Remove(t.uri.clone()) },
+                                        UiAction::AddToPlaylist(t.uri.clone()),
+                                        UiAction::AddToQueue(t.uri.clone()),
+                                    ];
+                                    if t.album.total_tracks > 1 {
+                                        actions.push(UiAction::PlayContext(t.album.uri.clone()));
                                     }
-                                    None => {
-                                        window.lock().unwrap().queue.queue = None.into();
-                                    }
+                                    actions
                                 }
-                            }
-                        });
-                        self.state.viewport = Viewport::Window;
+                                Item::Episode(e) => {
+                                    let mut actions = vec![
+                                        UiAction::Play(e.uri.clone()),
+                                        if !item.saved { UiAction::Save(e.uri.clone()) } else { UiAction::Remove(e.uri.clone()) },
+                                        UiAction::AddToPlaylist(e.uri.clone()),
+                                        UiAction::AddToQueue(e.uri.clone()),
+                                    ];
+                                    if let Some(show) = e.show.as_ref() {
+                                        if show.total_episodes > 1 {
+                                            actions.push(UiAction::PlayContext(show.uri.clone()));
+                                        }
+                                        actions.push(UiAction::GoTo(GoTo::Show(show.uri.clone())));
+                                    }
+                                    actions
+                                }
+                            };
+                            self.state.viewport = Viewport::Modal(Modal::Action);
+                        }
                     }
+                    _ => {}
                 },
+                _ => {}
             },
-            Action::SelectDevice => {
+            #[allow(clippy::single_match)]
+            Action::OpenAction => if let Some(playback) = self.state.playback.lock().unwrap().as_ref() {
+                match &playback.item {
+                    PlaybackItem::Track(t) => {
+                        let mut actions = vec![
+                            // TODO: Wrap the playback fetching on if it is saved. If it has the
+                            // functionality then add the action to save/remove it from saved items
+                            
+                            //if !item.saved { UiAction::Save(t.uri.clone()) } else { UiAction::Remove(t.uri.clone()) },
+                            UiAction::AddToPlaylist(t.uri.clone()),
+                        ];
+
+                        if t.album.total_tracks > 1 {
+                            actions.push(UiAction::PlayContext(t.album.uri.clone()));
+                        }
+
+                        self.state.modal_state.lock().unwrap().actions = actions;
+                        self.state.viewport = Viewport::Modal(Modal::Action);
+                    }
+                    PlaybackItem::Episode(e) => {
+                        let mut actions = vec![
+                            //if !item.saved { UiAction::Save(e.uri.clone()) } else { UiAction::Remove(e.uri.clone()) },
+                            UiAction::AddToPlaylist(e.uri.clone()),
+                            UiAction::AddToQueue(e.uri.clone()),
+                        ];
+                        if let Some(show) = e.show.as_ref() {
+                            if show.total_episodes > 1 {
+                                actions.push(UiAction::PlayContext(show.uri.clone()));
+                            }
+                            actions.push(UiAction::GoTo(GoTo::Show(show.uri.clone())));
+                        }
+
+                        self.state.modal_state.lock().unwrap().actions = actions;
+                        self.state.viewport = Viewport::Modal(Modal::Action);
+                    },
+                    _ => {} 
+                };
+            },
+            Action::OpenSelectDevice => {
                 if let Ok(devices) = self.spotify.api.devices().await {
                     self.state.modal_state.lock().unwrap().devices = DevicesState {
-                        state: ListState::default(),
+                        state: TableState::default(),
                         devices,
                     };
                     self.state.viewport = Viewport::Modal(Modal::Devices);
@@ -390,11 +418,156 @@ impl App {
                     return Err(eyre!("Failed to get devices"));
                 }
             }
-            //Action::Tab => match &self.state.window {
-            //    //Window::Queue => {
-            //    //    self.state.window = Window::Home;
-            //    //}
-            //},
+            Action::OpenGoTo => {
+                self.state.viewport = Viewport::Modal(Modal::GoTo);
+            }
+            Action::GoTo(goto) => {
+                match goto {
+                    GoTo::Queue => {
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Queue;
+                    }
+                    GoTo::Library => {
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Library;
+                    }
+                    // TODO: Map in changing ui based on goto when the other states are implemented
+                    _ => todo!(),
+                }
+            }
+            Action::Key(key) => {
+                match &mut self.state.viewport {
+                    Viewport::Modal(Modal::GoTo) => {
+                        let go_to = &mut self.state.modal_state.lock().unwrap().go_to;
+                        if go_to.contains(&key) {
+                            tx.send(Action::GoTo(go_to.get(&key).unwrap().clone())).unwrap();
+                        }
+                    }
+                    Viewport::Modal(Modal::Action) => if let KeyCode::Char(key) = key {
+                        let action = self.state.modal_state.lock().unwrap().actions.iter().find(|a| *a == key).cloned();
+                        if let Some(action) = action {
+                            match action {
+                                UiAction::Play(uri) => tx.send(Action::Play(Play::queue([uri.clone()], None, 0))).unwrap(),
+                                UiAction::PlayContext(uri) => match uri.resource() {
+                                    Resource::Playlist => tx.send(Action::Play(Play::playlist(uri.clone(), None, 0))).unwrap(),
+                                    Resource::Artist => tx.send(Action::Play(Play::artist(uri.clone()))).unwrap(),
+                                    Resource::Album => tx.send(Action::Play(Play::album(uri.clone(), None, 0))).unwrap(),
+                                    _ => {}
+                                }
+                                UiAction::Save(uri) => {
+                                    let api = self.spotify.api.clone();
+                                    let uri = uri.clone();
+                                    match uri.resource() {
+                                        Resource::Track => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.save_tracks([uri]).await.unwrap();
+                                        });},
+                                        Resource::Episode => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.save_episodes([uri]).await.unwrap();
+                                        });},
+                                        Resource::Artist => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.follow_artists([uri]).await.unwrap();
+                                        });},
+                                        Resource::Album => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.save_albums([uri]).await.unwrap();
+                                        });},
+                                        Resource::Playlist => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.follow_playlist(uri, true).await.unwrap();
+                                        });},
+                                        Resource::Show => {
+                                            tokio::task::spawn(async move {
+                                                if api.token().is_expired() {
+                                                    api.refresh().await.unwrap();
+                                                }
+                                                api.save_shows([uri]).await.unwrap();
+                                            });
+                                        },
+                                        _ => {}
+                                    }
+                                }
+                                UiAction::Remove(uri) => {
+                                    let api = self.spotify.api.clone();
+                                    let uri = uri.clone();
+                                    match uri.resource() {
+                                        Resource::Track => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.remove_saved_tracks([uri]).await.unwrap();
+                                        });},
+                                        Resource::Episode => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.remove_saved_episodes([uri]).await.unwrap();
+                                        });},
+                                        Resource::Artist => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.unfollow_artists([uri]).await.unwrap();
+                                        });},
+                                        Resource::Album => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.remove_saved_albums([uri]).await.unwrap();
+                                        });},
+                                        Resource::Playlist => {tokio::task::spawn(async move {
+                                            if api.token().is_expired() {
+                                                api.refresh().await.unwrap();
+                                            }
+                                            api.unfollow_playlist(uri).await.unwrap();
+                                        });},
+                                        Resource::Show => {
+                                            tokio::task::spawn(async move {
+                                                if api.token().is_expired() {
+                                                    api.refresh().await.unwrap();
+                                                }
+                                                api.remove_saved_shows([uri]).await.unwrap();
+                                            });
+                                        },
+                                        _ => {}
+                                    }
+                                }
+                                UiAction::AddToPlaylist(uri) => {
+                                    self.state.modal_state.lock().unwrap().add_to_playlist = Some(uri.clone());
+                                    self.state.viewport = Viewport::Modal(Modal::AddToPlaylist);
+                                },
+                                UiAction::AddToQueue(uri) => {
+                                    let api = self.spotify.api.clone();
+                                    let uri = uri.clone();
+                                    tokio::task::spawn(async move {
+                                        if api.token().is_expired() {
+                                            api.refresh().await.unwrap();
+                                        }
+                                        api.add_to_queue(uri, None).await.unwrap();
+                                    });
+                                },
+                                UiAction::GoTo(goto) => {
+                                    tx.send(Action::GoTo(goto.clone())).unwrap();
+                                },
+                            };
+                            self.state.viewport = Viewport::Window;
+                        }
+                    }
+                    _ => {}
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -417,7 +590,9 @@ impl App {
                           crossterm::event::Event::Key(key) => {
                             if key.kind == crossterm::event::KeyEventKind::Press {
                               if let Some(action) = keymaps.get(&key) {
-                                tx.send(*action).unwrap();
+                                tx.send(action.clone()).unwrap();
+                              } else {
+                                tx.send(Action::Key(key.code)).unwrap();
                               }
                             }
                           },
@@ -486,6 +661,16 @@ impl Widget for State {
                 let qstate = &mut self.window_state.lock().unwrap().queue;
                 StatefulWidget::render(qstate, layout[0], buf, &mut dimmed);
             }
+            Window::Library => {
+                Block::bordered()
+                    .title(
+                        Title::from("[Library]")
+                            .alignment(Alignment::Center)
+                            .position(Position::Bottom),
+                    )
+                    .border_set(border::ROUNDED)
+                    .render(layout[0], buf);
+            }
         }
 
         // Viewport State Rendering
@@ -494,6 +679,22 @@ impl Widget for State {
                 Modal::Devices => {
                     let devices = &mut self.modal_state.lock().unwrap().devices;
                     Widget::render(devices, layout[0], buf);
+                }
+                Modal::GoTo => {
+                    let goto = &self.modal_state.lock().unwrap().go_to;
+                    Widget::render(UiGoto(&goto.mappings), layout[0], buf);
+                },
+                Modal::Action => {
+                    let actions = &self.modal_state.lock().unwrap().actions;
+                    Widget::render(ModalActions(actions), layout[0], buf);
+                }
+                Modal::AddToPlaylist => {
+                    let add_to_playlist = &self.modal_state.lock().unwrap().add_to_playlist;
+                    // TODO:
+                    // - Fetch playlists
+                    // - Render playlists in modal
+                    // - Use loading state
+                    Widget::render(AddToPlaylist(add_to_playlist.as_ref()), layout[0], buf);
                 }
             }
         }
@@ -509,29 +710,5 @@ impl Widget for State {
                 NoPlayback.render(layout[1], buf);
             }
         }
-    }
-}
-
-fn next_in_list(list: &mut ListState, len: usize) {
-    match list.selected() {
-        Some(selected) if selected < len - 1 => {
-            list.select(Some(selected + 1));
-        }
-        None => {
-            list.select(Some(0));
-        }
-        _ => {}
-    }
-}
-
-fn prev_in_list(list: &mut ListState, len: usize) {
-    match list.selected() {
-        Some(selected) if selected > 0 => {
-            list.select(Some(selected - 1));
-        }
-        None => {
-            list.select(Some(len - 1));
-        }
-        _ => {}
     }
 }

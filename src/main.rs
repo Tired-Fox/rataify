@@ -29,16 +29,23 @@ async fn main() -> Result<()> {
     App::new()
         .await?
         .run(HashMap::from([
-            (key!(' '), Action::Toggle),
-            (key!(Enter), Action::Select),
-            (key!('d'), Action::SelectDevice),
+            // Menus
+            (key!('d'), Action::OpenSelectDevice),
+            (key!('g'), Action::OpenGoTo),
+            // TODO: Implement
+            (key!(','), Action::OpenAction),
+            // TODO: Implement
+            (key!('?'), Action::OpenHelp),
+            // TODO: Implement
+            (key!('/'), Action::OpenSearch),
 
+            // Playback State
+            (key!(' '), Action::Toggle),
             (key!('>' + SHIFT), Action::Next),
             (key!('<' + SHIFT), Action::Previous),
 
-            (key!(Tab), Action::Tab),
-            (key!(Tab + SHIFT), Action::PrevTab),
-
+            // Navigation
+            (key!(Enter), Action::Select),
             (key!(Right), Action::Right),
             (key!('l'), Action::Left),
             (key!(Left), Action::Left),
@@ -47,7 +54,11 @@ async fn main() -> Result<()> {
             (key!('k'), Action::Up),
             (key!(Down), Action::Down),
             (key!('j'), Action::Down),
+
+            // Quit / Close
             (key!('q'), Action::Close),
+            (key!('c' + CONTROL), Action::Quit),
+            (key!('C' + SHIFT + CONTROL), Action::Quit),
         ]))
         .await
 }

@@ -1,4 +1,4 @@
-use tupy::{api::{auth::OAuth, flow::{Credentials, Pkce}, request::Play, scopes, PublicApi, Spotify, Uri, UserApi}, Pagination};
+use tupy::{api::{auth::OAuth, flow::{Credentials, Pkce}, request::Play, response::Item, scopes, PublicApi, Spotify, Uri, UserApi}, Pagination};
 use api_examples::util;
 
 #[tokio::main]
@@ -10,6 +10,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         scopes::USER_MODIFY_PLAYBACK_STATE,
         scopes::PLAYLIST_READ_PRIVATE,
         scopes::USER_READ_CURRENTLY_PLAYING,
+        scopes::USER_LIBRARY_READ,
+        scopes::USER_LIBRARY_MODIFY,
     ]).unwrap();
 
     let spotify = Spotify::<Pkce>::new(
@@ -29,7 +31,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2PVAFANvXwdtNvxS5NoNEt
     //spotify.api.play(Play::queue([Uri::episode("2PVAFANvXwdtNvxS5NoNEt")], None, 0), None).await?;
 
-    println!("{:#?}", spotify.api.queue().await?);
+    let queue = spotify.api.queue().await?;
+    let mut saved_tracks = spotify.api.check_saved_tracks(queue.queue.iter().filter_map(|i| match i {
+        Item::Track(track) => Some(track.id.clone()),
+        _ => None
+    })).await?;
+    let mut saved_episodes = spotify.api.check_saved_episodes(queue.queue.iter().filter_map(|i| match i {
+        Item::Episode(episode) => Some(episode.id.clone()),
+        _ => None
+    })).await?;
+
+    let mut saved_tracks = saved_tracks.into_iter();
+    let mut saved_episodes = saved_episodes.into_iter();
+    for item in queue.queue.iter() {
+        match item {
+            Item::Track(track) => println!("- [{}] {}", saved_tracks.next().unwrap(), track.name),
+            Item::Episode(episode) => println!("- [{}] {}", saved_episodes.next().unwrap(), episode.name),
+        }
+    }
 
     //let mut episodes = spotify.api.show_episodes::<15, _, _>("5GcTIDkgnB9wP6CmUyOSqa", None)?;
     //if let Some(page) = episodes.next().await? {

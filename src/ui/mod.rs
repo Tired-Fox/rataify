@@ -1,9 +1,10 @@
-use ratatui::{layout::{Constraint, Direction, Layout, Rect}, style::Stylize, text::{Line, Span}};
+use ratatui::{layout::{Constraint, Direction, Layout, Rect}, style::Stylize, text::Line, widgets::{Cell, Row}};
 use tupy::{api::response::{Episode, Track}, Duration};
 
 pub mod modal;
 pub mod playback;
 pub mod queue;
+pub mod action;
 
 pub use playback::NoPlayback;
 
@@ -69,16 +70,14 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-fn format_track<'l>(track: &Track, saved: bool) -> Line<'l> {
-    Line::default().spans(vec![
-        Span::from(if saved { "♥  " } else { "   " }),
-        Span::from(format_duration(track.duration)),
-        Span::from("  "),
-        Span::from(track.name.clone()).cyan(),
-        Span::from("  "),
-        Span::from(track.album.name.clone()).italic().yellow(),
-        Span::from("  "),
-        Span::from(
+/// Icon | Duration | Name | By | Context
+fn format_track<'l>(track: &Track, saved: bool) -> Row<'l> {
+    Row::new(vec![
+        Cell::from(if saved { "♥" } else { "" }),
+        Cell::from(Line::from(format_duration(track.duration)).right_aligned()),
+        Cell::from(track.name.clone()).cyan(),
+        //Cell::from(track.album.name.clone()).italic().yellow(),
+        Cell::from(
             track
                 .artists
                 .iter()
@@ -89,15 +88,21 @@ fn format_track<'l>(track: &Track, saved: bool) -> Line<'l> {
     ])
 }
 
-//static CHARS: [char; 8] = ['▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+/// Icon | Duration | Name | By | Context
+fn format_episode<'l>(episode: &Episode) -> Row<'l> {
+    let mut cells = vec![
+        Cell::from(if episode.resume_point.fully_played { "✓" } else { "" }),
+        Cell::from(Line::from(format_duration(episode.duration)).right_aligned()),
+        Cell::from(episode.name.clone()).green(),
+    ];
 
-fn format_episode<'l>(episode: &Episode) -> Line<'l> {
-    Line::default().spans(vec![
-        Span::from(format!(" {}  ", if episode.resume_point.fully_played { '✓' } else { ' ' })),
-        Span::from(format_duration(episode.duration)),
-        Span::from("  "),
-        Span::from(episode.name.clone()).green(),
-        Span::from("    "),
-        Span::from(episode.show.as_ref().unwrap().name.clone()),
-    ])
+    if let Some(show) = episode.show.as_ref() {
+        cells.extend([
+            Cell::from(show.name.clone()),
+        ]);
+    } else {
+        cells.extend([Cell::default()]);
+    }
+
+    Row::new(cells)
 }

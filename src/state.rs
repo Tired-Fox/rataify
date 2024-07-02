@@ -1,9 +1,67 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
-use ratatui::widgets::ListState;
-use tupy::{api::response::{self, Device, PlaybackItem, Repeat}, DateTime, Duration, Local};
+use crossterm::event::KeyCode;
+use ratatui::widgets::{ListState, TableState};
+use tupy::{api::{response::{self, Device, PlaybackItem, Repeat}, Uri}, DateTime, Duration, Local};
 
-use crate::{Locked, Shared};
+use crate::{ui::action::{GoTo, UiAction}, Locked, Shared};
+
+pub trait IterCollection {
+    fn next_in_list(&mut self, len: usize);
+    fn prev_in_list(&mut self, len: usize);
+}
+
+impl IterCollection for ListState {
+    fn next_in_list(&mut self, len: usize) {
+        match self.selected() {
+            Some(selected) if selected < len - 1 => {
+                self.select(Some(selected + 1));
+            }
+            None => {
+                self.select(Some(0));
+            }
+            _ => {}
+        }
+    }
+    
+    fn prev_in_list(&mut self, len: usize) {
+        match self.selected() {
+            Some(selected) if selected > 0 => {
+                self.select(Some(selected - 1));
+            }
+            None => {
+                self.select(Some(len - 1));
+            }
+            _ => {}
+        }
+    }
+}
+
+impl IterCollection for TableState {
+    fn next_in_list(&mut self, len: usize) {
+        match self.selected() {
+            Some(selected) if selected < len - 1 => {
+                self.select(Some(selected + 1));
+            }
+            None => {
+                self.select(Some(0));
+            }
+            _ => {}
+        }
+    }
+    
+    fn prev_in_list(&mut self, len: usize) {
+        match self.selected() {
+            Some(selected) if selected > 0 => {
+                self.select(Some(selected - 1));
+            }
+            None => {
+                self.select(Some(len - 1));
+            }
+            _ => {}
+        }
+    }
+}
 
 #[derive(Default)]
 pub enum Loading<T> {
@@ -168,12 +226,14 @@ pub struct Queue {
     pub items: Vec<Item>,
 }
 
-impl From<(response::Queue, Vec<bool>)> for Queue {
-    fn from(mut q: (response::Queue, Vec<bool>)) -> Self {
+impl From<(response::Queue, Vec<bool>, Vec<bool>)> for Queue {
+    fn from(mut q: (response::Queue, Vec<bool>, Vec<bool>)) -> Self {
+        let mut saved_tracks = q.1.into_iter();
+        let mut saved_episodes = q.2.into_iter();
         Self {
             items: q.0.queue.into_iter().map(|i| match &i {
-                response::Item::Track(_) => Item::new(i, q.1.pop().unwrap_or(false)),
-                response::Item::Episode(_) => Item::new(i, false),
+                response::Item::Track(_) => Item::new(i, saved_tracks.next().unwrap_or(false)),
+                response::Item::Episode(_) => Item::new(i, saved_episodes.next().unwrap_or(false)),
             }).collect(),
         }
     }
@@ -182,12 +242,16 @@ impl From<(response::Queue, Vec<bool>)> for Queue {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Modal {
     Devices,
+    Action,
+    AddToPlaylist,
+    GoTo,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum Window {
-    #[default]
     Queue,
+    #[default]
+    Library,
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
@@ -199,8 +263,30 @@ pub enum Viewport {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct QueueState {
-    pub state: ListState,
+    pub state: TableState,
     pub queue: Loading<Queue>,
+}
+
+impl QueueState {
+    pub fn next(&mut self) {
+        if let Loading::Some(ref mut q) = self.queue {
+            self.state.next_in_list(q.items.len());
+        }
+    }
+    
+    pub fn prev(&mut self) {
+        if let Loading::Some(ref mut q) = self.queue {
+            self.state.prev_in_list(q.items.len());
+        }
+    }
+
+    pub fn select(&mut self) -> Option<Item> {
+        if let Loading::Some(ref mut q) = self.queue {
+            q.items.get(self.state.selected().unwrap_or(0)).cloned()
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -210,13 +296,67 @@ pub struct WindowState {
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct DevicesState {
-    pub state: ListState,
+    pub state: TableState,
     pub devices: Vec<Device>,
 }
 
+impl DevicesState {
+    pub fn next(&mut self) {
+        self.state.next_in_list(self.devices.len());
+    }
+    
+    pub fn prev(&mut self) {
+        self.state.prev_in_list(self.devices.len());
+    }
+
+    pub fn select(&mut self) -> Device {
+        self.devices[self.state.selected().unwrap_or(0)].clone()
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct GoToState {
+    lookup: HashMap<KeyCode, usize>,
+    pub mappings: Vec<(KeyCode, GoTo)>,
+}
+
+impl GoToState {
+    pub fn new(mappings: Vec<(KeyCode, GoTo)>) -> Self {
+        Self {
+            lookup: mappings.iter().enumerate().map(|(i, (k, _))| (*k, i)).collect(),
+            mappings,
+        }
+    }
+
+    pub fn contains(&self, key: &KeyCode) -> bool {
+        self.lookup.contains_key(key)
+    }
+
+    pub fn get(&self, key: &KeyCode) -> Option<&GoTo> {
+        self.lookup.get(key).map(|i| &self.mappings[*i].1)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModalState {
     pub devices: DevicesState,
+    pub go_to: GoToState,
+    pub actions: Vec<UiAction>,
+    pub add_to_playlist: Option<Uri>,
+}
+
+impl Default for ModalState {
+    fn default() -> Self {
+        Self {
+            devices: DevicesState::default(),
+            go_to: GoToState::new(vec![
+                (KeyCode::Char('_'), GoTo::Queue),
+                (KeyCode::Char('L'), GoTo::Library),
+            ]),
+            actions: vec![],
+            add_to_playlist: None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]

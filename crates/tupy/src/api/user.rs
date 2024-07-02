@@ -423,16 +423,16 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token();
+            let ids = ids.into_iter()
+                .map(|s| s.into_spotify_id())
+                .collect::<Vec<_>>()
+                .join(",");
+            if ids.is_empty() {
+                return Ok(vec![]);
+            }
             let SpotifyResponse { body, .. } = request::get!("me/albums/contains")
-                .param(
-                    "ids",
-                    ids.into_iter()
-                        .map(|s| s.into_spotify_id())
-                        .collect::<Vec<String>>()
-                        .join(","),
-                )
-                .send(token)
+                .param("ids", ids)
+                .send(self.token())
                 .await?;
 
             Ok(pares!(&body)?)
@@ -520,14 +520,15 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
+            let ids = ids.into_iter()
+                .map(|s| s.into_spotify_id())
+                .collect::<Vec<_>>()
+                .join(",");
+            if ids.is_empty() {
+                return Ok(vec![]);
+            }
             let SpotifyResponse { body, .. } = request::get!("me/audiobooks/contains")
-                .param(
-                    "ids",
-                    ids.into_iter()
-                        .map(|s| s.into_spotify_id())
-                        .collect::<Vec<String>>()
-                        .join(","),
-                )
+                .param("ids", ids)
                 .send(self.token())
                 .await?;
 
@@ -631,16 +632,18 @@ pub trait UserApi: AuthFlow {
         ids: I,
     ) -> impl Future<Output = Result<Vec<bool>, Error>> {
         async move {
-            validate_scope(self.scopes(), [scopes::USER_LIBRARY_MODIFY])?;
+            validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
-            let SpotifyResponse { body, .. } = request::get!("me/episodes/contains")
-                .param(
-                    "ids",
-                    ids.into_iter()
+            let ids = ids.into_iter()
                         .map(|s| s.into_spotify_id())
                         .collect::<Vec<_>>()
-                        .join(","),
-                )
+                        .join(",");
+            if ids.is_empty() {
+                return Ok(vec![]);
+            }
+
+            let SpotifyResponse { body, .. } = request::get!("me/episodes/contains")
+                .param("ids", ids)
                 .send(self.token())
                 .await?;
 
@@ -739,16 +742,16 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token();
+            let ids = ids.into_iter()
+                .map(|s| s.into_spotify_id())
+                .collect::<Vec<_>>()
+                .join(",");
+            if ids.is_empty() {
+                return Ok(vec![]);
+            }
             let SpotifyResponse { body, .. } = request::get!("me/shows/contains")
-                .param(
-                    "ids",
-                    ids.into_iter()
-                        .map(|s| s.into_spotify_id())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )
-                .send(token)
+                .param("ids", ids)
+                .send(self.token())
                 .await?;
 
             Ok(pares!(&body)?)
@@ -852,16 +855,17 @@ pub trait UserApi: AuthFlow {
         async move {
             validate_scope(self.scopes(), [scopes::USER_LIBRARY_READ])?;
 
-            let token = self.token();
+
+            let ids = ids.into_iter()
+                .map(|s| s.into_spotify_id())
+                .collect::<Vec<_>>()
+                .join(",");
+            if ids.is_empty() {
+                return Ok(vec![]);
+            }
             let SpotifyResponse { body, .. } = request::get!("me/tracks/contains")
-                .param(
-                    "ids",
-                    ids.into_iter()
-                        .map(|s| s.into_spotify_id())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )
-                .send(token)
+                .param("ids", ids)
+                .send(self.token())
                 .await?;
 
             Ok(pares!(&body)?)

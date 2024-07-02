@@ -1,8 +1,8 @@
 use ratatui::{
-    layout::Alignment,
+    layout::{Alignment, Constraint},
     style::{Color, Modifier, Style},
     symbols::border,
-    widgets::{block::{Position, Title}, Block, List, ListDirection, Padding, Paragraph, StatefulWidget, Widget},
+    widgets::{block::{Position, Title}, Block, Padding, Paragraph, StatefulWidget, Table, Widget},
 };
 use tupy::api::response::Item;
 
@@ -45,20 +45,31 @@ impl StatefulWidget for &mut QueueState {
             }
             Loading::Some(q) => {
                 let block = Block::bordered()
-                    .padding(Padding::uniform(1))
+                    .padding(Padding::symmetric(1, 0))
                     .title(title)
                     .border_set(border::ROUNDED);
-
+                
+                //let table = text
+                //    .split("\n")
+                //    .map(|line: &str| -> Row { line.split_ascii_whitespace().collect() })
+                //    .collect::<Table>()
+                //    .widths([Constraint::Length(10); 3]);
                 // TODO: Handle rendering in scrollable area ???
-                let list = q
+                
+                let max_name = q.items.iter().map(|i| match &i.item {
+                    Item::Track(t) => t.name.len(),
+                    Item::Episode(e) => e.name.len(),
+                }).max().unwrap_or(0);
+
+                let table = q
                     .items
                     .iter()
-                    .map(|item| match &item.item {
+                    .map(|item|  match &item.item {
                         // TODO: Format each line for specific item type
                         Item::Track(t) => format_track(t, item.saved),
                         Item::Episode(e) => format_episode(e),
                     })
-                    .collect::<List>()
+                    .collect::<Table>()
                     .block(block)
                     .style(*state)
                     .highlight_style(
@@ -66,9 +77,16 @@ impl StatefulWidget for &mut QueueState {
                             .add_modifier(Modifier::BOLD)
                             .fg(Color::Yellow),
                     )
-                    .direction(ListDirection::TopToBottom);
+                    .widths([
+                        Constraint::Length(3),
+                        Constraint::Length(8),
+                        Constraint::Max(max_name as u16),
+                        Constraint::Fill(1),
+                        //Constraint::Fill(1),
+                    ])
+                    .column_spacing(2);
 
-                StatefulWidget::render(list, area, buf, &mut self.state);
+                StatefulWidget::render(table, area, buf, &mut self.state);
             }
         }
     }

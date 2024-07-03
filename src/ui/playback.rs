@@ -1,14 +1,32 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
-    style::Stylize,
-    text::Line,
-    widgets::{Block, Borders, StatefulWidget, Widget},
+    buffer::Buffer, layout::{Constraint, Direction, Layout, Rect}, style::{Stylize, Style}, text::{Line, Span}, widgets::{Block, Borders, StatefulWidget, Widget}
 };
-use tupy::{api::response::PlaybackItem, DateTime, Duration, Local};
+use tupy::{api::response::{Device, PlaybackItem, Repeat}, DateTime, Duration, Local};
 
-use crate::state::Playback;
+use crate::state::{Playback, PlaybackState};
 
 use super::format_duration;
+
+impl StatefulWidget for &PlaybackState {
+    type State = DateTime<Local>;
+
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State)
+    where
+        Self: Sized,
+    {
+        match self.playback.as_ref() {
+            Some(playback) => StatefulWidget::render(
+                playback,
+                area,
+                buf,
+                &mut (*state, self.saved),
+            ),
+            None => {
+                NoPlayback.render(area, buf);
+            }
+        }
+    }
+}
 
 pub struct NoPlayback;
 impl Widget for NoPlayback {
@@ -16,26 +34,16 @@ impl Widget for NoPlayback {
     where
         Self: Sized,
     {
-        let block = Block::default().borders(Borders::all());
-        let play_area = block.inner(area);
-        let playing = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .split(play_area);
-
-        Line::from("<No Playback>")
-            .red()
-            .render(playing[0], buf);
-        ProgressBar::default().render(playing[2], buf);
+        PB {
+            title: Span::from("<No Playback>"),
+            ..Default::default()
+        }
+            .render(area, buf);
     }
 }
 
 impl StatefulWidget for &Playback {
-    type State = DateTime<Local>;
+    type State = (DateTime<Local>, bool);
 
     fn render(
         self,
@@ -43,25 +51,16 @@ impl StatefulWidget for &Playback {
         buf: &mut ratatui::prelude::Buffer,
         state: &mut Self::State,
     ) {
-        let block = Block::default().borders(Borders::all());
-        let play_area = block.inner(area);
-        let playing = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .split(play_area);
+        let (last_poll, is_saved) = *state;
 
         let mut progress = self.progress.unwrap_or(Duration::zero());
         if self.is_playing {
-            progress += Local::now() - *state;
+            progress += Local::now() - last_poll;
         }
 
         match &self.item {
             PlaybackItem::Track(track) => {
-                let album = track.album.name.clone();
+                //let album = track.album.name.clone();
                 let artists = track
                     .artists
                     .iter()
@@ -69,92 +68,48 @@ impl StatefulWidget for &Playback {
                     .collect::<Vec<&str>>()
                     .join(", ");
 
-                if let Some(device) = &self.device {
-                    let title = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-                        .split(playing[0]);
-                    Line::from(track.name.clone()).render(title[0], buf);
-                    Line::from(vec!["Playing on ".into(), device.name.clone().magenta()])
-                        .right_aligned()
-                        .dim()
-                        .gray()
-                        .render(title[1], buf);
-                } else {
-                    Line::from(track.name.clone()).render(playing[0], buf);
+                PB {
+                    title: Span::from(track.name.clone()),
+                    saved: is_saved,
+                    device: self.device.clone(),
+                    shuffle: Some(self.shuffle),
+                    repeat: Some(self.repeat),
+                    context: Some(Line::from(artists).right_aligned()),
+                    progress: Some(progress),
+                    duration: Some(track.duration),
+                    ..Default::default()
                 }
-
-                let context = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(playing[1]);
-
-                Line::from(artists).render(context[0], buf);
-
-                Line::from(album).right_aligned().render(context[1], buf);
-
-                ProgressBar {
-                    current: progress,
-                    total: track.duration,
-                }
-                .render(playing[2], buf);
+                    .render(area, buf);
             }
             PlaybackItem::Episode(episode) => {
-                let (name, publisher) = if let Some(show) = &episode.show {
-                    (
-                        show.name.clone(),
-                        show.publisher.as_deref().unwrap_or("").to_string(),
-                    )
-                } else {
-                    (String::new(), String::new())
-                };
+                let name = episode.show.as_ref().map(|s| Line::from(s.name.clone()).right_aligned());
 
-                if let Some(device) = &self.device {
-                    let title = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-                        .split(playing[0]);
-                    Line::from(episode.name.clone()).render(title[0], buf);
-                    Line::from(vec!["Playing on ".into(), device.name.clone().magenta()])
-                        .right_aligned()
-                        .dim()
-                        .gray()
-                        .render(title[1], buf);
-                } else {
-                    Line::from(episode.name.clone()).render(playing[0], buf);
+                PB {
+                    title: Span::from(episode.name.clone()),
+                    saved: is_saved,
+                    device: self.device.clone(),
+                    shuffle: Some(self.shuffle),
+                    repeat: Some(self.repeat),
+                    context: name,
+                    progress: Some(progress),
+                    duration: Some(episode.duration),
+                    ..Default::default()
                 }
-
-                let context = Layout::horizontal([
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(50),
-                ])
-                    .split(playing[1]);
-                        
-                Line::from(name)
-                    .render(context[0], buf);
-                Line::from(publisher)
-                    .right_aligned()
-                    .render(context[1], buf);
-
-                ProgressBar {
-                    current: progress,
-                    total: episode.duration,
-                }
-                .render(playing[2], buf);
+                    .render(area, buf);
             }
             PlaybackItem::Ad => {
-                Line::from("<Advertisement>")
-                    .yellow()
-                    .centered()
-                    .render(playing[0], buf);
-                ProgressBar::default().render(playing[2], buf);
+                PB {
+                    title: Span::from("<Advertisement>"),
+                    ..Default::default()
+                }
+                    .render(area, buf);
             }
             PlaybackItem::Unkown => {
-                Line::from("<Unknown Playback>")
-                    .gray()
-                    .centered()
-                    .render(playing[1], buf);
-                ProgressBar::default().render(playing[2], buf);
+                PB {
+                    title: Span::from("<Unknown Playback>"),
+                    ..Default::default()
+                }
+                    .render(area, buf);
             }
         }
     }
@@ -200,5 +155,114 @@ impl Widget for ProgressBar {
             time_dur.bold(),
         ])
         .render(area, buf);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PB<'a> {
+    title: Span<'a>,
+    fully_played: bool,
+    saved: bool,
+    context: Option<Line<'a>>,
+
+    device: Option<Device>,
+    shuffle: Option<bool>,
+    repeat: Option<Repeat>,
+
+    progress: Option<Duration>,
+    duration: Option<Duration>,
+}
+
+impl<'a> Widget for PB<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer)
+        where
+            Self: Sized {
+
+        let block = Block::bordered().borders(Borders::LEFT | Borders::RIGHT);
+        let play_area = block.inner(area);
+        let playing = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+            ])
+            .split(play_area);
+        
+        let info_layout = Layout::horizontal([
+            Constraint::Length(14),
+            Constraint::Length(16),
+            Constraint::Length(9),
+            Constraint::Fill(1),
+        ])
+            .split(playing[1]);
+
+        if let Some(shuffle) = self.shuffle {
+            Line::from(vec![
+                Span::from("Shuffle: "),
+                Span::from(if shuffle { "On" } else { "Off" }).style(if shuffle {
+                    Style::default().green()
+                } else {
+                    Style::default().red()
+                })
+            ])
+                .dim()
+                .render(info_layout[0], buf);
+        }
+        if let Some(repeat) = self.repeat {
+            Line::from(vec![
+                Span::from("Repeat: "),
+                Span::from(format!("{:?}", repeat)).style(match repeat {
+                    Repeat::Off => Style::default().red(),
+                    Repeat::Track => Style::default().cyan(),
+                    Repeat::Context => Style::default().yellow(),
+                })
+            ])
+                .dim()
+                .render(info_layout[1], buf);
+        }
+        if let Some(device) = &self.device {
+            if !device.is_restricted && device.supports_volume {
+                Line::from(vec![
+                    Span::from("Vol: "),
+                    Span::from(format!("{}%", device.volume_percent)).magenta()
+                ])
+                    .dim()
+                    .render(info_layout[2], buf);
+            }
+            Line::from(vec!["Playing on ".into(), device.name.clone().magenta()])
+                .right_aligned()
+                .dim()
+                .gray()
+                .render(info_layout[3], buf);
+        }
+
+        let title = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Fill(1), Constraint::Length(2), Constraint::Fill(1)])
+            .split(playing[0]);
+
+        render_title(title[0], buf, self.title, self.fully_played);
+        Line::from(if self.saved { "♥ " } else { "  " }.red()).render(title[1], buf);
+        if let Some(c) = &self.context {
+            c.render(title[2], buf);
+        }
+
+        ProgressBar {
+            current: self.progress.unwrap_or(Duration::zero()),
+            total: self.duration.unwrap_or(Duration::zero()),
+        }
+        .render(playing[2], buf);
+    }
+}
+
+fn render_title<'a>(area: Rect, buf: &mut Buffer, title: Span<'a>, fully_played: bool) {
+    if fully_played {
+        Line::from(vec![
+            title,
+            Span::from(" ✓".green()),
+        ]).render(area, buf);
+    } else {
+        title.render(area, buf);
     }
 }

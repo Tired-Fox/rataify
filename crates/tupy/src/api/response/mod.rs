@@ -28,7 +28,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::{Error, Pagination};
 
-use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse};
+use super::{flow::AuthFlow, SpotifyRequest, SpotifyResponse, Uri};
 
 #[macro_export]
 macro_rules! pares {
@@ -73,16 +73,16 @@ pub fn deserialize_date_ym<'de, D>(deserializer: D) -> Result<NaiveDate, D::Erro
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    NaiveDate::parse_from_str(&s, "%Y-%m").map_err(serde::de::Error::custom)
+    let s = format!("{}-01", String::deserialize(deserializer)?);
+    NaiveDate::parse_from_str(&s, "%Y-%m-%d").map_err(serde::de::Error::custom)
 }
 
 pub fn deserialize_date_y<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    NaiveDate::parse_from_str(&s, "%Y").map_err(serde::de::Error::custom)
+    let s = format!("{}-01-01", String::deserialize(deserializer)?);
+    NaiveDate::parse_from_str(&s, "%Y-%m-%d").map_err(serde::de::Error::custom)
 }
 
 pub fn deserialize_added_at<'de, D>(deserializer: D) -> Result<DateTime<Local>, D::Error>
@@ -533,4 +533,13 @@ pub struct ResumePoint {
 pub enum Item {
     Track(Box<Track>),
     Episode(Box<Episode>),
+}
+
+impl Item {
+    pub fn uri(&self) -> Uri {
+        match self {
+            Self::Track(t) => t.uri.clone(),
+            Self::Episode(e) => e.uri.clone(),
+        }
+    }
 }

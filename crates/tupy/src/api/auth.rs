@@ -160,14 +160,15 @@ impl Token {
             .as_str()
             .unwrap()
             .to_string();
-        self.scopes = body
-            .get("scope")
-            .unwrap()
-            .as_str()
-            .unwrap()
-            .split(' ')
-            .map(|v| v.to_string())
-            .collect();
+        // NOTE: Updating scopes may not be proper. Scopes should remain the same between refreshes
+        //self.scopes = body
+        //    .get("scope")
+        //    .unwrap()
+        //    .as_str()
+        //    .unwrap()
+        //    .split(' ')
+        //    .map(|v| v.to_string())
+        //    .collect();
         self.token_type = body
             .get("token_type")
             .unwrap()

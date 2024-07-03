@@ -148,6 +148,7 @@ impl IntoSpotifyParam for Option<()> {
 impl_into_spotify_param!(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, usize, isize, bool, &str);
 impl_into_spotify_param_with_ref!(String, Uri);
 
+#[allow(dead_code)]
 impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
     pub fn header<V: AsRef<str>>(mut self, key: HeaderName, value: V) -> Self {
         self.headers.insert(key, value.as_ref().to_string());
@@ -167,17 +168,6 @@ impl<B: Into<reqwest::Body>> SpotifyRequest<B> {
         if let Some(value) = value.into_spotify_param() {
             self.params.insert(key.as_ref().to_string(), value);
         }
-        self
-    }
-
-    pub fn params<K: AsRef<str>, V: IntoSpotifyParam, I: IntoIterator<Item = (K, V)>>(
-        mut self,
-        items: I,
-    ) -> Self {
-        self.params.extend(items.into_iter().filter_map(|(k, v)| {
-            let v = v.into_spotify_param()?;
-            Some((k.as_ref().to_string(), v))
-        }));
         self
     }
 

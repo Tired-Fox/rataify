@@ -60,7 +60,7 @@ pub struct Device {
     pub supports_volume: bool,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Repeat {
     /// Repeat off.
@@ -160,6 +160,25 @@ pub struct Playback {
     pub item: PlaybackItem,
     /// Allows to update the user interface based on which playback actions are available within the current context.
     pub actions: HashMap<PlaybackActionScope, HashMap<PlaybackAction, bool>>,
+}
+
+impl Playback {
+    /// True if the action is disallowed
+    pub fn disallow(&self, actions: PlaybackAction) -> bool {
+        if self.actions.contains_key(&PlaybackActionScope::Disallows) {
+            return self.actions.get(&PlaybackActionScope::Disallows).unwrap().contains_key(&actions);
+        }
+        false
+    }
+
+    /// True if all actions are disallowed
+    pub fn disallows<I: IntoIterator<Item=PlaybackAction>>(&self, actions: I) -> bool {
+        if self.actions.contains_key(&PlaybackActionScope::Disallows) {
+            let disallows = self.actions.get(&PlaybackActionScope::Disallows).unwrap();
+            return actions.into_iter().all(|action| disallows.contains_key(&action));
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

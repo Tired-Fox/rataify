@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use tupy::api::Uri;
+use tupy::api::{Uri, request::Play};
+use crossterm::event::KeyCode;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum GoTo {
@@ -14,14 +15,14 @@ pub enum GoTo {
 }
 
 impl GoTo {
-    pub fn with_key(&self) -> char {
+    pub fn with_key(&self) -> KeyCode {
         match self {
-            Self::Album(_) => 'B',
-            Self::Artist(_) => 'A',
-            Self::Playlist(_) => 'P',
-            Self::Show(_) => 'S',
-            Self::Queue => '_',
-            Self::Library => 'L',
+            Self::Album(_) => KeyCode::Char('B'),
+            Self::Artist(_) => KeyCode::Char('A'),
+            Self::Playlist(_) => KeyCode::Char('P'),
+            Self::Show(_) => KeyCode::Char('S'),
+            Self::Queue => KeyCode::Char('B'),
+            Self::Library => KeyCode::Char('L'),
         }
     }
 }
@@ -42,7 +43,7 @@ impl Display for GoTo {
 #[derive(Debug, Clone, PartialEq)]
 pub enum UiAction {
     Play(Uri),
-    PlayContext(Uri),
+    PlayContext(Play),
 
     /// Saves the item to the library depending on the uri
     /// If the uri is for a context it is added to the library and if it is a track or episode it
@@ -58,14 +59,14 @@ pub enum UiAction {
 }
 
 impl UiAction {
-    pub fn with_key(&self) -> char {
+    pub fn with_key(&self) -> KeyCode {
         match self {
-            Self::Play(_) => 'p',
-            Self::PlayContext(_) => 'c',
-            Self::Save(_) => 'f',
-            Self::Remove(_) => 'u',
-            Self::AddToPlaylist(_) => 'a',
-            Self::AddToQueue(_) => 'b',
+            Self::Play(_) => KeyCode::Enter,
+            Self::PlayContext(_) => KeyCode::Char('c'),
+            Self::Save(_) => KeyCode::Char('f'),
+            Self::Remove(_) => KeyCode::Char('u'),
+            Self::AddToPlaylist(_) => KeyCode::Char('p'),
+            Self::AddToQueue(_) => KeyCode::Char('b'),
             Self::GoTo(goto) => goto.with_key(),
         }
     }
@@ -73,12 +74,30 @@ impl UiAction {
 
 impl PartialEq<char> for &UiAction {
     fn eq(&self, other: &char) -> bool {
-        &self.with_key() == other
+        if let KeyCode::Char(c) = self.with_key() {
+            return &c == other;
+        }
+        false
     }
 }
 
 impl PartialEq<char> for UiAction {
     fn eq(&self, other: &char) -> bool {
+        if let KeyCode::Char(c) = self.with_key() {
+            return &c == other;
+        }
+        false
+    }
+}
+
+impl PartialEq<KeyCode> for &UiAction {
+    fn eq(&self, other: &KeyCode) -> bool {
+        &self.with_key() == other
+    }
+}
+
+impl PartialEq<KeyCode> for UiAction {
+    fn eq(&self, other: &KeyCode) -> bool {
         &self.with_key() == other
     }
 }
@@ -87,7 +106,14 @@ impl Display for UiAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Play(_) => write!(f, "Play"),
-            Self::PlayContext(uri) => write!(f, "Play {:?}", uri.resource()),
+            Self::PlayContext(play) => write!(f, "Play {}", match play {
+                Play::Artist(_) => "Artist",
+                Play::Album{..} => "Album",
+                Play::Show{..} => "Show",
+                Play::Playlist{..} => "Playlist",
+                Play::Queue{..}  => "Queue",
+                _ => "Context",
+            }),
             Self::Remove(_) => write!(f, "Remove Favorite"),
             Self::Save(_) => write!(f, "Favorite"),
             Self::AddToPlaylist(_) => write!(f, "Add to Playlist"),

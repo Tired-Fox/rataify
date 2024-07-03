@@ -1,4 +1,4 @@
-use tupy::{api::{auth::OAuth, flow::{Credentials, Pkce}, request::Play, response::Item, scopes, PublicApi, Spotify, Uri, UserApi}, Pagination};
+use tupy::{api::{auth::OAuth, flow::{Credentials, Pkce}, request::Play, response::{Item, PlaybackActionScope, PlaybackAction}, scopes, PublicApi, Spotify, Uri, UserApi}, Pagination};
 use api_examples::util;
 
 #[tokio::main]
@@ -31,24 +31,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2PVAFANvXwdtNvxS5NoNEt
     //spotify.api.play(Play::queue([Uri::episode("2PVAFANvXwdtNvxS5NoNEt")], None, 0), None).await?;
 
-    let queue = spotify.api.queue().await?;
-    let mut saved_tracks = spotify.api.check_saved_tracks(queue.queue.iter().filter_map(|i| match i {
-        Item::Track(track) => Some(track.id.clone()),
-        _ => None
-    })).await?;
-    let mut saved_episodes = spotify.api.check_saved_episodes(queue.queue.iter().filter_map(|i| match i {
-        Item::Episode(episode) => Some(episode.id.clone()),
-        _ => None
-    })).await?;
+    //let queue = spotify.api.queue().await?;
+    //for i in queue.queue.iter() {
+    //    match i {
+    //        Item::Track(track) => println!("- {}", track.name),
+    //        Item::Episode(episode) => println!("- {}", episode.name),
+    //    }
+    //}
 
-    let mut saved_tracks = saved_tracks.into_iter();
-    let mut saved_episodes = saved_episodes.into_iter();
-    for item in queue.queue.iter() {
-        match item {
-            Item::Track(track) => println!("- [{}] {}", saved_tracks.next().unwrap(), track.name),
-            Item::Episode(episode) => println!("- [{}] {}", saved_episodes.next().unwrap(), episode.name),
-        }
-    }
+    //let pos = 3;
+    //spotify.api.play(Play::queue(queue.queue.iter().skip(pos).map(|i| i.uri())), None).await?;
+    
+    //let mut saved_tracks = spotify.api.check_saved_tracks(queue.queue.iter().filter_map(|i| match i {
+    //    Item::Track(track) => Some(track.id.clone()),
+    //    _ => None
+    //})).await?;
+    //let mut saved_episodes = spotify.api.check_saved_episodes(queue.queue.iter().filter_map(|i| match i {
+    //    Item::Episode(episode) => Some(episode.id.clone()),
+    //    _ => None
+    //})).await?;
+
+    //let mut saved_tracks = saved_tracks.into_iter();
+    //let mut saved_episodes = saved_episodes.into_iter();
+    //for item in queue.queue.iter() {
+    //    match item {
+    //        Item::Track(track) => println!("- [{}] {}", saved_tracks.next().unwrap(), track.name),
+    //        Item::Episode(episode) => println!("- [{}] {}", saved_episodes.next().unwrap(), episode.name),
+    //    }
+    //}
 
     //let mut episodes = spotify.api.show_episodes::<15, _, _>("5GcTIDkgnB9wP6CmUyOSqa", None)?;
     //if let Some(page) = episodes.next().await? {
@@ -64,8 +74,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    }
     //}
 
-    //
-    //let playback = spotify.api.playback_state(None).await?;
+
+    let playback = spotify.api.playback_state(None).await?;
+    if let Some(playback) = playback {
+        if playback.disallow(PlaybackAction::TogglingShuffle) {
+            println!("Shuffle is disabled");
+        }
+
+        if playback.disallow(PlaybackAction::TogglingRepeatContext) {
+            println!("Repeat Context is disabled");
+        }
+
+        if playback.disallow(PlaybackAction::TogglingRepeatTrack) {
+            println!("Repeat Track is disabled");
+        }
+    }
     //match playback {
     //    Some(playback) => {
     //        match playback.is_playing {

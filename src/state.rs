@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use crossterm::event::KeyCode;
 use ratatui::widgets::{ListState, TableState};
-use tupy::{api::{response::{self, Device, PlaybackItem, Repeat}, Uri}, DateTime, Duration, Local};
+use tupy::{api::{response::{self, Device, PlaybackItem, Repeat, PlaybackAction, PlaybackActionScope}, Uri}, DateTime, Duration, Local};
 
 use crate::{ui::action::{GoTo, UiAction}, Locked, Shared};
 
@@ -173,6 +173,7 @@ pub struct Playback {
     pub progress: Option<Duration>,
     pub is_playing: bool,
     pub item: PlaybackItem,
+    pub actions: HashMap<PlaybackActionScope, HashMap<PlaybackAction, bool>>,
 }
 
 impl Playback {
@@ -191,6 +192,23 @@ impl Playback {
     pub fn set_playing(&mut self, is_playing: bool) {
         self.is_playing = is_playing;
     }
+
+    /// True if the action is disallowed
+    pub fn disallow(&self, actions: PlaybackAction) -> bool {
+        if self.actions.contains_key(&PlaybackActionScope::Disallows) {
+            return self.actions.get(&PlaybackActionScope::Disallows).unwrap().contains_key(&actions);
+        }
+        false
+    }
+
+    /// True if all actions are disallowed
+    pub fn disallows<I: IntoIterator<Item=PlaybackAction>>(&self, actions: I) -> bool {
+        if self.actions.contains_key(&PlaybackActionScope::Disallows) {
+            let disallows = self.actions.get(&PlaybackActionScope::Disallows).unwrap();
+            return actions.into_iter().all(|action| disallows.contains_key(&action));
+        }
+        false
+    }
 }
 
 impl From<response::Playback> for Playback {
@@ -202,6 +220,7 @@ impl From<response::Playback> for Playback {
             progress: pb.progress,
             is_playing: pb.is_playing,
             item: pb.item,
+            actions: pb.actions,
         }
     }
 }
@@ -227,7 +246,7 @@ pub struct Queue {
 }
 
 impl From<(response::Queue, Vec<bool>, Vec<bool>)> for Queue {
-    fn from(mut q: (response::Queue, Vec<bool>, Vec<bool>)) -> Self {
+    fn from(q: (response::Queue, Vec<bool>, Vec<bool>)) -> Self {
         let mut saved_tracks = q.1.into_iter();
         let mut saved_episodes = q.2.into_iter();
         Self {
@@ -280,8 +299,8 @@ impl QueueState {
         }
     }
 
-    pub fn select(&mut self) -> Option<Item> {
-        if let Loading::Some(ref mut q) = self.queue {
+    pub fn select(&self) -> Option<Item> {
+        if let Loading::Some(ref q) = self.queue {
             q.items.get(self.state.selected().unwrap_or(0)).cloned()
         } else {
             None
@@ -309,7 +328,7 @@ impl DevicesState {
         self.state.prev_in_list(self.devices.len());
     }
 
-    pub fn select(&mut self) -> Device {
+    pub fn select(&self) -> Device {
         self.devices[self.state.selected().unwrap_or(0)].clone()
     }
 }
@@ -359,6 +378,34 @@ impl Default for ModalState {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct PlaybackState {
+    pub saved: bool,
+    pub playback: Option<Playback>,
+}
+
+impl PlaybackState {
+    pub fn set_playback(&mut self, playback: Option<Playback>) -> bool {
+        let diff = self.playback != playback;
+        self.playback = playback;
+        diff
+    }
+
+    pub fn set_saved(&mut self, saved: bool) {
+        self.saved = saved;
+    }
+
+    #[inline]
+    pub fn is_some(&self) -> bool {
+        self.playback.is_some()
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        self.playback.is_none()
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct State {
     pub viewport: Viewport,
@@ -369,7 +416,7 @@ pub struct State {
 
     pub last_playback_poll: Shared<Locked<DateTime<Local>>>,
     pub playback_poll: Countdown,
-    pub playback: Shared<Locked<Option<Playback>>>,
+    pub playback: Shared<Locked<PlaybackState>>,
 }
 
 impl State {

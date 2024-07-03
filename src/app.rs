@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 use tupy::{
     api::{
-        flow::{AuthFlow, Credentials, Pkce}, request::Play, response::{Item, PlaybackItem}, scopes, OAuth, Resource, Spotify, UserApi
+        flow::{AuthFlow, Credentials, Pkce}, request::Play, response::{Item, PlaybackItem, Repeat, PlaybackAction}, scopes, OAuth, Resource, Spotify, UserApi
     },
     Duration, Local,
 };
@@ -26,9 +26,9 @@ use tupy::{
 use crate::{
     errors::install_hooks,
     spotify_util::listen_for_authentication_code,
-    state::{Countdown, DevicesState, Loading, Modal, Queue, State, Viewport, Window},
+    state::{Countdown, DevicesState, Modal, Queue, State, Viewport, Window},
     tui,
-    ui::{action::{GoTo, UiAction}, modal::{actions::ModalActions, goto::UiGoto, add_to_playlist::AddToPlaylist}, NoPlayback},
+    ui::{IntoUiActions, action::{GoTo, UiAction}, modal::{actions::ModalActions, goto::UiGoto, add_to_playlist::AddToPlaylist}},
 };
 
 static FPS: u8 = 24;
@@ -56,6 +56,10 @@ pub enum Action {
     Next,
     Previous,
     Play(Play),
+    ToggleRepeat,
+    ToggleShuffle,
+    VolumeUp,
+    VolumeDown,
 
     // Navigation
     Up,
@@ -133,12 +137,23 @@ impl App {
             app.spotify.api.refresh().await?;
         }
 
-        *app.state.playback.lock().unwrap() = app
+        if app.state.playback.lock().unwrap().set_playback(app
             .spotify
             .api
             .playback_state(None)
             .await?
-            .map(|pb| pb.into());
+            .map(|pb| pb.into())) {
+
+            let mut playback = app.state.playback.lock().unwrap();
+            if playback.is_some() {
+                let saved = match &playback.playback.as_ref().unwrap().item {
+                    PlaybackItem::Track(t) => app.spotify.api.check_saved_tracks([t.uri.clone()]).await.unwrap()[0],
+                    PlaybackItem::Episode(e) => app.spotify.api.check_saved_episodes([e.uri.clone()]).await.unwrap()[0],
+                    _ => false,
+                };
+                playback.set_saved(saved);
+            }
+        }
         *app.state.last_playback_poll.lock().unwrap() = Local::now();
 
         Ok(app)
@@ -188,17 +203,26 @@ impl App {
                         }
 
                         if let Ok(result) = api.playback_state(None).await {
-                            *playback.lock().unwrap() = result.map(|pb| pb.into());
                             *last_playback_poll.lock().unwrap() = Local::now();
+                            let diff = playback.lock().unwrap().set_playback(result.map(|pb| pb.into()));
+                            if diff && playback.lock().unwrap().is_some() {
+                                let item = playback.lock().unwrap().playback.as_ref().unwrap().item.clone();
+                                let saved = match &item {
+                                    PlaybackItem::Track(t) => api.check_saved_tracks([t.uri.clone()]).await.unwrap()[0],
+                                    PlaybackItem::Episode(e) => api.check_saved_episodes([e.uri.clone()]).await.unwrap()[0],
+                                    _ => false,
+                                };
+                                playback.lock().unwrap().set_saved(saved);
+                            }
+
+                            tx.send(Action::UpdateQueue).unwrap();
                         }
                     });
-
-                    tx.send(Action::UpdateQueue).unwrap();
                     self.state.playback_poll.reset();
                 }
             }
             Action::Next => {
-                if let Some(playback) = self.state.playback.lock().unwrap().as_ref() {
+                if let Some(playback) = self.state.playback.lock().unwrap().playback.as_ref() {
                     if let Some(device) = playback.device.as_ref() {
                         let api = self.spotify.api.clone();
                         let device = device.id.clone();
@@ -212,7 +236,7 @@ impl App {
                 }
             }
             Action::Previous => {
-                if let Some(playback) = self.state.playback.lock().unwrap().as_ref() {
+                if let Some(playback) = self.state.playback.lock().unwrap().playback.as_ref() {
                     if let Some(device) = playback.device.as_ref() {
                         let api = self.spotify.api.clone();
                         let device = device.id.clone();
@@ -227,7 +251,7 @@ impl App {
             }
             Action::Toggle => {
                 let pb = self.state.playback.clone();
-                if let Some(playback) = self.state.playback.lock().unwrap().as_mut() {
+                if let Some(playback) = self.state.playback.lock().unwrap().playback.as_mut() {
                     if playback.device.as_ref().is_some() {
                         let api = self.spotify.api.clone();
                         let poll = self.state.last_playback_poll.clone();
@@ -236,16 +260,16 @@ impl App {
                                 api.refresh().await.unwrap();
                             }
 
-                            let playing = pb.lock().unwrap().as_ref().unwrap().is_playing;
+                            let playing = pb.lock().unwrap().playback.as_ref().unwrap().is_playing;
                             if playing {
                                 api.pause(None).await.unwrap();
-                                if let Some(playback) = &mut (*pb.lock().unwrap()) {
+                                if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
                                     playback.is_playing = false;
                                     *poll.lock().unwrap() = Local::now();
                                 }
                             } else {
                                 api.play(Play::Resume, None).await.unwrap();
-                                if let Some(playback) = &mut (*pb.lock().unwrap()) {
+                                if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
                                     playback.is_playing = true;
                                     *poll.lock().unwrap() = Local::now();
                                 }
@@ -290,7 +314,11 @@ impl App {
                 let api = self.spotify.api.clone();
                 let window = self.state.window_state.clone();
                 tokio::task::spawn(async move {
-                    match api.queue().await.ok() {
+                    let q = api.queue().await;
+                    if let Err(e) = q {
+                        panic!("Failed to get queue: {:?}", e);
+                    }
+                    match q.ok() {
                         Some(q) => {
                             let st = api.check_saved_tracks(q
                                 .queue
@@ -307,7 +335,6 @@ impl App {
                                     Item::Episode(e) => Some(e.uri.clone()),
                                     Item::Track(_) => None,
                                 })).await.unwrap();
-
                             window.lock().unwrap().queue.queue =
                                 Some(Queue::from((q, st, se))).into();
                         }
@@ -333,79 +360,22 @@ impl App {
                 Viewport::Window => match self.state.window {
                     Window::Queue => {
                         if let Some(item) = self.state.window_state.lock().unwrap().queue.select() {
-                            self.state.modal_state.lock().unwrap().actions = match item.item {
-                                Item::Track(t) => {
-                                    let mut actions = vec![
-                                        UiAction::Play(t.uri.clone()),
-                                        if !item.saved { UiAction::Save(t.uri.clone()) } else { UiAction::Remove(t.uri.clone()) },
-                                        UiAction::AddToPlaylist(t.uri.clone()),
-                                        UiAction::AddToQueue(t.uri.clone()),
-                                    ];
-                                    if t.album.total_tracks > 1 {
-                                        actions.push(UiAction::PlayContext(t.album.uri.clone()));
-                                    }
-                                    actions
-                                }
-                                Item::Episode(e) => {
-                                    let mut actions = vec![
-                                        UiAction::Play(e.uri.clone()),
-                                        if !item.saved { UiAction::Save(e.uri.clone()) } else { UiAction::Remove(e.uri.clone()) },
-                                        UiAction::AddToPlaylist(e.uri.clone()),
-                                        UiAction::AddToQueue(e.uri.clone()),
-                                    ];
-                                    if let Some(show) = e.show.as_ref() {
-                                        if show.total_episodes > 1 {
-                                            actions.push(UiAction::PlayContext(show.uri.clone()));
-                                        }
-                                        actions.push(UiAction::GoTo(GoTo::Show(show.uri.clone())));
-                                    }
-                                    actions
-                                }
-                            };
+                            self.state.modal_state.lock().unwrap().actions = item.into_ui_actions();
                             self.state.viewport = Viewport::Modal(Modal::Action);
                         }
                     }
                     _ => {}
                 },
-                _ => {}
+                _ => {
+                    tx.send(Action::Key(KeyCode::Enter)).unwrap();
+                }
             },
-            #[allow(clippy::single_match)]
-            Action::OpenAction => if let Some(playback) = self.state.playback.lock().unwrap().as_ref() {
-                match &playback.item {
-                    PlaybackItem::Track(t) => {
-                        let mut actions = vec![
-                            // TODO: Wrap the playback fetching on if it is saved. If it has the
-                            // functionality then add the action to save/remove it from saved items
-                            
-                            //if !item.saved { UiAction::Save(t.uri.clone()) } else { UiAction::Remove(t.uri.clone()) },
-                            UiAction::AddToPlaylist(t.uri.clone()),
-                        ];
-
-                        if t.album.total_tracks > 1 {
-                            actions.push(UiAction::PlayContext(t.album.uri.clone()));
-                        }
-
-                        self.state.modal_state.lock().unwrap().actions = actions;
-                        self.state.viewport = Viewport::Modal(Modal::Action);
-                    }
-                    PlaybackItem::Episode(e) => {
-                        let mut actions = vec![
-                            //if !item.saved { UiAction::Save(e.uri.clone()) } else { UiAction::Remove(e.uri.clone()) },
-                            UiAction::AddToPlaylist(e.uri.clone()),
-                            UiAction::AddToQueue(e.uri.clone()),
-                        ];
-                        if let Some(show) = e.show.as_ref() {
-                            if show.total_episodes > 1 {
-                                actions.push(UiAction::PlayContext(show.uri.clone()));
-                            }
-                            actions.push(UiAction::GoTo(GoTo::Show(show.uri.clone())));
-                        }
-
-                        self.state.modal_state.lock().unwrap().actions = actions;
-                        self.state.viewport = Viewport::Modal(Modal::Action);
-                    },
-                    _ => {} 
-                };
+            Action::OpenAction => {
+                let actions = self.state.playback.lock().unwrap().into_ui_actions();
+                if !actions.is_empty() {
+                    self.state.modal_state.lock().unwrap().actions = actions;
+                    self.state.viewport = Viewport::Modal(Modal::Action);
+                }
             },
             Action::OpenSelectDevice => {
                 if let Ok(devices) = self.spotify.api.devices().await {
@@ -443,17 +413,22 @@ impl App {
                             tx.send(Action::GoTo(go_to.get(&key).unwrap().clone())).unwrap();
                         }
                     }
-                    Viewport::Modal(Modal::Action) => if let KeyCode::Char(key) = key {
+                    Viewport::Modal(Modal::Action) => {
                         let action = self.state.modal_state.lock().unwrap().actions.iter().find(|a| *a == key).cloned();
                         if let Some(action) = action {
                             match action {
-                                UiAction::Play(uri) => tx.send(Action::Play(Play::queue([uri.clone()], None, 0))).unwrap(),
-                                UiAction::PlayContext(uri) => match uri.resource() {
-                                    Resource::Playlist => tx.send(Action::Play(Play::playlist(uri.clone(), None, 0))).unwrap(),
-                                    Resource::Artist => tx.send(Action::Play(Play::artist(uri.clone()))).unwrap(),
-                                    Resource::Album => tx.send(Action::Play(Play::album(uri.clone(), None, 0))).unwrap(),
-                                    _ => {}
+                                UiAction::Play(play) => {
+                                    let api = self.spotify.api.clone();
+                                    let uri = play.clone();
+                                    tokio::task::spawn(async move {
+                                        if api.token().is_expired() {
+                                            api.refresh().await.unwrap();
+                                        }
+                                        api.add_to_queue(uri, None).await.unwrap();
+                                        api.next(None).await.unwrap();
+                                    });
                                 }
+                                UiAction::PlayContext(play) => tx.send(Action::Play(play)).unwrap(),
                                 UiAction::Save(uri) => {
                                     let api = self.spotify.api.clone();
                                     let uri = uri.clone();
@@ -568,6 +543,104 @@ impl App {
                     _ => {}
                 }
             }
+            Action::ToggleRepeat => {
+                if self.state.playback.lock().unwrap().is_none() {
+                    return Ok(());
+                }
+
+                let (repeat, old) = {
+                    let playback = self.state.playback.lock().unwrap();
+                    let pb = playback.playback.as_ref().unwrap();
+                    (
+                        match pb.repeat {
+                            Repeat::Off if !pb.disallow(PlaybackAction::TogglingRepeatTrack) => Repeat::Track,
+                            Repeat::Track if !pb.disallow(PlaybackAction::TogglingRepeatContext) => Repeat::Context,
+                            _ => Repeat::Off,
+                        },
+                        pb.repeat,
+                    )
+                };
+
+                if repeat == old {
+                    return Ok(());
+                }
+
+                let pb = self.state.playback.clone();
+                let api = self.spotify.api.clone();
+                tokio::task::spawn(async move {
+                    if api.token().is_expired() {
+                        api.refresh().await.unwrap();
+                    }
+                    api.repeat(repeat, None).await.unwrap();
+                    if pb.lock().unwrap().is_some() {
+                        pb.lock().unwrap().playback.as_mut().unwrap().repeat = repeat;
+                    }
+                });
+            }
+            Action::ToggleShuffle => {
+                if self.state.playback.lock().unwrap().is_none() || self.state.playback.lock().unwrap().playback.as_ref().unwrap().disallow(PlaybackAction::TogglingShuffle) {
+                    return Ok(());
+                }
+
+                let shuffle = !self.state.playback.lock().unwrap().playback.as_ref().unwrap().shuffle;
+                let pb = self.state.playback.clone();
+                let api = self.spotify.api.clone();
+                tokio::task::spawn(async move {
+                    if api.token().is_expired() {
+                        api.refresh().await.unwrap();
+                    }
+                    api.shuffle(shuffle, None).await.unwrap();
+                    if pb.lock().unwrap().is_some() {
+                        pb.lock().unwrap().playback.as_mut().unwrap().shuffle = shuffle;
+                    }
+                });
+            }
+            Action::VolumeUp => {
+                if self.state.playback.lock().unwrap().is_none() || self.state.playback.lock().unwrap().playback.as_ref().unwrap().device.is_none() {
+                    return Ok(());
+                }
+
+                let (vol, unavailable) = {
+                    let playback = self.state.playback.lock().unwrap();
+                    let device = playback.playback.as_ref().unwrap().device.as_ref().unwrap();
+                    ((device.volume_percent + 10).min(100), device.is_restricted || !device.supports_volume)
+                };
+
+                if unavailable {
+                    return Ok(());
+                }
+
+                let api = self.spotify.api.clone();
+                tokio::task::spawn(async move {
+                    if api.token().is_expired() {
+                        api.refresh().await.unwrap();
+                    }
+                    api.volume(vol, None).await.unwrap();
+                });
+            }
+            Action::VolumeDown => {
+                if self.state.playback.lock().unwrap().is_none() || self.state.playback.lock().unwrap().playback.as_ref().unwrap().device.is_none() {
+                    return Ok(());
+                }
+
+                let (vol, unavailable) = {
+                    let playback = self.state.playback.lock().unwrap();
+                    let device = playback.playback.as_ref().unwrap().device.as_ref().unwrap();
+                    (device.volume_percent.saturating_sub(10), device.is_restricted || !device.supports_volume)
+                };
+
+                if unavailable {
+                    return Ok(());
+                }
+
+                let api = self.spotify.api.clone();
+                tokio::task::spawn(async move {
+                    if api.token().is_expired() {
+                        api.refresh().await.unwrap();
+                    }
+                    api.volume(vol, None).await.unwrap();
+                });
+            }
             _ => {}
         }
         Ok(())
@@ -646,7 +719,7 @@ impl Widget for State {
     fn render(mut self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Length(5)])
+            .constraints([Constraint::Fill(1), Constraint::Length(4)])
             .split(area);
 
         //let mut dimmed = if let Viewport::Modal(_) = &self.viewport {
@@ -699,16 +772,6 @@ impl Widget for State {
             }
         }
 
-        match self.playback.lock().unwrap().as_ref() {
-            Some(playback) => StatefulWidget::render(
-                playback,
-                layout[1],
-                buf,
-                &mut self.last_playback_poll.lock().unwrap().clone(),
-            ),
-            None => {
-                NoPlayback.render(layout[1], buf);
-            }
-        }
+        StatefulWidget::render(&*self.playback.lock().unwrap(), layout[1], buf, &mut self.last_playback_poll.lock().unwrap().clone());
     }
 }

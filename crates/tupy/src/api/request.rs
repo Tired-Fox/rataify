@@ -531,32 +531,6 @@ impl Serialize for UriWrapper {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Play {
-    Artist(String),
-    Album {
-        id: String,
-        offset: Option<usize>,
-        position: Duration,
-    },
-    Show {
-        id: String,
-        offset: Option<usize>,
-        position: Duration,
-    },
-    Playlist {
-        id: String,
-        offset: Option<usize>,
-        position: Duration,
-    },
-    Queue {
-        uris: Vec<Uri>,
-        position: Duration,
-        offset: Option<usize>,
-    },
-    Resume
-}
-
 pub trait IntoDuration {
     fn into_duration(self) -> Duration;
 }
@@ -582,6 +556,31 @@ impl IntoDuration for Duration {
     fn into_duration(self) -> Duration {
         self
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Play {
+    Artist(String),
+    Album {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Show {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Playlist {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Queue {
+        uris: Vec<Uri>,
+        position: Duration,
+    },
+    Resume
 }
 
 impl Play {
@@ -625,15 +624,13 @@ impl Play {
         }
     }
 
-    pub fn queue<U, P>(uris: U, offset: Option<usize>, position: P) -> Self
+    pub fn queue<U>(uris: U) -> Self
     where
         U: IntoIterator<Item = Uri>,
-        P: IntoDuration,
     {
         Self::Queue {
             uris: uris.into_iter().collect(),
-            position: position.into_duration(),
-            offset,
+            position: Duration::zero(),
         }
     }
 }
@@ -704,22 +701,10 @@ impl Serialize for Play {
                 }
                 map.end()
             },
-            Play::Queue { uris, position, offset } => {
-                let mut values = HashMap::from([
-                    ("uris", Value::from(uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())),
-                    ("position", Value::from(position.num_milliseconds())),
-                ]);
-
-                if let Some(offset) = offset {
-                    values.insert("offset", json!({
-                        "position": offset
-                    }));
-                }
-
-                let mut map = serializer.serialize_map(Some(values.len()))?;
-                for (k, v) in values {
-                    map.serialize_entry(k, &v)?;
-                }
+            Play::Queue { uris, position } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("uris", &uris.iter().map(|u| u.to_string()).collect::<Vec<String>>())?;
+                map.serialize_entry("position", &position.num_milliseconds())?;
                 map.end()
             },
             Play::Resume => {

@@ -36,12 +36,14 @@ pub fn render_modal<const N: usize, I: IntoIterator<Item=[String; N]>>(area: Rec
     let hoz = Layout::horizontal([
         Constraint::Fill(1),
         Constraint::Length(longest_parts.iter().sum::<usize>() as u16 + 6),
+        Constraint::Length(1),
     ])
         .split(area);
 
     let vert = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Length((count + 4) as u16),
+        Constraint::Length(1),
     ])
         .split(hoz[1]);
 
@@ -81,12 +83,14 @@ pub fn render_modal_with_state<const N: usize, I: IntoIterator<Item=[String; N]>
     let hoz = Layout::horizontal([
         Constraint::Fill(1),
         Constraint::Length(longest_parts.iter().sum::<usize>() as u16 + 6),
+        Constraint::Length(1),
     ])
         .split(area);
 
     let vert = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Length((count + 4) as u16),
+        Constraint::Length(1),
     ])
         .split(hoz[1]);
 

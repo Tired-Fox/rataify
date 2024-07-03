@@ -43,6 +43,10 @@ async fn main() -> Result<()> {
             (key!(' '), Action::Toggle),
             (key!('>' + SHIFT), Action::Next),
             (key!('<' + SHIFT), Action::Previous),
+            (key!('r'), Action::ToggleRepeat),
+            (key!('s'), Action::ToggleShuffle),
+            (key!('+' + SHIFT), Action::VolumeUp),
+            (key!('-'), Action::VolumeDown),
 
             // Navigation
             (key!(Enter), Action::Select),

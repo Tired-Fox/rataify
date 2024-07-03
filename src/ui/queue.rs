@@ -58,7 +58,7 @@ impl StatefulWidget for &mut QueueState {
                 
                 let max_name = q.items.iter().map(|i| match &i.item {
                     Item::Track(t) => t.name.len(),
-                    Item::Episode(e) => e.name.len(),
+                    Item::Episode(e) => e.name.len() + if e.resume_point.fully_played { 2 } else { 0 },
                 }).max().unwrap_or(0);
 
                 let table = q
@@ -67,7 +67,7 @@ impl StatefulWidget for &mut QueueState {
                     .map(|item|  match &item.item {
                         // TODO: Format each line for specific item type
                         Item::Track(t) => format_track(t, item.saved),
-                        Item::Episode(e) => format_episode(e),
+                        Item::Episode(e) => format_episode(e, item.saved),
                     })
                     .collect::<Table>()
                     .block(block)

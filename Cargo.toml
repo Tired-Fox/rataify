@@ -24,3 +24,7 @@ serde_qs = "0.13.0"
 open = "5.1.4"
 log = "0.4.22"
 lazy_static = "1.5.0"
+dirs = "5.0.1"
+chrono = "0.4.38"
+strum = { version = "0.26.3", features = ["derive"] }
+strum_macros = "0.26.4"

@@ -1072,8 +1072,10 @@ dependencies = [
 name = "rataify"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "color-eyre",
  "crossterm",
+ "dirs",
  "futures",
  "http-body-util",
  "hyper",
@@ -1086,6 +1088,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_qs",
+ "strum",
+ "strum_macros",
  "tokio",
  "tokio-util",
  "tupy",

@@ -20,7 +20,8 @@ pub use user::*;
 pub use playlist::*;
 pub use player::*;
 
-use std::{fmt::Debug, rc::Rc};
+use std::fmt::Debug;
+use std::sync::Arc;
 
 use chrono::{DateTime, Local, MappedLocalTime, NaiveDate, NaiveDateTime, TimeZone};
 use reqwest::Method;
@@ -173,8 +174,14 @@ where
     pub(crate) flow: F,
     pub(crate) next: Option<String>,
     pub(crate) prev: Option<String>,
-    pub(crate) resolve: Rc<dyn Fn(T) -> R>
+    pub(crate) resolve: Arc<dyn Fn(T) -> R + Send>
 }
+
+unsafe impl<R, T, F, const N: usize> Send for Paginated<R, T, F, N>
+where 
+    F: AuthFlow,
+{}
+
 
 impl<T, R, F, const N: usize> PartialEq for Paginated<R, T, F, N>
 where
@@ -212,7 +219,7 @@ where
 {
     pub fn new<C>(flow: F, next: Option<String>, prev: Option<String>, resolve: C) -> Self
     where
-        C: Fn(T) -> R + 'static
+        C: Fn(T) -> R + 'static + Send
     {
         Self {
             offset: -1,
@@ -221,7 +228,7 @@ where
             flow,
             next,
             prev,
-            resolve: Rc::new(resolve)
+            resolve: Arc::new(resolve)
         }
     }
 
@@ -243,6 +250,14 @@ where
 
     pub fn total(&self) -> usize {
         self.total
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.next.is_some()
+    }
+
+    pub fn has_prev(&self) -> bool {
+        self.prev.is_some()
     }
 }
 

@@ -51,13 +51,15 @@ async fn main() -> Result<()> {
             // Navigation
             (key!(Enter), Action::Select),
             (key!(Right), Action::Right),
-            (key!('l'), Action::Left),
+            (key!('l'), Action::Right),
             (key!(Left), Action::Left),
             (key!('h'), Action::Left),
             (key!(Up), Action::Up),
             (key!('k'), Action::Up),
             (key!(Down), Action::Down),
             (key!('j'), Action::Down),
+            (key!(Tab), Action::Tab),
+            (key!(BackTab + SHIFT), Action::Backtab),
 
             // Quit / Close
             (key!('q'), Action::Close),

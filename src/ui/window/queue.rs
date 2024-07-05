@@ -6,9 +6,9 @@ use ratatui::{
 };
 use tupy::api::response::Item;
 
-use crate::state::{Loading, QueueState};
+use crate::state::{Loading, window::queue::QueueState};
 
-use super::{format_episode, format_track};
+use crate::ui::{format_episode, format_track};
 
 impl StatefulWidget for &mut QueueState {
     type State = Style;
@@ -66,8 +66,8 @@ impl StatefulWidget for &mut QueueState {
                     .iter()
                     .map(|item|  match &item.item {
                         // TODO: Format each line for specific item type
-                        Item::Track(t) => format_track(t, item.saved),
-                        Item::Episode(e) => format_episode(e, item.saved),
+                        Item::Track(t) => format_track(&t, item.saved),
+                        Item::Episode(e) => format_episode(&e, item.saved),
                     })
                     .collect::<Table>()
                     .block(block)

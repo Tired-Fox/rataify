@@ -5,13 +5,7 @@ use crossterm::event::{KeyCode, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout},
-    style::Style,
-    symbols::border,
-    widgets::{
-        block::{Position, Title},
-        Block, StatefulWidget, TableState, Widget,
-    },
+    widgets::TableState,
     Terminal,
 };
 use tokio::sync::mpsc;
@@ -20,21 +14,18 @@ use tupy::{
     api::{
         flow::{AuthFlow, Credentials, Pkce}, request::Play, response::{Item, PlaybackItem, Repeat, PlaybackAction}, scopes, OAuth, Resource, Spotify, UserApi
     },
-    Duration, Local,
+    Local,
 };
 
 use crate::{
     errors::install_hooks,
     spotify_util::listen_for_authentication_code,
-    state::{Countdown, DevicesState, Modal, Queue, State, Viewport, Window},
+    state::{modal::DevicesState, playback::Playback, window::queue::Queue, Countdown, Modal, State, Viewport, Window},
     tui,
-    ui::{IntoUiActions, action::{GoTo, UiAction}, modal::{actions::ModalActions, goto::UiGoto, add_to_playlist::AddToPlaylist}},
+    ui::{self, GoTo, IntoActions},
 };
 
-static FPS: u8 = 24;
-lazy_static::lazy_static! {
-    static ref FPS_DURATION: Duration = Duration::milliseconds((1.0 / FPS as f32) as i64 * 1000);
-}
+static FPS: usize = 24;
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -67,6 +58,8 @@ pub enum Action {
     Left,
     Right,
     Select,
+    Tab,
+    Backtab,
 
     // Open menu
     OpenSelectDevice,
@@ -95,66 +88,59 @@ impl App {
         let oauth = OAuth::from_env([
             scopes::USER_LIBRARY_READ,
             scopes::USER_LIBRARY_MODIFY,
+            scopes::USER_FOLLOW_READ,
             scopes::USER_READ_CURRENTLY_PLAYING,
             scopes::USER_READ_PLAYBACK_STATE,
             scopes::USER_MODIFY_PLAYBACK_STATE,
             scopes::USER_READ_PLAYBACK_POSITION,
+            scopes::PLAYLIST_READ_PRIVATE,
+            scopes::PLAYLIST_MODIFY_PUBLIC,
         ])
         .expect("Failed to get TUPY_CLIENT_ID and TUPY_REDIRECT_URI environment variables.");
 
         let spotify =
             Spotify::<Pkce>::new(Credentials::from_env().unwrap(), oauth, "rataify").unwrap();
 
+        if spotify.api.scopes() != &spotify.api.token().scopes {
+            eprintln!("Failed to get Spotify token scopes, requesting new token");
+            eprintln!("{:?}", spotify.api.scopes());
+            eprintln!("{:?}", spotify.api.token().scopes);
+            let auth_url = spotify.api.authorization_url(false)?;
+            let auth_code = listen_for_authentication_code(
+                &spotify.api.oauth.redirect,
+                &auth_url,
+                &spotify.api.oauth.state,
+            )
+            .await?;
+            spotify.api.request_access_token(&auth_code).await?;
+        }
+
+        if spotify.api.token().is_expired() {
+            spotify.api.refresh().await?;
+        }
+        
+        let mut playback = spotify.api.playback_state(None).await?.map(|pb| Playback::from(pb));
+        if let Some(playback) = playback.as_mut() {
+            playback.saved = match &playback.item {
+                PlaybackItem::Track(t) => spotify.api.check_saved_tracks([t.uri.clone()]).await.unwrap()[0],
+                PlaybackItem::Episode(e) => spotify.api.check_saved_episodes([e.uri.clone()]).await.unwrap()[0],
+                _ => false,
+            };
+        }
+
         let app = Self {
             terminal: Terminal::new(CrosstermBackend::new(stderr())).unwrap(),
             focused: true,
             quit: false,
 
+            state: State::new(
+                "rataify",
+                &spotify.api,
+                Countdown::new(FPS * 3),
+                playback        
+            ).await?,
             spotify,
-            state: State {
-                playback_poll: Countdown::new(
-                    FPS as usize * 3, /* Fetch playback every 3 seconds: Ticked once per frame (1/fps s) */
-                ),
-                ..Default::default()
-            },
         };
-
-        if app.spotify.api.scopes() != &app.spotify.api.token().scopes {
-            eprintln!("Failed to get Spotify token scopes, requesting new token");
-            eprintln!("{:?}", app.spotify.api.scopes());
-            eprintln!("{:?}", app.spotify.api.token().scopes);
-            let auth_url = app.spotify.api.authorization_url(false)?;
-            let auth_code = listen_for_authentication_code(
-                &app.spotify.api.oauth.redirect,
-                &auth_url,
-                &app.spotify.api.oauth.state,
-            )
-            .await?;
-            app.spotify.api.request_access_token(&auth_code).await?;
-        }
-
-        if app.spotify.api.token().is_expired() {
-            app.spotify.api.refresh().await?;
-        }
-
-        if app.state.playback.lock().unwrap().set_playback(app
-            .spotify
-            .api
-            .playback_state(None)
-            .await?
-            .map(|pb| pb.into())) {
-
-            let mut playback = app.state.playback.lock().unwrap();
-            if playback.is_some() {
-                let saved = match &playback.playback.as_ref().unwrap().item {
-                    PlaybackItem::Track(t) => app.spotify.api.check_saved_tracks([t.uri.clone()]).await.unwrap()[0],
-                    PlaybackItem::Episode(e) => app.spotify.api.check_saved_episodes([e.uri.clone()]).await.unwrap()[0],
-                    _ => false,
-                };
-                playback.set_saved(saved);
-            }
-        }
-        *app.state.last_playback_poll.lock().unwrap() = Local::now();
 
         Ok(app)
     }
@@ -190,7 +176,6 @@ impl App {
                 // Poll to check if playback state should be fetched
                 if self.state.playback_poll.poll() {
                     let playback = self.state.playback.clone();
-                    let last_playback_poll = self.state.last_playback_poll.clone();
                     let api = self.spotify.api.clone();
 
                     tokio::task::spawn(async move {
@@ -203,7 +188,6 @@ impl App {
                         }
 
                         if let Ok(result) = api.playback_state(None).await {
-                            *last_playback_poll.lock().unwrap() = Local::now();
                             let diff = playback.lock().unwrap().set_playback(result.map(|pb| pb.into()));
                             if diff && playback.lock().unwrap().is_some() {
                                 let item = playback.lock().unwrap().playback.as_ref().unwrap().item.clone();
@@ -250,11 +234,10 @@ impl App {
                 }
             }
             Action::Toggle => {
-                let pb = self.state.playback.clone();
                 if let Some(playback) = self.state.playback.lock().unwrap().playback.as_mut() {
                     if playback.device.as_ref().is_some() {
                         let api = self.spotify.api.clone();
-                        let poll = self.state.last_playback_poll.clone();
+                        let pb = self.state.playback.clone();
                         tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
@@ -265,13 +248,13 @@ impl App {
                                 api.pause(None).await.unwrap();
                                 if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
                                     playback.is_playing = false;
-                                    *poll.lock().unwrap() = Local::now();
+                                    pb.lock().unwrap().last_playback_poll = Local::now();
                                 }
                             } else {
                                 api.play(Play::Resume, None).await.unwrap();
                                 if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
                                     playback.is_playing = true;
-                                    *poll.lock().unwrap() = Local::now();
+                                    pb.lock().unwrap().last_playback_poll = Local::now();
                                 }
                             }
                         });
@@ -283,20 +266,50 @@ impl App {
             }
             Action::Down => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    self.state.modal_state.lock().unwrap().devices.next()
+                    self.state.modal_state.devices.lock().unwrap().next()
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Queue => self.state.window_state.lock().unwrap().queue.next(),
+                    Window::Queue => self.state.window_state.queue.lock().unwrap().next(),
+                    Window::Library => self.state.window_state.library.lock().unwrap().down().await,
                     _ => {}
                 },
                 _ => {}
             },
             Action::Up => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    self.state.modal_state.lock().unwrap().devices.prev()
+                    self.state.modal_state.devices.lock().unwrap().prev()
                 }
                 Viewport::Window => match &mut self.state.window {
-                    Window::Queue => self.state.window_state.lock().unwrap().queue.prev(),
+                    Window::Queue => self.state.window_state.queue.lock().unwrap().prev(),
+                    Window::Library => self.state.window_state.library.lock().unwrap().up().await,
+                    _ => {}
+                },
+                _ => {}
+            },
+            Action::Right => match &mut self.state.viewport {
+                Viewport::Window => match &mut self.state.window {
+                    Window::Library => self.state.window_state.library.lock().unwrap().right().await?,
+                    _ => {}
+                },
+                _ => {}
+            },
+            Action::Left => match &mut self.state.viewport {
+                Viewport::Window => match &mut self.state.window {
+                    Window::Library => self.state.window_state.library.lock().unwrap().left().await?,
+                    _ => {}
+                },
+                _ => {}
+            },
+            Action::Tab => match &mut self.state.viewport {
+                Viewport::Window => match &mut self.state.window {
+                    Window::Library => self.state.window_state.library.lock().unwrap().tab().await,
+                    _ => {}
+                },
+                _ => {}
+            },
+            Action::Backtab => match &mut self.state.viewport {
+                Viewport::Window => match &mut self.state.window {
+                    Window::Library => self.state.window_state.library.lock().unwrap().backtab().await,
                     _ => {}
                 },
                 _ => {}
@@ -312,7 +325,7 @@ impl App {
             }
             Action::UpdateQueue => {
                 let api = self.spotify.api.clone();
-                let window = self.state.window_state.clone();
+                let queue = self.state.window_state.queue.clone();
                 tokio::task::spawn(async move {
                     let q = api.queue().await;
                     if let Err(e) = q {
@@ -335,18 +348,18 @@ impl App {
                                     Item::Episode(e) => Some(e.uri.clone()),
                                     Item::Track(_) => None,
                                 })).await.unwrap();
-                            window.lock().unwrap().queue.queue =
+                            queue.lock().unwrap().queue =
                                 Some(Queue::from((q, st, se))).into();
                         }
                         None => {
-                            window.lock().unwrap().queue.queue = None.into();
+                            queue.lock().unwrap().queue = None.into();
                         }
                     }
                 });
             }
             Action::Select => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
-                    let device = self.state.modal_state.lock().unwrap().devices.select();
+                    let device = self.state.modal_state.devices.lock().unwrap().select();
                     let api = self.spotify.api.clone();
                     tokio::task::spawn(async move {
                         if api.token().is_expired() {
@@ -359,8 +372,8 @@ impl App {
                 #[allow(clippy::single_match)]
                 Viewport::Window => match self.state.window {
                     Window::Queue => {
-                        if let Some(item) = self.state.window_state.lock().unwrap().queue.select() {
-                            self.state.modal_state.lock().unwrap().actions = item.into_ui_actions();
+                        if let Some(item) = self.state.window_state.queue.lock().unwrap().select() {
+                            *self.state.modal_state.actions.lock().unwrap() = item.into_ui_actions();
                             self.state.viewport = Viewport::Modal(Modal::Action);
                         }
                     }
@@ -373,13 +386,13 @@ impl App {
             Action::OpenAction => {
                 let actions = self.state.playback.lock().unwrap().into_ui_actions();
                 if !actions.is_empty() {
-                    self.state.modal_state.lock().unwrap().actions = actions;
+                    *self.state.modal_state.actions.lock().unwrap() = actions;
                     self.state.viewport = Viewport::Modal(Modal::Action);
                 }
             },
             Action::OpenSelectDevice => {
                 if let Ok(devices) = self.spotify.api.devices().await {
-                    self.state.modal_state.lock().unwrap().devices = DevicesState {
+                    *self.state.modal_state.devices.lock().unwrap() = DevicesState {
                         state: TableState::default(),
                         devices,
                     };
@@ -408,16 +421,16 @@ impl App {
             Action::Key(key) => {
                 match &mut self.state.viewport {
                     Viewport::Modal(Modal::GoTo) => {
-                        let go_to = &mut self.state.modal_state.lock().unwrap().go_to;
+                        let go_to = &mut self.state.modal_state.go_to.lock().unwrap();
                         if go_to.contains(&key) {
                             tx.send(Action::GoTo(go_to.get(&key).unwrap().clone())).unwrap();
                         }
                     }
                     Viewport::Modal(Modal::Action) => {
-                        let action = self.state.modal_state.lock().unwrap().actions.iter().find(|a| *a == key).cloned();
+                        let action = self.state.modal_state.actions.lock().unwrap().iter().find(|a| *a == key).cloned();
                         if let Some(action) = action {
                             match action {
-                                UiAction::Play(play) => {
+                                ui::Action::Play(play) => {
                                     let api = self.spotify.api.clone();
                                     let uri = play.clone();
                                     tokio::task::spawn(async move {
@@ -428,8 +441,8 @@ impl App {
                                         api.next(None).await.unwrap();
                                     });
                                 }
-                                UiAction::PlayContext(play) => tx.send(Action::Play(play)).unwrap(),
-                                UiAction::Save(uri) => {
+                                ui::Action::PlayContext(play) => tx.send(Action::Play(play)).unwrap(),
+                                ui::Action::Save(uri) => {
                                     let api = self.spotify.api.clone();
                                     let uri = uri.clone();
                                     match uri.resource() {
@@ -474,7 +487,7 @@ impl App {
                                         _ => {}
                                     }
                                 }
-                                UiAction::Remove(uri) => {
+                                ui::Action::Remove(uri) => {
                                     let api = self.spotify.api.clone();
                                     let uri = uri.clone();
                                     match uri.resource() {
@@ -519,11 +532,11 @@ impl App {
                                         _ => {}
                                     }
                                 }
-                                UiAction::AddToPlaylist(uri) => {
-                                    self.state.modal_state.lock().unwrap().add_to_playlist = Some(uri.clone());
+                                ui::Action::AddToPlaylist(uri) => {
+                                    *self.state.modal_state.add_to_playlist.lock().unwrap() = Some(uri.clone());
                                     self.state.viewport = Viewport::Modal(Modal::AddToPlaylist);
                                 },
-                                UiAction::AddToQueue(uri) => {
+                                ui::Action::AddToQueue(uri) => {
                                     let api = self.spotify.api.clone();
                                     let uri = uri.clone();
                                     tokio::task::spawn(async move {
@@ -533,7 +546,7 @@ impl App {
                                         api.add_to_queue(uri, None).await.unwrap();
                                     });
                                 },
-                                UiAction::GoTo(goto) => {
+                                ui::Action::GoTo(goto) => {
                                     tx.send(Action::GoTo(goto.clone())).unwrap();
                                 },
                             };
@@ -712,66 +725,5 @@ impl App {
 
         tui::restore()?;
         Ok(())
-    }
-}
-
-impl Widget for State {
-    fn render(mut self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Length(4)])
-            .split(area);
-
-        //let mut dimmed = if let Viewport::Modal(_) = &self.viewport {
-        //    Style::default().dim()
-        //} else {
-        //    Style::default()
-        //};
-        let mut dimmed = Style::default();
-
-        match &mut self.window {
-            Window::Queue => {
-                let qstate = &mut self.window_state.lock().unwrap().queue;
-                StatefulWidget::render(qstate, layout[0], buf, &mut dimmed);
-            }
-            Window::Library => {
-                Block::bordered()
-                    .title(
-                        Title::from("[Library]")
-                            .alignment(Alignment::Center)
-                            .position(Position::Bottom),
-                    )
-                    .border_set(border::ROUNDED)
-                    .render(layout[0], buf);
-            }
-        }
-
-        // Viewport State Rendering
-        if let Viewport::Modal(modal) = &mut self.viewport {
-            match modal {
-                Modal::Devices => {
-                    let devices = &mut self.modal_state.lock().unwrap().devices;
-                    Widget::render(devices, layout[0], buf);
-                }
-                Modal::GoTo => {
-                    let goto = &self.modal_state.lock().unwrap().go_to;
-                    Widget::render(UiGoto(&goto.mappings), layout[0], buf);
-                },
-                Modal::Action => {
-                    let actions = &self.modal_state.lock().unwrap().actions;
-                    Widget::render(ModalActions(actions), layout[0], buf);
-                }
-                Modal::AddToPlaylist => {
-                    let add_to_playlist = &self.modal_state.lock().unwrap().add_to_playlist;
-                    // TODO:
-                    // - Fetch playlists
-                    // - Render playlists in modal
-                    // - Use loading state
-                    Widget::render(AddToPlaylist(add_to_playlist.as_ref()), layout[0], buf);
-                }
-            }
-        }
-
-        StatefulWidget::render(&*self.playback.lock().unwrap(), layout[1], buf, &mut self.last_playback_poll.lock().unwrap().clone());
     }
 }

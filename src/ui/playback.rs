@@ -3,14 +3,12 @@ use ratatui::{
 };
 use tupy::{api::response::{Device, PlaybackItem, Repeat}, DateTime, Duration, Local};
 
-use crate::state::{Playback, PlaybackState};
+use crate::state::playback::{Playback, PlaybackState};
 
 use super::format_duration;
 
-impl StatefulWidget for &PlaybackState {
-    type State = DateTime<Local>;
-
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State)
+impl Widget for &PlaybackState {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,
     {
@@ -19,7 +17,7 @@ impl StatefulWidget for &PlaybackState {
                 playback,
                 area,
                 buf,
-                &mut (*state, self.saved),
+                &mut self.last_playback_poll.clone(),
             ),
             None => {
                 NoPlayback.render(area, buf);
@@ -34,7 +32,7 @@ impl Widget for NoPlayback {
     where
         Self: Sized,
     {
-        PB {
+        UI {
             title: Span::from("<No Playback>"),
             ..Default::default()
         }
@@ -43,7 +41,7 @@ impl Widget for NoPlayback {
 }
 
 impl StatefulWidget for &Playback {
-    type State = (DateTime<Local>, bool);
+    type State = DateTime<Local>;
 
     fn render(
         self,
@@ -51,7 +49,7 @@ impl StatefulWidget for &Playback {
         buf: &mut ratatui::prelude::Buffer,
         state: &mut Self::State,
     ) {
-        let (last_poll, is_saved) = *state;
+        let last_poll = *state;
 
         let mut progress = self.progress.unwrap_or(Duration::zero());
         if self.is_playing {
@@ -68,9 +66,9 @@ impl StatefulWidget for &Playback {
                     .collect::<Vec<&str>>()
                     .join(", ");
 
-                PB {
+                UI {
                     title: Span::from(track.name.clone()),
-                    saved: is_saved,
+                    saved: self.saved,
                     device: self.device.clone(),
                     shuffle: Some(self.shuffle),
                     repeat: Some(self.repeat),
@@ -84,9 +82,9 @@ impl StatefulWidget for &Playback {
             PlaybackItem::Episode(episode) => {
                 let name = episode.show.as_ref().map(|s| Line::from(s.name.clone()).right_aligned());
 
-                PB {
+                UI {
                     title: Span::from(episode.name.clone()),
-                    saved: is_saved,
+                    saved: self.saved,
                     device: self.device.clone(),
                     shuffle: Some(self.shuffle),
                     repeat: Some(self.repeat),
@@ -98,14 +96,14 @@ impl StatefulWidget for &Playback {
                     .render(area, buf);
             }
             PlaybackItem::Ad => {
-                PB {
+                UI {
                     title: Span::from("<Advertisement>"),
                     ..Default::default()
                 }
                     .render(area, buf);
             }
             PlaybackItem::Unkown => {
-                PB {
+                UI {
                     title: Span::from("<Unknown Playback>"),
                     ..Default::default()
                 }
@@ -159,7 +157,7 @@ impl Widget for ProgressBar {
 }
 
 #[derive(Debug, Clone, Default)]
-struct PB<'a> {
+struct UI<'a> {
     title: Span<'a>,
     fully_played: bool,
     saved: bool,
@@ -173,7 +171,7 @@ struct PB<'a> {
     duration: Option<Duration>,
 }
 
-impl<'a> Widget for PB<'a> {
+impl<'a> Widget for UI<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
         where
             Self: Sized {

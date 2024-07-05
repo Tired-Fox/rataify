@@ -1,6 +1,6 @@
 use ratatui::widgets::Widget;
 
-use crate::state::DevicesState;
+use crate::state::modal::DevicesState;
 
 use super::render_modal_with_state;
 

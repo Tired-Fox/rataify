@@ -1,4 +1,5 @@
 use tupy::{api::{auth::OAuth, flow::{Credentials, Pkce}, request::Play, response::{Item, PlaybackActionScope, PlaybackAction}, scopes, PublicApi, Spotify, Uri, UserApi}, Pagination};
+use tupy::api::request::{Query, SearchType};
 use api_examples::util;
 
 #[tokio::main]
@@ -74,21 +75,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    }
     //}
 
-
-    let playback = spotify.api.playback_state(None).await?;
-    if let Some(playback) = playback {
-        if playback.disallow(PlaybackAction::TogglingShuffle) {
-            println!("Shuffle is disabled");
-        }
-
-        if playback.disallow(PlaybackAction::TogglingRepeatContext) {
-            println!("Repeat Context is disabled");
-        }
-
-        if playback.disallow(PlaybackAction::TogglingRepeatTrack) {
-            println!("Repeat Track is disabled");
+    let mut search = spotify.api.search::<2, _>(&[Query::text("Release Radar")], &[SearchType::Playlist], None, false)?;
+    if let Some(playlists) = search.playlists() {
+        if let Some(page) = playlists.next().await? {
+            for playlist in page.items {
+                if playlist.name.as_str() == "Release Radar" && playlist.owner.id.as_str() == "spotify" {
+                    println!("{:#?}", playlist);
+                }
+            }
         }
     }
+
+    let mut search = spotify.api.search::<2, _>(&[Query::text("Discover Weekly")], &[SearchType::Playlist], None, false)?;
+    if let Some(playlists) = search.playlists() {
+        if let Some(page) = playlists.next().await? {
+            for playlist in page.items {
+                if playlist.name.as_str() == "Discover Weekly" && playlist.owner.id.as_str() == "spotify" {
+                    println!("{:#?}", playlist);
+                }
+            }
+        }
+    }
+
+    //let playback = spotify.api.playback_state(None).await?;
+    //if let Some(playback) = playback {
+    //    if playback.disallow(PlaybackAction::TogglingShuffle) {
+    //        println!("Shuffle is disabled");
+    //    }
+    //
+    //    if playback.disallow(PlaybackAction::TogglingRepeatContext) {
+    //        println!("Repeat Context is disabled");
+    //    }
+    //
+    //    if playback.disallow(PlaybackAction::TogglingRepeatTrack) {
+    //        println!("Repeat Track is disabled");
+    //    }
+    //}
+
     //match playback {
     //    Some(playback) => {
     //        match playback.is_playing {

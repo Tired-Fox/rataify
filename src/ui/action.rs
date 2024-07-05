@@ -41,7 +41,7 @@ impl Display for GoTo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum UiAction {
+pub enum Action {
     Play(Uri),
     PlayContext(Play),
 
@@ -58,7 +58,7 @@ pub enum UiAction {
     GoTo(GoTo),
 }
 
-impl UiAction {
+impl Action {
     pub fn with_key(&self) -> KeyCode {
         match self {
             Self::Play(_) => KeyCode::Enter,
@@ -72,7 +72,7 @@ impl UiAction {
     }
 }
 
-impl PartialEq<char> for &UiAction {
+impl PartialEq<char> for &Action {
     fn eq(&self, other: &char) -> bool {
         if let KeyCode::Char(c) = self.with_key() {
             return &c == other;
@@ -81,7 +81,7 @@ impl PartialEq<char> for &UiAction {
     }
 }
 
-impl PartialEq<char> for UiAction {
+impl PartialEq<char> for Action {
     fn eq(&self, other: &char) -> bool {
         if let KeyCode::Char(c) = self.with_key() {
             return &c == other;
@@ -90,19 +90,19 @@ impl PartialEq<char> for UiAction {
     }
 }
 
-impl PartialEq<KeyCode> for &UiAction {
+impl PartialEq<KeyCode> for &Action {
     fn eq(&self, other: &KeyCode) -> bool {
         &self.with_key() == other
     }
 }
 
-impl PartialEq<KeyCode> for UiAction {
+impl PartialEq<KeyCode> for Action {
     fn eq(&self, other: &KeyCode) -> bool {
         &self.with_key() == other
     }
 }
 
-impl Display for UiAction {
+impl Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Play(_) => write!(f, "Play"),

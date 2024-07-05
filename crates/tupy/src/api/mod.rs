@@ -318,18 +318,25 @@ impl Display for Uri {
     }
 }
 
+impl FromStr for Uri {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts = s.splitn(3, ':').collect::<Vec<_>>();
+        let id = parts[2].to_string();
+        Ok(Self {
+            resource: Resource::from_str(parts[1])?,
+            id,
+        })
+    }
+}
+
 impl<'de> Deserialize<'de> for Uri {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        let parts = s.splitn(3, ':').collect::<Vec<_>>();
-        let id = parts[2].to_string();
-        Ok(Self {
-            resource: Resource::from_str(parts[1]).map_err(serde::de::Error::custom)?,
-            id,
-        })
+        String::deserialize(deserializer)?.parse().map_err(serde::de::Error::custom)
     }
 }
 

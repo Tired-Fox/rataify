@@ -1,5 +1,6 @@
-use ratatui::{layout::{Alignment, Constraint, Direction, Layout, Rect}, style::{Style, Stylize}, symbols::border, text::{Line, Span}, widgets::{block::{Position, Title}, Block, Cell, Row, StatefulWidget, Widget}};
-use tupy::{api::{request::Play, response::{Episode, PlaybackItem, Track}}, Duration};
+use lazy_static::lazy_static;
+use ratatui::{layout::{Alignment, Constraint, Direction, Layout, Rect}, symbols::{border, DOT}, text::{Line, Span}, widgets::{block::{Position, Title}, Block, Cell, Row, StatefulWidget, Widget}, style::{Color, Style, Stylize}};
+use tupy::{api::{request::Play, response::{Episode, PlaybackItem, Track, SimplifiedTrack, SimplifiedEpisode, SimplifiedChapter}}, Duration};
 
 pub mod modal;
 pub mod window;
@@ -77,12 +78,10 @@ fn format_duration(duration: Duration) -> String {
 }
 
 /// Icon | Duration | Name | By | Context
-fn format_track<'l>(track: &Track, saved: bool) -> Row<'l> {
+fn format_track<'l>(track: &Track) -> Row<'l> {
     Row::new(vec![
-        Cell::from(if saved { "♥" } else { "" }),
-        Cell::from(Line::from(format_duration(track.duration)).right_aligned()),
-        Cell::from(track.name.clone()).cyan(),
-        //Cell::from(track.album.name.clone()).italic().yellow(),
+        Cell::from(Line::from(format_duration(track.duration)).right_aligned().style(COLORS.duration)),
+        Cell::from(track.name.clone()).cyan().style(COLORS.track),
         Cell::from(
             track
                 .artists
@@ -90,28 +89,68 @@ fn format_track<'l>(track: &Track, saved: bool) -> Row<'l> {
                 .map(|a| a.name.clone())
                 .collect::<Vec<String>>()
                 .join(", "),
-        ),
+        ).style(COLORS.artists),
     ])
 }
 
 /// Icon | Duration | Name | By | Context
-fn format_episode<'l>(episode: &Episode, saved: bool) -> Row<'l> {
+fn format_episode<'l>(episode: &Episode) -> Row<'l> {
     let mut cells = vec![
-        Cell::from(if saved { "♥" } else { "" }),
-        Cell::from(Line::from(format_duration(episode.duration)).right_aligned()),
+        Cell::from(Line::from(format_duration(episode.duration)).right_aligned().style(COLORS.duration)),
         if episode.resume_point.fully_played {
             Cell::from(Line::from(vec![
-                Span::from(episode.name.clone()),
-                Span::from(" ✓").green()
-            ])).green()
+                Span::from(episode.name.clone()).style(COLORS.episode),
+                Span::from(" ✓").style(COLORS.finished)
+            ]))
         } else {
-            Cell::from(episode.name.clone()).green()
+            Cell::from(episode.name.clone()).style(COLORS.episode)
+        }
+    ];
+
+    if let Some(show) = episode.show.as_ref() {
+        cells.push(Cell::from(show.name.clone()).style(COLORS.context));
+    } else {
+        cells.push(Cell::default());
+    }
+
+    Row::new(cells)
+}
+
+/// Icon | Duration | Name | By | Context
+fn format_track_saved<'l>(track: &Track, saved: bool) -> Row<'l> {
+    Row::new(vec![
+        Cell::from(if saved { "♥" } else { "" }).style(COLORS.like),
+        Cell::from(Line::from(format_duration(track.duration)).right_aligned().style(COLORS.duration)),
+        Cell::from(track.name.clone()).style(COLORS.track),
+        Cell::from(
+            track
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
+        ).style(COLORS.artists),
+    ])
+}
+
+/// Icon | Duration | Name | By | Context
+fn format_episode_saved<'l>(episode: &Episode, saved: bool) -> Row<'l> {
+    let mut cells = vec![
+        Cell::from(if saved { "♥" } else { "" }).style(COLORS.like),
+        Cell::from(Line::from(format_duration(episode.duration)).right_aligned().style(COLORS.duration)),
+        if episode.resume_point.fully_played {
+            Cell::from(Line::from(vec![
+                Span::from(episode.name.clone()).style(COLORS.episode),
+                Span::from(" ✓").style(COLORS.finished)
+            ]))
+        } else {
+            Cell::from(episode.name.clone()).style(COLORS.episode)
         }
     ];
 
     if let Some(show) = episode.show.as_ref() {
         cells.extend([
-            Cell::from(show.name.clone()),
+            Cell::from(show.name.clone()).style(COLORS.context),
         ]);
     } else {
         cells.extend([Cell::default()]);
@@ -121,37 +160,92 @@ fn format_episode<'l>(episode: &Episode, saved: bool) -> Row<'l> {
 }
 
 pub trait IntoActions {
-    fn into_ui_actions(self) -> Vec<Action>;
+    fn into_ui_actions(self, context: bool) -> Vec<Action>;
 }
 
-impl IntoActions for Item {
-    fn into_ui_actions(self) -> Vec<Action> {
-        match self.item {
-            tupy::api::response::Item::Track(t) => {
-                let mut actions = vec![
-                    Action::Play(t.uri.clone()),
-                    if !self.saved { Action::Save(t.uri.clone()) } else { Action::Remove(t.uri.clone()) },
-                    Action::AddToPlaylist(t.uri.clone()),
-                    Action::AddToQueue(t.uri.clone()),
-                ];
-                if t.album.total_tracks > 1 {
-                    actions.push(Action::PlayContext(Play::album(t.album.uri.clone(), None, 0)));
+impl IntoActions for &Track {
+    fn into_ui_actions(self, context: bool) -> Vec<Action> {
+        let mut actions = vec![
+            Action::Play(self.uri.clone()),
+            Action::AddToPlaylist(self.uri.clone()),
+            Action::AddToQueue(self.uri.clone()),
+        ];
+
+        if context {
+            if self.album.total_tracks > 1 {
+                actions.push(Action::PlayContext(Play::album(self.album.uri.clone(), None, 0)));
+            }
+            actions.push(Action::GoTo(GoTo::Album(self.album.uri.clone())))
+        }
+
+        actions
+    }
+}
+
+impl IntoActions for &SimplifiedTrack {
+    fn into_ui_actions(self, _: bool) -> Vec<Action> {
+        let mut actions = vec![
+            Action::Play(self.uri.clone()),
+            Action::AddToPlaylist(self.uri.clone()),
+            Action::AddToQueue(self.uri.clone()),
+        ];
+
+        actions
+    }
+}
+
+impl IntoActions for &SimplifiedEpisode {
+    fn into_ui_actions(self, _: bool) -> Vec<Action> {
+        vec![
+            Action::Play(self.uri.clone()),
+            Action::AddToPlaylist(self.uri.clone()),
+            Action::AddToQueue(self.uri.clone()),
+        ]
+    }
+}
+
+impl IntoActions for &Episode {
+    fn into_ui_actions(self, context: bool) -> Vec<Action> {
+        let mut actions = vec![
+            Action::Play(self.uri.clone()),
+            Action::AddToPlaylist(self.uri.clone()),
+            Action::AddToQueue(self.uri.clone()),
+        ];
+
+        if context {
+            if let Some(show) = self.show.as_ref() {
+                if show.total_episodes > 1 {
+                    actions.push(Action::PlayContext(Play::show(show.uri.clone(), None, 0)));
                 }
+                actions.push(Action::GoTo(GoTo::Show(show.uri.clone())));
+            }
+        }
+
+        actions
+    }
+}
+
+impl IntoActions for &SimplifiedChapter {
+    fn into_ui_actions(self, _: bool) -> Vec<Action> {
+        vec![
+            Action::Play(self.uri.clone()),
+            Action::AddToPlaylist(self.uri.clone()),
+            Action::AddToQueue(self.uri.clone()),
+        ]
+    }
+}
+
+impl IntoActions for &Item {
+    fn into_ui_actions(self, context: bool) -> Vec<Action> {
+        match &self.item {
+            tupy::api::response::Item::Track(t) => {
+                let mut actions = vec![if !self.saved { Action::Save(t.uri.clone()) } else { Action::Remove(t.uri.clone()) }];
+                actions.extend(t.into_ui_actions(context));
                 actions
             },
             tupy::api::response::Item::Episode(e) => {
-                let mut actions = vec![
-                    Action::Play(e.uri.clone()),
-                    if !self.saved { Action::Save(e.uri.clone()) } else { Action::Remove(e.uri.clone()) },
-                    Action::AddToPlaylist(e.uri.clone()),
-                    Action::AddToQueue(e.uri.clone()),
-                ];
-                if let Some(show) = e.show.as_ref() {
-                    if show.total_episodes > 1 {
-                        actions.push(Action::PlayContext(Play::show(show.uri.clone(), None, 0)));
-                    }
-                    actions.push(Action::GoTo(GoTo::Show(show.uri.clone())));
-                }
+                let mut actions = vec![if !self.saved { Action::Save(e.uri.clone()) } else { Action::Remove(e.uri.clone()) }];
+                actions.extend(e.into_ui_actions(context));
                 actions
             }
         }
@@ -159,7 +253,7 @@ impl IntoActions for Item {
 }
 
 impl IntoActions for &PlaybackState {
-    fn into_ui_actions(self) -> Vec<Action> {
+    fn into_ui_actions(self, context: bool) -> Vec<Action> {
         if let Some(pb) = self.playback.as_ref() {
             match &pb.item {
                 PlaybackItem::Track(t) => {
@@ -171,8 +265,11 @@ impl IntoActions for &PlaybackState {
                         Action::AddToPlaylist(t.uri.clone()),
                     ];
 
-                    if t.album.total_tracks > 1 {
-                        actions.push(Action::PlayContext(Play::album(t.album.uri.clone(), None, 0)));
+                    if context {
+                        if t.album.total_tracks > 1 {
+                            actions.push(Action::PlayContext(Play::album(t.album.uri.clone(), None, 0)));
+                        }
+                        actions.push(Action::GoTo(GoTo::Album(t.album.uri.clone())));
                     }
 
                     actions
@@ -181,15 +278,15 @@ impl IntoActions for &PlaybackState {
                     let mut actions = vec![
                         if !pb.saved { Action::Save(e.uri.clone()) } else { Action::Remove(e.uri.clone()) },
                         Action::AddToPlaylist(e.uri.clone()),
-                        Action::AddToQueue(e.uri.clone()),
                     ];
-                    if let Some(show) = e.show.as_ref() {
-                        if show.total_episodes > 1 {
-                            actions.push(Action::PlayContext(Play::show(show.uri.clone(), None, 0)));
+                    if context {
+                        if let Some(show) = e.show.as_ref() {
+                            if show.total_episodes > 1 {
+                                actions.push(Action::PlayContext(Play::show(show.uri.clone(), None, 0)));
+                            }
+                            actions.push(Action::GoTo(GoTo::Show(show.uri.clone())));
                         }
-                        actions.push(Action::GoTo(GoTo::Show(show.uri.clone())));
                     }
-
                     actions
                 },
                 _ => Vec::new()
@@ -221,6 +318,9 @@ impl Widget for State {
             }
             Window::Library => {
                 Widget::render(&*self.window_state.library.lock().unwrap(), layout[0], buf);
+            },
+            Window::Landing => {
+                Widget::render(&mut *self.window_state.landing.lock().unwrap(), layout[0], buf);
             }
         }
 
@@ -251,5 +351,52 @@ impl Widget for State {
         }
 
         Widget::render(&*self.playback.lock().unwrap(), layout[1], buf);
+    }
+}
+
+pub struct Colors {
+    pub artists: Style,
+    pub track: Style,
+    pub episode: Style,
+    pub duration: Style,
+    pub context: Style,
+    pub like: Style,
+    pub finished: Style,
+    pub chapter_number: Style,
+}
+
+lazy_static! {
+    pub static ref COLORS: Colors = Colors {
+        artists: Style::default().gray(),
+        track: Style::default().cyan(),
+        episode: Style::default().light_green(),
+        duration: Style::default().bold(),
+        context: Style::default().white().bold(),
+        like: Style::default().fg(Color::Red),
+        finished: Style::default().green(),
+        chapter_number: Style::default().dim().gray(),
+    };
+}
+
+pub struct PaginationProgress {
+    pub current: usize,
+    pub total: usize,
+}
+
+impl Widget for PaginationProgress {
+    fn render(self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+
+        let mut cells = Vec::new();
+        for _ in 0..(self.current.saturating_sub(1)) {
+            cells.push(Span::from(DOT).dim().gray());
+        }
+        cells.push(Span::from(DOT).white().bold());
+        for _ in 0..(self.total - self.current) {
+            cells.push(Span::from(DOT).dim().gray());
+        }
+    
+        Line::from(cells)
+            .centered()
+            .render(area, buf);
     }
 }

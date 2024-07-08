@@ -186,6 +186,7 @@ pub enum Window {
     Queue,
     #[default]
     Library,
+    Landing,
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]

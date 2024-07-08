@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    }
     //}
 
-    //let mut playlists = spotify.api.playlists::<20, _>(None)?;
+    //let mut playlists = spotify.api.playlists::<40, _>(None)?;
     //while let Some(page) = playlists.next().await? {
     //    for playlist in page.items {
     //        println!("- [{}] {}", playlist.id, playlist.name);

@@ -5,7 +5,7 @@ use tupy::{api::response::{Device, PlaybackItem, Repeat}, DateTime, Duration, Lo
 
 use crate::state::playback::{Playback, PlaybackState};
 
-use super::format_duration;
+use super::{format_duration, COLORS};
 
 impl Widget for &PlaybackState {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
@@ -241,7 +241,7 @@ impl<'a> Widget for UI<'a> {
             .split(playing[0]);
 
         render_title(title[0], buf, self.title, self.fully_played);
-        Line::from(if self.saved { "♥ " } else { "  " }.red()).render(title[1], buf);
+        Line::from(if self.saved { "♥ " } else { "  " }).style(COLORS.like).render(title[1], buf);
         if let Some(c) = &self.context {
             c.render(title[2], buf);
         }
@@ -258,7 +258,7 @@ fn render_title<'a>(area: Rect, buf: &mut Buffer, title: Span<'a>, fully_played:
     if fully_played {
         Line::from(vec![
             title,
-            Span::from(" ✓".green()),
+            Span::from(" ✓").style(COLORS.finished),
         ]).render(area, buf);
     } else {
         title.render(area, buf);

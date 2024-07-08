@@ -14,6 +14,8 @@ use ratatui::{
     },
 };
 
+use crate::ui::PaginationProgress;
+
 impl FromSpotify {
     fn render(self, area: Rect, buf: &mut Buffer, selected: bool) {
         let (title, lines) = match &self {
@@ -147,45 +149,115 @@ impl Widget for &LibraryState {
             .padding(" ", " ")
             .block(Block::bordered().borders(Borders::TOP | Borders::BOTTOM))
             .select(self.selected_tab as usize)
-            .style(if self.selection.is_tabs() {
-                Style::default().add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            })
             .divider(symbols::DOT)
             .render(layout[1], buf);
 
         match self.selected_tab {
-            LibraryTab::Playlists => unwrap_render_results(
-                self.playlists.items.lock().unwrap().as_ref(),
-                self.result_state.clone(),
-                layout[2],
-                buf
-            ),
-            LibraryTab::Artists => unwrap_render_results(
-                self.artists.items.lock().unwrap().as_ref(),
-                self.result_state.clone(),
-                layout[2],
-                buf
-            ),
-            LibraryTab::Albums => unwrap_render_results(
-                self.albums.items.lock().unwrap().as_ref(),
-                self.result_state.clone(),
-                layout[2],
-                buf
-            ),
-            LibraryTab::Shows => unwrap_render_results(
-                self.shows.items.lock().unwrap().as_ref(),
-                self.result_state.clone(),
-                layout[2],
-                buf
-            ),
-            LibraryTab::Audiobooks => unwrap_render_results(
-                self.audiobooks.items.lock().unwrap().as_ref(),
-                self.result_state.clone(),
-                layout[2],
-                buf
-            ),
+            LibraryTab::Playlists => {
+                let results = self.playlists.items.lock().unwrap();
+                let items = results.as_ref().map(|a| a.as_ref());
+                if items.is_some() && items.as_ref().unwrap().is_some() {
+                    let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
+                    let pages = self.playlists.pages.lock().unwrap();
+                    if pages.1 > 1 {
+                        PaginationProgress {
+                            current: pages.0,
+                            total: pages.1,
+                        }
+                            .render(area, buf);
+                    }
+                }
+                unwrap_render_results(
+                    items,
+                    self.result_state.clone(),
+                    layout[2],
+                    buf
+                )
+            },
+            LibraryTab::Artists => {
+                let results = self.artists.items.lock().unwrap();
+                let items = results.as_ref().map(|a| a.as_ref());
+                if items.is_some() && items.as_ref().unwrap().is_some() {
+                    let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
+                    let pages = self.artists.pages.lock().unwrap();
+                    if pages.1 > 1 {
+                        PaginationProgress {
+                            current: pages.0,
+                            total: pages.1,
+                        }
+                            .render(area, buf);
+                    }
+                }
+                unwrap_render_results(
+                    items,
+                    self.result_state.clone(),
+                    layout[2],
+                    buf
+                )
+            },
+            LibraryTab::Albums => {
+                let results = self.albums.items.lock().unwrap();
+                let items = results.as_ref().map(|a| a.as_ref());
+                if items.is_some() && items.as_ref().unwrap().is_some() {
+                    let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
+                    let pages = self.albums.pages.lock().unwrap();
+                    if pages.1 > 1 {
+                        PaginationProgress {
+                            current: pages.0,
+                            total: pages.1,
+                        }
+                            .render(area, buf);
+                    }
+                }
+                unwrap_render_results(
+                    items,
+                    self.result_state.clone(),
+                    layout[2],
+                    buf
+                )
+            },
+            LibraryTab::Shows => {
+                let results = self.shows.items.lock().unwrap();
+                let items = results.as_ref().map(|a| a.as_ref());
+                if items.is_some() && items.as_ref().unwrap().is_some() {
+                    let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
+                    let pages = self.shows.pages.lock().unwrap();
+                    if pages.1 > 1 {
+                        PaginationProgress {
+                            current: pages.0,
+                            total: pages.1,
+                        }
+                            .render(area, buf);
+                    }
+                }
+                unwrap_render_results(
+                    items,
+                    self.result_state.clone(),
+                    layout[2],
+                    buf
+                )
+            },
+            LibraryTab::Audiobooks => {
+                let results = self.audiobooks.items.lock().unwrap();
+                let items = results.as_ref().map(|a| a.as_ref());
+                if items.is_some() && items.as_ref().unwrap().is_some() {
+                    let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
+                    let pages = self.audiobooks.pages.lock().unwrap();
+                    if pages.1 > 1 {
+                        PaginationProgress {
+                            current: pages.0,
+                            total: pages.1,
+                        }
+                            .render(area, buf);
+                    }
+                }
+                unwrap_render_results(
+                    items,
+                    self.result_state.clone(),
+                    layout[2],
+                    buf
+                )
+            },
         }
     }
 }
@@ -194,10 +266,10 @@ pub trait IntoWidgetWrapper<T: StatefulWidget> {
     fn into_widget_wrapper(&self) -> T;
 }
 
-fn unwrap_render_results<'a, W: StatefulWidget, T: IntoWidgetWrapper<W>>(loading: Loading<T>, mut state: W::State, area: Rect, buf: &mut Buffer)
+fn unwrap_render_results<'a, W: StatefulWidget, T: IntoWidgetWrapper<W>>(loading: Option<Loading<T>>, mut state: W::State, area: Rect, buf: &mut Buffer)
 {
     match loading {
-        Loading::Loading => {
+        Some(Loading::Loading) => {
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
                 .split(area);
 
@@ -205,7 +277,7 @@ fn unwrap_render_results<'a, W: StatefulWidget, T: IntoWidgetWrapper<W>>(loading
                 .centered()
                 .render(vert[1], buf);
         },
-        Loading::None => {
+        None | Some(Loading::None) => {
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
                 .split(area);
 
@@ -214,9 +286,9 @@ fn unwrap_render_results<'a, W: StatefulWidget, T: IntoWidgetWrapper<W>>(loading
                 .red()
                 .render(vert[1], buf);
         },
-        Loading::Some(items) => {
+        Some(Loading::Some(items)) => {
             let block = Block::default()
-                .padding(Padding::new(1, 1, 1, 0));
+                .padding(Padding::uniform(1));
             let area = block.inner(area);
             StatefulWidget::render(items.into_widget_wrapper(), area, buf, &mut state)
         },
@@ -284,23 +356,71 @@ impl<'a> StatefulWidget for Playlists<'a> {
 impl<'a> StatefulWidget for Artists<'a> {
     type State = TableState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let table = self.0.items.iter().map(|a| {
+            Row::new(vec![
+                Line::from(a.name.clone()),
+                Line::from(a.genres.join(", ")).right_aligned(),
+            ])
+        })
+            .collect::<Table>()
+            .column_spacing(1)
+            .highlight_style(Style::default().yellow());
+
+        StatefulWidget::render(table, area, buf, state);
     }
 }
 
 impl<'a> StatefulWidget for Albums<'a> {
     type State = TableState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let table = self.0.items.iter().map(|a| {
+            Row::new(vec![
+                Line::from(a.album.name.clone()),
+                Line::from(format!("{:?}", a.album.album_type)).right_aligned(),
+                Line::from(a.album.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", "))
+            ])
+        })
+            .collect::<Table>()
+            .column_spacing(1)
+            .highlight_style(Style::default().yellow());
+
+        StatefulWidget::render(table, area, buf, state);
     }
 }
 
 impl<'a> StatefulWidget for Shows<'a> {
     type State = TableState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let table = self.0.items.iter().map(|a| {
+            Row::new(vec![
+                Line::from(a.show.name.clone()),
+                Line::from(a.show.publisher.clone().unwrap_or_default()).right_aligned(),
+                Line::from(format!("[{}]", a.show.total_episodes))
+            ])
+        })
+            .collect::<Table>()
+            .column_spacing(1)
+            .highlight_style(Style::default().yellow());
+
+        StatefulWidget::render(table, area, buf, state);
     }
 }
 
 impl<'a> StatefulWidget for Audiobooks<'a> {
     type State = TableState;
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let table = self.0.items.iter().map(|a| {
+            Row::new(vec![
+                Line::from(a.name.clone()),
+                Line::from(a.publisher.clone()),
+                Line::from(a.authors.join(", ")),
+                Line::from(a.edition.clone()),
+            ])
+        })
+            .collect::<Table>()
+            .column_spacing(1)
+            .highlight_style(Style::default().yellow());
+
+        StatefulWidget::render(table, area, buf, state);
     }
 }

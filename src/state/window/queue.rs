@@ -1,7 +1,7 @@
 use ratatui::widgets::TableState;
 use tupy::api::response;
 
-use crate::state::{IterCollection, Loading, playback::Item};
+use crate::{state::{IterCollection, Loading, playback::Item}, ui::{Action, IntoActions}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Queue {
@@ -40,9 +40,9 @@ impl QueueState {
         }
     }
 
-    pub fn select(&self) -> Option<Item> {
+    pub fn select(&self) -> Option<Vec<Action>> {
         if let Loading::Some(ref q) = self.queue {
-            q.items.get(self.state.selected().unwrap_or(0)).cloned()
+            q.items.get(self.state.selected().unwrap_or(0)).map(|i| i.into_ui_actions(true))
         } else {
             None
         }

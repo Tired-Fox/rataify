@@ -96,6 +96,22 @@ where
     }
 
     fn page(&self) -> usize {
+        if self.offset == 0 {
+            0
+        } else {
+            (self.offset as f64 / self.limit as f64).ceil() as usize
+        }
+    }
+
+    fn max_page(&self) -> usize {
+        if self.total == 0 {
+            0
+        } else {
+            (self.total as f64 / self.limit as f64).ceil() as usize
+        }
+    }
+
+    fn offset(&self) -> usize {
         self.offset
     }
 

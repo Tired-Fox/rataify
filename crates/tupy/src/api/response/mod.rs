@@ -233,7 +233,13 @@ where
     }
 
     pub fn page(&self) -> usize {
-        self.offset.max(0) as usize
+        self.offset.max(0) as usize + 1
+    }
+
+    pub fn total_pages(&self) -> usize {
+        if self.total == 0 { 0 } else {
+            (self.total as f32 / self.page_size as f32).ceil() as usize
+        }
     }
 
     pub fn page_size(&self) -> usize {
@@ -468,7 +474,9 @@ pub trait Paged {
     type Item;
     fn items(&self) -> &Vec<Self::Item>;
     fn page(&self) -> usize;
+    fn max_page(&self) -> usize;
     fn limit(&self) -> usize;
+    fn offset(&self) -> usize;
     fn total(&self) -> usize;
     fn next(&self) -> Option<&str>;
     fn prev(&self) -> Option<&str>;
@@ -493,11 +501,71 @@ macro_rules! impl_paged {
             }
 
             fn page(&self) -> usize {
-                self.offset
+                if self.offset == 0 {
+                    1
+                } else {
+                    (self.offset as f32 / self.limit as f32).ceil() as usize
+                }
+            }
+
+            fn max_page(&self) -> usize {
+                if self.total == 0 {
+                    1
+                } else {
+                    (self.total as f32 / self.limit as f32).ceil() as usize
+                }
             }
 
             fn limit(&self) -> usize {
                 self.limit
+            }
+
+            fn offset(&self) -> usize {
+                self.offset
+            }
+
+            fn total(&self) -> usize {
+                self.total
+            }
+        }
+
+        impl $crate::api::response::Paged for &$name {
+            type Item = $typ;
+
+            fn items(&self) -> &Vec<Self::Item> {
+                &self.items
+            }
+
+            fn next(&self) -> Option<&str> {
+                self.next.as_deref()
+            }
+
+            fn prev(&self) -> Option<&str> {
+                self.previous.as_deref()
+            }
+
+            fn page(&self) -> usize {
+                if self.offset == 0 {
+                    1
+                } else {
+                    (self.offset as f32 / self.limit as f32).ceil() as usize
+                }
+            }
+
+            fn max_page(&self) -> usize {
+                if self.total == 0 {
+                    1
+                } else {
+                    (self.total as f32 / self.limit as f32).ceil() as usize
+                }
+            }
+
+            fn limit(&self) -> usize {
+                self.limit
+            }
+
+            fn offset(&self) -> usize {
+                self.offset
             }
 
             fn total(&self) -> usize {

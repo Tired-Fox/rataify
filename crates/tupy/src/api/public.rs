@@ -9,6 +9,7 @@ use super::{
         Album, AlbumTracks, Artist, ArtistAlbums, AudioAnalysis, AudioFeatures, Audiobook,
         Categories, Category, Chapter, Chapters, Episode, FeaturedPlaylists, Image, NewReleases,
         PagedPlaylists, Paginated, Playlist, Recommendations, Search, Show, ShowEpisodes, Track,
+        PlaylistItems,
     },
     IntoSpotifyParam, SpotifyResponse, API_BASE_URL,
 };
@@ -955,6 +956,44 @@ pub trait PublicApi: AuthFlow {
 
             Ok(pares!(&body)?)
         }
+    }
+
+    /// Get full details of the items of a playlist owned by a Spotify user.
+    ///
+    /// # Arguments
+    /// - `id`: The [Spotify ID](https://developer.spotify.com/documentation/web-api/#spotify-uris-and-ids) of the playlist.
+    /// - `market`: An [ISO 3166-1 alpha-2 country code](http://en.wikipedia.org/wiki/ISO_3166-1_alpha-2). If a country code is specified, only content that is available in that market will be returned. If a valid user access token is specified in the request header, the country associated with the user account will take priority over this parameter.
+    /// <N> Is the number of items to return per page. Maximum: 50
+    ///
+    /// # Important Policy Notes
+    /// - Spotify [content may not be downloaded](https://developer.spotify.com/terms/#section-iv-restrictions)
+    /// - Keep visual content in it's [original form](https://developer.spotify.com/documentation/design#using-our-content)
+    /// - Ensure content [attribution](https://developer.spotify.com/policy/#ii-respect-content-and-creators)
+    /// - Spotify [content may not be used to train machine learning or AI models](https://developer.spotify.com/terms#section-iv-restrictions)
+    fn playlist_items<const N: usize, I, M>(
+        &self,
+        id: I,
+        market: M,
+    ) -> Result<Paginated<PlaylistItems, PlaylistItems, Self, N>, Error>
+    where
+        I: IntoSpotifyId,
+        M: IntoSpotifyParam,
+    {
+        let mut url = format!(
+            "{API_BASE_URL}/playlists/{}/tracks?limit={N}&additional_types={SUPPORTED_ITEMS}",
+            id.into_spotify_id()
+        );
+
+        if let Some(m) = market.into_spotify_param() {
+            url.push_str(&format!("&market={}", m));
+        }
+
+        Ok(Paginated::new(
+            self.clone(),
+            Some(url),
+            None,
+            |c: PlaylistItems| c,
+        ))
     }
 
     /// Get a list of Spotify featured playlists (shown, for example, on a Spotify player's 'Browse' tab).

@@ -221,7 +221,19 @@ impl Paged for RecentlyPlayed {
     }
 
     fn page(&self) -> usize {
-       0 
+       1 
+    }
+
+    fn max_page(&self) -> usize {
+        if self.total == 0 {
+            1
+        } else {
+            (self.total as f64 / self.limit as f64).ceil() as usize
+        }
+    }
+
+    fn offset(&self) -> usize {
+        0
     }
 
     fn limit(&self) -> usize {

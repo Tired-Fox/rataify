@@ -251,17 +251,48 @@ pub fn validate_scope<'a, I: IntoIterator<Item = &'a str>>(scopes: &HashSet<Stri
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, PartialOrd)]
-#[serde(rename_all = "lowercase")]
+pub enum UserResource {
+    None,
+    Collection,
+    CollectionYourEpisodes,
+}
+
+impl Display for UserResource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                UserResource::None => "",
+                UserResource::Collection => "collection",
+                UserResource::CollectionYourEpisodes => "collection:your-episodes",
+            }
+        )
+    }
+}
+
+impl FromStr for UserResource {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "collection" => Ok(Self::Collection),
+            "collection:your-episodes" => Ok(Self::CollectionYourEpisodes),
+            "" => Ok(Self::None),
+            _ => Err("Invalid spotify uri".into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, PartialOrd)]
 pub enum Resource {
     Artist,
     Album,
     Track,
     Playlist,
-    User,
+    User(UserResource),
     Show,
     Episode,
-    Collection,
-    CollectionYourEpisodes,
 }
 
 impl Display for Resource {
@@ -274,11 +305,9 @@ impl Display for Resource {
                 Resource::Artist => "artist",
                 Resource::Track => "track",
                 Resource::Playlist => "playlist",
-                Resource::User => "user",
+                Resource::User(_) => "user",
                 Resource::Show => "show",
                 Resource::Episode => "episode",
-                Resource::Collection => "collection",
-                Resource::CollectionYourEpisodes => "collectionyourepisodes",
             }
         )
     }
@@ -293,11 +322,9 @@ impl FromStr for Resource {
             "artist" => Ok(Self::Artist),
             "track" => Ok(Self::Track),
             "playlist" => Ok(Self::Playlist),
-            "user" => Ok(Self::User),
+            "user" => Ok(Self::User(UserResource::Collection)),
             "show" => Ok(Self::Show),
             "episode" => Ok(Self::Episode),
-            "collection" => Ok(Self::Collection),
-            "collectionyourepisodes" => Ok(Self::CollectionYourEpisodes),
             _ => Err("Invalid spotify uri".into()),
         }
     }
@@ -314,7 +341,14 @@ pub struct Uri {
 
 impl Display for Uri {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "spotify:{}:{}", self.resource, self.id)
+        match self.resource {
+            Resource::User(user_resource) => match user_resource {
+                UserResource::None => write!(f, "spotify:user:{}", self.id),
+                UserResource::Collection => write!(f, "spotify:user:{}:collection", self.id),
+                UserResource::CollectionYourEpisodes => write!(f, "spotify:user:{}:collection:your-episodes", self.id),
+            },
+            other => write!(f, "spotify:{}:{}", other, self.id),
+        }
     }
 }
 
@@ -323,11 +357,27 @@ impl FromStr for Uri {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts = s.splitn(3, ':').collect::<Vec<_>>();
-        let id = parts[2].to_string();
-        Ok(Self {
-            resource: Resource::from_str(parts[1])?,
-            id,
-        })
+        let resource = Resource::from_str(parts[1])?;
+        match resource {
+            Resource::User(_) => {
+                if parts[2].contains(':') {
+                    let (user_id, resource) = parts[2].split_once(':').unwrap();
+                    Ok(Self {
+                        resource: Resource::User(UserResource::from_str(resource)?),
+                        id: user_id.to_string(),
+                    })
+                } else {
+                    Ok(Self {
+                        resource: Resource::User(UserResource::None),
+                        id: parts[2].to_string(),
+                    })
+                }
+            },
+            other => Ok(Self {
+                resource,
+                id: parts[2].to_string(),
+            })
+        }
     }
 }
 
@@ -379,9 +429,23 @@ impl Uri {
         }
     }
 
-    pub fn user<S: Display>(id: S) -> Self {
+    pub fn user<S: Display>(id: S, resource: UserResource) -> Self {
         Uri {
-            resource: Resource::User,
+            resource: Resource::User(resource),
+            id: id.to_string(),
+        }
+    }
+
+    pub fn collection<S: Display>(id: S) -> Self {
+        Uri {
+            resource: Resource::User(UserResource::Collection),
+            id: id.to_string(),
+        }
+    }
+
+    pub fn collection_your_episodes<S: Display>(id: S) -> Self {
+        Uri {
+            resource: Resource::User(UserResource::CollectionYourEpisodes),
             id: id.to_string(),
         }
     }

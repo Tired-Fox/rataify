@@ -8,13 +8,14 @@ use color_eyre::Result;
 use color_eyre::eyre::Error;
 use ratatui::widgets::TableState;
 use serde::Deserialize;
-use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType}, response::{Paged, FollowedArtists, SavedAudiobooks, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
+use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType, Play}, response::{Paged, FollowedArtists, SavedAudiobooks, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
 
-use crate::state::{IterCollection, Loading};
-use crate::{Locked, Shared};
+use crate::{state::{IterCollection, Loading}, PAGE_SIZE};
+use crate::ui::{Action, GoTo};
+use super::Pages;
 
 static USER_PLAYLISTS_FILENAME: &str = "user.playlists.cache";
-
+static USER_FILENAME: &str = "user.id.cache";
 #[derive(Debug, Clone, Default)]
 pub struct UserPlaylists {
     pub release: Option<Uri>,
@@ -146,7 +147,6 @@ impl LibraryTab {
 #[derive(Debug, Clone, PartialEq, strum_macros::EnumIs)]
 pub enum Selection {
     SpotifyPlaylist,
-    Tabs,
     Results,
 }
 
@@ -157,53 +157,8 @@ impl Default for Selection {
 }
 
 #[derive(Debug, Clone)]
-pub struct Pages<R, P>
-    where 
-        R: Clone + Debug + Send,
-        P: Clone + Debug + Send,
-{
-    pub pager: Shared<Mutex<Paginated<R, P, Pkce, 20>>>,
-    pub items: Shared<Locked<Loading<R>>>,
-}
-
-impl<R, P> Pages<R, P>
-    where 
-        R: Clone + Debug + Send + Paged + 'static,
-        P: Clone + Debug + Send + Deserialize<'static> + 'static,
-{
-    pub fn new(pager: Paginated<R, P, Pkce, 20>) -> Self {
-        Self {
-            pager: Shared::new(Mutex::new(pager)),
-            items: Shared::default(),
-        }
-    }
-
-    pub async fn next(&mut self) -> Result<()> {
-        *self.items.lock().unwrap() = Loading::Loading;
-
-        let items = self.items.clone();
-        let pager = self.pager.clone();
-        tokio::task::spawn(async move {
-            let next = pager.lock().await.next().await.unwrap();
-            *items.lock().unwrap() = Loading::from(next);
-        });
-        Ok(())
-    }
-
-    pub async fn prev(&mut self) -> Result<()> {
-        *self.items.lock().unwrap() = Loading::Loading;
-
-        let items = self.items.clone();
-        let pager = self.pager.clone();
-        tokio::spawn(async move {
-            *items.lock().unwrap() = Loading::from(pager.lock().await.prev().await.unwrap());
-        });
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct LibraryState {
+    pub user_id: String,
     pub user_playlists: UserPlaylists,
     pub selection: Selection,
 
@@ -220,95 +175,60 @@ pub struct LibraryState {
 }
 
 impl LibraryState {
-    pub async fn tab(&mut self) {
-        match self.selection {
-            Selection::SpotifyPlaylist => {
-                if self.selected_spotify_playlist as usize >= FromSpotify::COUNT - 1 {
-                    let len = match self.selected_tab {
-                        LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
-                            items.items().len()
-                        } else { 0 },
-                        LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
-                            items.items().len()
-                        } else { 0 },
-                        LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
-                            items.items().len()
-                        } else { 0 },
-                        LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
-                            items.items().len()
-                        } else { 0 },
-                        LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
-                            items.items().len()
-                        } else { 0 },
-                    };
-                    if len != 0 {
-                        self.selection = Selection::Results;
-                        self.result_state.select(Some(0));
-                    }
-                } else {
-                    self.selected_spotify_playlist += 1;
-                }
-            },
-            Selection::Tabs => {
-                self.selection = Selection::Results;
+    pub async fn tab(&mut self) -> Result<()> {
+        self.selected_tab += 1;
+        match self.selected_tab {
+            LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_next() => {
+                self.playlists.next().await?;
                 self.result_state.select(Some(0));
             },
-            Selection::Results => {
-                match self.selected_tab {
-                    LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
-                        self.result_state.next_in_list(items.items().len());
-                    },
-                    LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
-                        self.result_state.next_in_list(items.items().len());
-                    },
-                    LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
-                        self.result_state.next_in_list(items.items().len());
-                    },
-                    LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
-                        self.result_state.next_in_list(items.items().len());
-                    },
-                    LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
-                        self.result_state.next_in_list(items.items().len());
-                    }
-                }
+            LibraryTab::Artists if self.artists.items.lock().unwrap().is_none() && self.artists.pager.lock().await.has_next() => {
+                self.artists.next().await?;
+                self.result_state.select(Some(0));
+            },
+            LibraryTab::Albums if self.albums.items.lock().unwrap().is_none() && self.albums.pager.lock().await.has_next() => {
+                self.albums.next().await?;
+                self.result_state.select(Some(0));
+            },
+            LibraryTab::Shows if self.shows.items.lock().unwrap().is_none() && self.shows.pager.lock().await.has_next() => {
+                self.shows.next().await?;
+                self.result_state.select(Some(0));
+            },
+            LibraryTab::Audiobooks if self.audiobooks.items.lock().unwrap().is_none() && self.audiobooks.pager.lock().await.has_next() => {
+                self.audiobooks.next().await?;
+                self.result_state.select(Some(0));
             }
+            _ =>{}
         }
+        Ok(())
     }
 
-    pub async fn backtab(&mut self) {
-        match self.selection {
-            Selection::SpotifyPlaylist => {
-                self.selected_spotify_playlist -= 1;
+    pub async fn backtab(&mut self) -> Result<()> {
+        self.selected_tab -= 1;
+        match self.selected_tab {
+            LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_prev() => {
+                self.playlists.prev().await?;
+                self.result_state.select(Some(0));
             },
-            Selection::Tabs => {
-                self.selection = Selection::SpotifyPlaylist;
-                self.result_state.select(None);
+            LibraryTab::Artists if self.artists.items.lock().unwrap().is_none() && self.artists.pager.lock().await.has_prev() => {
+                self.artists.prev().await?;
+                self.result_state.select(Some(0));
             },
-            Selection::Results => {
-                if self.result_state.selected().unwrap_or(0) == 0 {
-                    self.selection = Selection::SpotifyPlaylist;
-                    self.result_state.select(None);
-                } else {
-                    match self.selected_tab {
-                        LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
-                            self.result_state.prev_in_list(items.items().len());
-                        },
-                        LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
-                            self.result_state.prev_in_list(items.items().len());
-                        },
-                        LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
-                            self.result_state.prev_in_list(items.items().len());
-                        },
-                        LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
-                            self.result_state.prev_in_list(items.items().len());
-                        },
-                        LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
-                            self.result_state.prev_in_list(items.items().len());
-                        },
-                    }
-                }
+            LibraryTab::Albums if self.albums.items.lock().unwrap().is_none() && self.albums.pager.lock().await.has_prev() => {
+                self.albums.prev().await?;
+                self.result_state.select(Some(0));
+            },
+            LibraryTab::Shows if self.shows.items.lock().unwrap().is_none() && self.shows.pager.lock().await.has_prev() => {
+                self.shows.prev().await?;
+                self.result_state.select(Some(0));
+            },
+            LibraryTab::Audiobooks if self.audiobooks.items.lock().unwrap().is_none() && self.audiobooks.pager.lock().await.has_prev() => {
+                self.audiobooks.prev().await?;
+                self.result_state.select(Some(0));
             }
+            _ =>{}
         }
+        Ok(())
     }
 
     pub async fn right(&mut self) -> Result<()> {
@@ -316,9 +236,6 @@ impl LibraryState {
             Selection::SpotifyPlaylist => {
                 self.selected_spotify_playlist += 1;
             },
-            Selection::Tabs => {
-                self.selected_tab += 1;
-            }
             Selection::Results => {
                 match self.selected_tab {
                     LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_some() && self.playlists.pager.lock().await.has_next() => {
@@ -353,9 +270,6 @@ impl LibraryState {
             Selection::SpotifyPlaylist => {
                 self.selected_spotify_playlist -= 1;
             },
-            Selection::Tabs => {
-                self.selected_tab -= 1;
-            }
             Selection::Results => {
                 match self.selected_tab {
                     LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_some() && self.playlists.pager.lock().await.has_prev() => {
@@ -388,23 +302,20 @@ impl LibraryState {
     pub async fn down(&mut self) {
         match self.selection {
             Selection::SpotifyPlaylist => {
-                self.selection = Selection::Tabs;
-            },
-            Selection::Tabs => {
                 let len = match self.selected_tab {
-                    LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
+                    LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
                         items.items().len()
                     } else { 0 },
-                    LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
+                    LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
                         items.items().len()
                     } else { 0 },
-                    LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
+                    LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
                         items.items().len()
                     } else { 0 },
-                    LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
+                    LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
                         items.items().len()
                     } else { 0 },
-                    LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
+                    LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
                         items.items().len()
                     } else { 0 },
                 };
@@ -412,22 +323,22 @@ impl LibraryState {
                     self.selection = Selection::Results;
                     self.result_state.select(Some(0));
                 }
-            }
+            },
             Selection::Results => {
                 match self.selected_tab {
-                    LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
+                    LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
                         self.result_state.next_in_list(items.items().len());
                     },
-                    LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
+                    LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
                         self.result_state.next_in_list(items.items().len());
                     },
-                    LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
+                    LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
                         self.result_state.next_in_list(items.items().len());
                     },
-                    LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
+                    LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
                         self.result_state.next_in_list(items.items().len());
                     },
-                    LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
+                    LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
                         self.result_state.next_in_list(items.items().len());
                     }
                 }
@@ -438,28 +349,25 @@ impl LibraryState {
     pub async fn up(&mut self) {
         match self.selection {
             Selection::SpotifyPlaylist => {},
-            Selection::Tabs => {
-                self.selection = Selection::SpotifyPlaylist;
-            }
             Selection::Results => {
                 if self.result_state.selected().unwrap_or(0) == 0 {
-                    self.selection = Selection::Tabs;
+                    self.selection = Selection::SpotifyPlaylist;
                     self.result_state.select(None);
                 } else {
                     match self.selected_tab {
-                        LibraryTab::Playlists => if let Loading::Some(items) = self.playlists.items.lock().unwrap().as_ref() {
+                        LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
                             self.result_state.prev_in_list(items.items().len());
                         },
-                        LibraryTab::Artists => if let Loading::Some(items) = self.artists.items.lock().unwrap().as_ref() {
+                        LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
                             self.result_state.prev_in_list(items.items().len());
                         },
-                        LibraryTab::Albums => if let Loading::Some(items) = self.albums.items.lock().unwrap().as_ref() {
+                        LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
                             self.result_state.prev_in_list(items.items().len());
                         },
-                        LibraryTab::Shows => if let Loading::Some(items) = self.shows.items.lock().unwrap().as_ref() {
+                        LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
                             self.result_state.prev_in_list(items.items().len());
                         },
-                        LibraryTab::Audiobooks => if let Loading::Some(items) = self.audiobooks.items.lock().unwrap().as_ref() {
+                        LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
                             self.result_state.prev_in_list(items.items().len());
                         }
                     }
@@ -469,11 +377,83 @@ impl LibraryState {
         }
     }
 
+    pub fn select(&self) -> Option<Vec<Action>> {
+        match self.selection {
+            Selection::SpotifyPlaylist => match self.selected_spotify_playlist {
+                FromSpotify::ReleaseRadar => if let Some(release) = self.user_playlists.release.as_ref() {
+                    return Some(vec![
+                        Action::PlayContext(Play::playlist(release.clone(), None, 0)),
+                        Action::GoTo(GoTo::Playlist(release.clone())),
+                    ])
+                },
+                FromSpotify::DiscoverWeekly => if let Some(discover) = self.user_playlists.discover.as_ref() {
+                    return Some(vec![
+                        Action::PlayContext(Play::playlist(discover.clone(), None, 0)),
+                        Action::GoTo(GoTo::Playlist(discover.clone())),
+                    ])
+                },
+                FromSpotify::LikedSongs => {
+                    let uri = Uri::collection(self.user_id.clone());
+                    return Some(vec![
+                        Action::PlayContext(Play::collection(uri.id(), None, 0)),
+                        Action::GoTo(GoTo::LikedSongs),
+                    ])
+                },
+                FromSpotify::MyEpisodes => {
+                    return Some(vec![
+                        Action::GoTo(GoTo::MyEpisodes),
+                    ])
+                },
+            },
+            Selection::Results => match self.selected_tab {
+                LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
+                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
+                    return Some(vec![
+                        Action::PlayContext(Play::playlist(item.uri.clone(), None, 0)),
+                        // TODO: Action to add entire playlist to queue
+                        Action::GoTo(GoTo::Playlist(item.uri.clone())),
+                    ])
+                },
+                LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
+                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
+                    return Some(vec![
+                        Action::PlayContext(Play::artist(item.uri.clone())),
+                        Action::GoTo(GoTo::Artist(item.uri.clone())),
+                    ])
+                },
+                LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
+                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
+                    return Some(vec![
+                        Action::PlayContext(Play::album(item.album.uri.clone(), None, 0)),
+                        Action::GoTo(GoTo::Album(item.album.uri.clone())),
+                    ])
+                },
+                LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
+                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
+                    return Some(vec![
+                        Action::PlayContext(Play::show(item.show.uri.clone(), None, 0)),
+                        Action::GoTo(GoTo::Show(item.show.uri.clone())),
+                    ])
+                },
+                LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
+                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
+                    return Some(vec![
+                        // TODO: Double check this action
+                        Action::PlayContext(Play::show(item.uri.clone(), None, 0)),
+                        Action::GoTo(GoTo::Audiobook(item.uri.clone()))
+                    ])
+                }
+            }
+        }
+        None
+    }
+
     pub async fn new(dir: &str, api: &Pkce) -> Result<Self> {
-        let path = dirs::cache_dir().unwrap().join(dir).join(USER_PLAYLISTS_FILENAME);
+        let cache_playlist_path = dirs::cache_dir().unwrap().join(dir).join(USER_PLAYLISTS_FILENAME);
+        let cache_user_id_path = dirs::cache_dir().unwrap().join(dir).join(USER_FILENAME);
         let mut user_playlists = UserPlaylists::default();
 
-        if !path.exists() {
+        if !cache_playlist_path.exists() {
             if api.token().is_expired() {
                 api.refresh().await?;
             }
@@ -486,7 +466,7 @@ impl LibraryState {
                 if let Some(page) = playlists.next().await? {
                     for playlist in page.items {
                         if playlist.name.as_str() == "Release Radar" && playlist.owner.id.as_str() == "spotify" {
-                            user_playlists.release = Some(playlist.uri.parse().map_err(|e| Error::msg(e))?);
+                            user_playlists.release = Some(playlist.uri);
                             break;
                         }
                     }
@@ -500,16 +480,16 @@ impl LibraryState {
                 if let Some(page) = playlists.next().await? {
                     for playlist in page.items {
                         if playlist.name.as_str() == "Discover Weekly" && playlist.owner.id.as_str() == "spotify" {
-                            user_playlists.discover = Some(playlist.uri.parse().map_err(|e| Error::msg(e))?);
+                            user_playlists.discover = Some(playlist.uri);
                             break;
                         }
                     }
                 }
             }
 
-            std::fs::write(path, user_playlists.to_cache_string())?;
+            std::fs::write(cache_playlist_path, user_playlists.to_cache_string())?;
         } else {
-            let cache = std::fs::read_to_string(path).unwrap();
+            let cache = std::fs::read_to_string(cache_playlist_path).unwrap();
             for line in cache.lines() {
                 match line.split_once("=>") {
                     Some(("Release Radar", uri)) => user_playlists.release = Some(uri.parse().map_err(|e| Error::msg(e))?),
@@ -519,18 +499,30 @@ impl LibraryState {
             }
         }
 
+        let user_id = if !cache_user_id_path.exists() {
+            if api.token().is_expired() {
+                api.refresh().await?;
+            }
+            let user_id = api.current_user_profile().await?.id.clone();
+            std::fs::write(cache_user_id_path, user_id.clone())?;
+            user_id
+        } else {
+            std::fs::read_to_string(cache_user_id_path)?
+        };
+
         let mut layout_state = Self {
+            user_id,
             user_playlists,
             selection: Selection::default(),
             selected_spotify_playlist: FromSpotify::default(),
             selected_tab: LibraryTab::default(),
             result_state: TableState::default(),
 
-            playlists: Pages::new(api.playlists::<20, _>(None)?),
-            artists: Pages::new(api.followed_artists::<20>()?),
-            albums: Pages::new(api.saved_albums::<20, _>(None)?),
-            audiobooks: Pages::new(api.saved_audiobooks::<20>()?),
-            shows: Pages::new(api.saved_shows::<20>()?),
+            playlists: Pages::new(api.playlists::<PAGE_SIZE, _>(None)?),
+            artists: Pages::new(api.followed_artists::<PAGE_SIZE>()?),
+            albums: Pages::new(api.saved_albums::<PAGE_SIZE, _>(None)?),
+            audiobooks: Pages::new(api.saved_audiobooks::<PAGE_SIZE>()?),
+            shows: Pages::new(api.saved_shows::<PAGE_SIZE>()?),
         };
         match layout_state.selected_tab {
             LibraryTab::Playlists => layout_state.playlists.next().await?,

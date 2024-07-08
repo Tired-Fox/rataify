@@ -9,3 +9,5 @@ pub mod state;
 
 pub type Shared<T> = Arc<T>;
 pub type Locked<T> = Mutex<T>;
+
+pub const PAGE_SIZE: usize = 30;

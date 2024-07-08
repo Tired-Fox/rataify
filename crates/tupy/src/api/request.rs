@@ -580,7 +580,12 @@ pub enum Play {
         uris: Vec<Uri>,
         position: Duration,
     },
-    Resume
+    Collection {
+        id: String,
+        offset: Option<usize>,
+        position: Duration,
+    },
+    Resume,
 }
 
 impl Play {
@@ -594,6 +599,18 @@ impl Play {
         I: IntoSpotifyId,
     {
         Self::Album {
+            id: id.into_spotify_id(),
+            offset,
+            position: position.into_duration(),
+        }
+    }
+
+    pub fn collection<P, I>(id: I, offset: Option<usize>, position: P) -> Self
+    where
+        P: IntoDuration,
+        I: IntoSpotifyId,
+    {
+        Self::Collection {
             id: id.into_spotify_id(),
             offset,
             position: position.into_duration(),
@@ -643,13 +660,13 @@ impl Serialize for Play {
         match self {
             Play::Artist(id) => {
                 let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("context_uri", &format!("spotify:artist:{id}"))?;
+                map.serialize_entry("context_uri", &Uri::artist(id.as_str()).to_string())?;
                 map.serialize_entry("position", &0)?;
                 map.end()
             },
             Play::Album { id, offset, position } => {
                 let mut values = HashMap::from([
-                    ("context_uri", Value::from(format!("spotify:album:{id}"))),
+                    ("context_uri", Value::from(Uri::album(id.as_str()).to_string())),
                     ("position", Value::from(position.num_milliseconds())),
                 ]);
 
@@ -667,7 +684,7 @@ impl Serialize for Play {
             },
             Play::Playlist { id, offset, position } => {
                 let mut values = HashMap::from([
-                    ("context_uri", Value::from(format!("spotify:playlist:{id}"))),
+                    ("context_uri", Value::from(Uri::playlist(id.as_str()).to_string())),
                     ("position", Value::from(position.num_milliseconds())),
                 ]);
 
@@ -685,7 +702,25 @@ impl Serialize for Play {
             },
             Play::Show { id, offset, position } => {
                 let mut values = HashMap::from([
-                    ("context_uri", Value::from(format!("spotify:show:{id}"))),
+                    ("context_uri", Value::from(Uri::show(id.as_str()).to_string())),
+                    ("position", Value::from(position.num_milliseconds())),
+                ]);
+
+                if let Some(offset) = offset {
+                    values.insert("offset", json!({
+                        "position": offset
+                    }));
+                }
+
+                let mut map = serializer.serialize_map(Some(values.len()))?;
+                for (k, v) in values {
+                    map.serialize_entry(k, &v)?;
+                }
+                map.end()
+            },
+            Play::Collection { id, offset, position } => {
+                let mut values = HashMap::from([
+                    ("context_uri", Value::from(Uri::collection(id.as_str()).to_string())),
                     ("position", Value::from(position.num_milliseconds())),
                 ]);
 

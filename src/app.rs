@@ -20,7 +20,7 @@ use tupy::{
 use crate::{
     errors::install_hooks,
     spotify_util::listen_for_authentication_code,
-    state::{modal::DevicesState, playback::Playback, window::queue::Queue, Countdown, Modal, State, Viewport, Window},
+    state::{modal::DevicesState, playback::Playback, window::{landing::Landing, queue::Queue}, Countdown, Modal, State, Viewport, Window},
     tui,
     ui::{self, GoTo, IntoActions},
 };
@@ -271,6 +271,7 @@ impl App {
                 Viewport::Window => match &mut self.state.window {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().next(),
                     Window::Library => self.state.window_state.library.lock().unwrap().down().await,
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().down(),
                     _ => {}
                 },
                 _ => {}
@@ -282,6 +283,7 @@ impl App {
                 Viewport::Window => match &mut self.state.window {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().prev(),
                     Window::Library => self.state.window_state.library.lock().unwrap().up().await,
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().up(),
                     _ => {}
                 },
                 _ => {}
@@ -289,6 +291,7 @@ impl App {
             Action::Right => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
                     Window::Library => self.state.window_state.library.lock().unwrap().right().await?,
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().right().await?,
                     _ => {}
                 },
                 _ => {}
@@ -296,20 +299,21 @@ impl App {
             Action::Left => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
                     Window::Library => self.state.window_state.library.lock().unwrap().left().await?,
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().left().await?,
                     _ => {}
                 },
                 _ => {}
             },
             Action::Tab => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
-                    Window::Library => self.state.window_state.library.lock().unwrap().tab().await,
+                    Window::Library => self.state.window_state.library.lock().unwrap().tab().await?,
                     _ => {}
                 },
                 _ => {}
             },
             Action::Backtab => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
-                    Window::Library => self.state.window_state.library.lock().unwrap().backtab().await,
+                    Window::Library => self.state.window_state.library.lock().unwrap().backtab().await?,
                     _ => {}
                 },
                 _ => {}
@@ -372,8 +376,20 @@ impl App {
                 #[allow(clippy::single_match)]
                 Viewport::Window => match self.state.window {
                     Window::Queue => {
-                        if let Some(item) = self.state.window_state.queue.lock().unwrap().select() {
-                            *self.state.modal_state.actions.lock().unwrap() = item.into_ui_actions();
+                        if let Some(actions) = self.state.window_state.queue.lock().unwrap().select() {
+                            *self.state.modal_state.actions.lock().unwrap() = actions;
+                            self.state.viewport = Viewport::Modal(Modal::Action);
+                        }
+                    }
+                    Window::Library => {
+                        if let Some(actions) = self.state.window_state.library.lock().unwrap().select() {
+                            *self.state.modal_state.actions.lock().unwrap() = actions;
+                            self.state.viewport = Viewport::Modal(Modal::Action);
+                        }
+                    }
+                    Window::Landing => {
+                        if let Some(actions) = self.state.window_state.landing.lock().unwrap().select() {
+                            *self.state.modal_state.actions.lock().unwrap() = actions;
                             self.state.viewport = Viewport::Modal(Modal::Action);
                         }
                     }
@@ -384,7 +400,7 @@ impl App {
                 }
             },
             Action::OpenAction => {
-                let actions = self.state.playback.lock().unwrap().into_ui_actions();
+                let actions = self.state.playback.lock().unwrap().into_ui_actions(true);
                 if !actions.is_empty() {
                     *self.state.modal_state.actions.lock().unwrap() = actions;
                     self.state.viewport = Viewport::Modal(Modal::Action);
@@ -413,6 +429,31 @@ impl App {
                     GoTo::Library => {
                         self.state.viewport = Viewport::Window;
                         self.state.window = Window::Library;
+                    }
+                    GoTo::Playlist(playlist) => {
+                        *self.state.window_state.landing.lock().unwrap() = Landing::playlist(&self.spotify.api, playlist.clone()).await?;
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Landing;
+                    },
+                    GoTo::Album(album) => {
+                        *self.state.window_state.landing.lock().unwrap() = Landing::album(&self.spotify.api, album.clone()).await?;
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Landing;
+                    }
+                    //GoTo::Artist(artist) => {
+                    //    *self.state.window_state.landing.lock().unwrap() = Landing::artist(&self.spotify.api, artist.clone()).await?;
+                    //    self.state.viewport = Viewport::Window;
+                    //    self.state.window = Window::Landing;
+                    //}
+                    GoTo::Show(show) => {
+                        *self.state.window_state.landing.lock().unwrap() = Landing::show(&self.spotify.api, show.clone()).await?;
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Landing;
+                    }
+                    GoTo::Audiobook(audiobook) => {
+                        *self.state.window_state.landing.lock().unwrap() = Landing::audiobook(&self.spotify.api, audiobook.clone()).await?;
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Landing;
                     }
                     // TODO: Map in changing ui based on goto when the other states are implemented
                     _ => todo!(),

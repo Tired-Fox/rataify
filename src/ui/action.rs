@@ -7,11 +7,14 @@ use crossterm::event::KeyCode;
 pub enum GoTo {
     Library,
     Queue,
+    LikedSongs,
+    MyEpisodes,
 
     Album(Uri),
     Artist(Uri),
     Playlist(Uri),
     Show(Uri),
+    Audiobook(Uri),
 }
 
 impl GoTo {
@@ -23,6 +26,9 @@ impl GoTo {
             Self::Show(_) => KeyCode::Char('S'),
             Self::Queue => KeyCode::Char('B'),
             Self::Library => KeyCode::Char('L'),
+            Self::Audiobook(_) => KeyCode::Char('K'),
+            Self::LikedSongs => KeyCode::Char('L'),
+            Self::MyEpisodes => KeyCode::Char('M'),
         }
     }
 }
@@ -36,6 +42,9 @@ impl Display for GoTo {
             Self::Show(_) => write!(f, "Show"),
             Self::Queue => write!(f, "Queue"),
             Self::Library => write!(f, "Library"),
+            Self::Audiobook(_) => write!(f, "Audiobook"),
+            Self::LikedSongs => write!(f, "Liked Songs"),
+            Self::MyEpisodes => write!(f, "My Episodes"),
         }
     }
 }

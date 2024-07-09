@@ -1,6 +1,7 @@
 use std::ops::{AddAssign, Sub, SubAssign};
 use std::{fmt::Debug, ops::Add};
 use std::collections::HashMap;
+use crossterm::event::KeyEvent;
 use strum::EnumCount;
 use tokio::sync::Mutex;
 
@@ -10,6 +11,7 @@ use ratatui::widgets::TableState;
 use serde::Deserialize;
 use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType, Play}, response::{Paged, FollowedArtists, SavedAudiobooks, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
 
+use crate::key;
 use crate::{state::{IterCollection, Loading}, PAGE_SIZE};
 use crate::ui::{Action, GoTo};
 use super::Pages;
@@ -377,31 +379,31 @@ impl LibraryState {
         }
     }
 
-    pub fn select(&self) -> Option<Vec<Action>> {
+    pub fn select(&self) -> Option<Vec<(KeyEvent, Action)>> {
         match self.selection {
             Selection::SpotifyPlaylist => match self.selected_spotify_playlist {
                 FromSpotify::ReleaseRadar => if let Some(release) = self.user_playlists.release.as_ref() {
                     return Some(vec![
-                        Action::PlayContext(Play::playlist(release.clone(), None, 0)),
-                        Action::GoTo(GoTo::Playlist(release.clone())),
+                        (key!(Enter), Action::PlayContext(Play::playlist(release.clone(), None, 0))),
+                        (key!('P' + SHIFT), Action::GoTo(GoTo::Playlist(release.clone()))),
                     ])
                 },
                 FromSpotify::DiscoverWeekly => if let Some(discover) = self.user_playlists.discover.as_ref() {
                     return Some(vec![
-                        Action::PlayContext(Play::playlist(discover.clone(), None, 0)),
-                        Action::GoTo(GoTo::Playlist(discover.clone())),
+                        (key!(Enter), Action::PlayContext(Play::playlist(discover.clone(), None, 0))),
+                        (key!('P' + SHIFT), Action::GoTo(GoTo::Playlist(discover.clone()))),
                     ])
                 },
                 FromSpotify::LikedSongs => {
                     let uri = Uri::collection(self.user_id.clone());
                     return Some(vec![
-                        Action::PlayContext(Play::collection(uri.id(), None, 0)),
-                        Action::GoTo(GoTo::LikedSongs),
+                        (key!(Enter), Action::PlayContext(Play::collection(uri.id(), None, 0))),
+                        (key!('L' + SHIFT), Action::GoTo(GoTo::LikedSongs)),
                     ])
                 },
                 FromSpotify::MyEpisodes => {
                     return Some(vec![
-                        Action::GoTo(GoTo::MyEpisodes),
+                        (key!('M' + SHIFT), Action::GoTo(GoTo::MyEpisodes)),
                     ])
                 },
             },
@@ -409,38 +411,38 @@ impl LibraryState {
                 LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
                     let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
                     return Some(vec![
-                        Action::PlayContext(Play::playlist(item.uri.clone(), None, 0)),
+                        (key!(Enter), Action::PlayContext(Play::playlist(item.uri.clone(), None, 0))),
                         // TODO: Action to add entire playlist to queue
-                        Action::GoTo(GoTo::Playlist(item.uri.clone())),
+                        (key!('P' + SHIFT), Action::GoTo(GoTo::Playlist(item.uri.clone()))),
                     ])
                 },
                 LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
                     let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
                     return Some(vec![
-                        Action::PlayContext(Play::artist(item.uri.clone())),
-                        Action::GoTo(GoTo::Artist(item.uri.clone())),
+                        (key!(Enter), Action::PlayContext(Play::artist(item.uri.clone()))),
+                        (key!('A' + SHIFT), Action::GoTo(GoTo::Artist(item.uri.clone()))),
                     ])
                 },
                 LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
                     let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
                     return Some(vec![
-                        Action::PlayContext(Play::album(item.album.uri.clone(), None, 0)),
-                        Action::GoTo(GoTo::Album(item.album.uri.clone())),
+                        (key!(Enter), Action::PlayContext(Play::album(item.album.uri.clone(), None, 0))),
+                        (key!('A' + SHIFT), Action::GoTo(GoTo::Album(item.album.uri.clone()))),
                     ])
                 },
                 LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
                     let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
                     return Some(vec![
-                        Action::PlayContext(Play::show(item.show.uri.clone(), None, 0)),
-                        Action::GoTo(GoTo::Show(item.show.uri.clone())),
+                        (key!(Enter), Action::PlayContext(Play::show(item.show.uri.clone(), None, 0))),
+                        (key!('S' + SHIFT), Action::GoTo(GoTo::Show(item.show.uri.clone()))),
                     ])
                 },
                 LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
                     let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
                     return Some(vec![
                         // TODO: Double check this action
-                        Action::PlayContext(Play::show(item.uri.clone(), None, 0)),
-                        Action::GoTo(GoTo::Audiobook(item.uri.clone()))
+                        (key!(Enter), Action::PlayContext(Play::show(item.uri.clone(), None, 0))),
+                        (key!('A' + SHIFT), Action::GoTo(GoTo::Audiobook(item.uri.clone())))
                     ])
                 }
             }

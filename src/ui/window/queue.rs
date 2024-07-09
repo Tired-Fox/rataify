@@ -80,6 +80,7 @@ impl StatefulWidget for &mut QueueState {
                     .widths([
                         Constraint::Length(3),
                         Constraint::Length(8),
+                        Constraint::Length(1),
                         Constraint::Max(max_name as u16),
                         Constraint::Fill(1),
                         //Constraint::Fill(1),

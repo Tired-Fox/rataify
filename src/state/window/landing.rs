@@ -1,5 +1,6 @@
 use color_eyre::Result;
 
+use crossterm::event::KeyEvent;
 use ratatui::widgets::TableState;
 use tupy::{api::{response::{PlaylistItems, AlbumTracks, Item, PlaylistItemInfo, Chapters, ShowEpisodes}, Uri, PublicApi, flow::Pkce}};
 
@@ -140,7 +141,7 @@ impl Landing {
         Ok(())
     }
 
-    pub fn select(&self) -> Option<Vec<Action>> {
+    pub fn select(&self) -> Option<Vec<(KeyEvent, Action)>> {
         match self {
             Landing::Playlist(pages, state) => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                 return match items.items.get(state.selected().unwrap_or(0)) {

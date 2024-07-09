@@ -77,7 +77,7 @@ impl Paged for FollowedArtists {
         if self.total == 0 {
             1
         } else {
-            (self.total as f32 / self.limit as f32).ceil() as usize
+            (self.total as f32 / self.limit as f32) as usize
         }
     }
 

@@ -504,7 +504,7 @@ macro_rules! impl_paged {
                 if self.offset == 0 {
                     1
                 } else {
-                    (self.offset as f32 / self.limit as f32).ceil() as usize
+                    (self.offset as f32 / self.limit as f32) as usize + 1
                 }
             }
 
@@ -512,7 +512,7 @@ macro_rules! impl_paged {
                 if self.total == 0 {
                     1
                 } else {
-                    (self.total as f32 / self.limit as f32).ceil() as usize
+                    (self.total as f32 / self.limit as f32) as usize
                 }
             }
 
@@ -548,7 +548,7 @@ macro_rules! impl_paged {
                 if self.offset == 0 {
                     1
                 } else {
-                    (self.offset as f32 / self.limit as f32).ceil() as usize
+                    (self.offset as f32 / self.limit as f32) as usize + 1
                 }
             }
 
@@ -556,7 +556,7 @@ macro_rules! impl_paged {
                 if self.total == 0 {
                     1
                 } else {
-                    (self.total as f32 / self.limit as f32).ceil() as usize
+                    (self.total as f32 / self.limit as f32) as usize
                 }
             }
 

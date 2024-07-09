@@ -1,9 +1,43 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::{Alignment, Constraint, Layout, Rect}, style::{Color, Style}, symbols::border, widgets::{block::Title, Block, Cell, Clear, Padding, Row, StatefulWidget, Table, TableState, Widget}};
 
 pub mod devices;
 pub mod actions;
 pub mod goto;
 pub mod add_to_playlist;
+
+trait KeyToString {
+    fn key_to_string(&self) -> String;
+}
+
+impl KeyToString for KeyEvent {
+    fn key_to_string(&self) -> String {
+        let mut buff = String::new();
+        if self.modifiers & KeyModifiers::CONTROL != KeyModifiers::NONE {
+            buff.push_str("ctrl+");
+        }
+        if self.modifiers & KeyModifiers::ALT != KeyModifiers::NONE {
+            buff.push_str("alt+");
+        }
+
+        if self.modifiers & KeyModifiers::SHIFT != KeyModifiers::NONE {
+            match self.code {
+                KeyCode::Char(_) => {},
+                _ => buff.push_str("shift+"),
+            }
+        }
+
+        buff.push_str(&match self.code {
+            KeyCode::Char(c) => c.to_string(),
+            KeyCode::F(f) => format!("F{}", f),
+            KeyCode::Media(media) => format!("{:?}", media),
+            KeyCode::Modifier(_) => String::new(),
+            other => format!("{:?}", other),
+        });
+
+        buff
+    }
+}
 
 pub fn render_modal<const N: usize, I: IntoIterator<Item=[String; N]>>(area: Rect, buf: &mut Buffer, title: &str, rows: I) {
     let mut longest_parts: [usize; N] = [0; N];

@@ -1,3 +1,4 @@
+use crossterm::event::KeyEvent;
 use ratatui::widgets::TableState;
 use tupy::api::response;
 
@@ -40,7 +41,7 @@ impl QueueState {
         }
     }
 
-    pub fn select(&self) -> Option<Vec<Action>> {
+    pub fn select(&self) -> Option<Vec<(KeyEvent, Action)>> {
         if let Loading::Some(ref q) = self.queue {
             q.items.get(self.state.selected().unwrap_or(0)).map(|i| i.into_ui_actions(true))
         } else {

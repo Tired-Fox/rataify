@@ -2,11 +2,11 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Rect, Margin},
     style::{Color, Style, Stylize, Styled},
-    symbols::border,
+    symbols::{border, line},
     text::{Line, Span},
     widgets::{
         block::{Block, Padding, Position, Title}, Cell, Row, StatefulWidget, Table, TableState, Widget,
-        Scrollbar, ScrollbarState, ScrollbarOrientation
+        Scrollbar, ScrollbarState, ScrollbarOrientation, LineGauge 
     },
 };
 use tupy::api::response::{Item, PlaylistItems, AlbumTracks, Paged, ShowEpisodes, Chapters};
@@ -95,6 +95,7 @@ impl<'a> IntoTable<'a> for &'a PlaylistItems {
             .collect::<Table>()
             .widths([
                 Constraint::Length(8),
+                Constraint::Length(1),
                 Constraint::Fill(1),
                 Constraint::Fill(2),
             ])
@@ -126,22 +127,20 @@ impl<'a> IntoTable<'a> for &'a ShowEpisodes {
         self.items
             .iter()
             .map(|e| {
-                let mut cells = vec![
+                Row::new(vec![
                     Cell::from(format_duration(e.duration)).style(COLORS.duration),
                     if e.resume_point.fully_played {
-                        Cell::from(" ✓").style(COLORS.finished)
+                        Cell::from("✓").style(COLORS.finished)
                     } else {
                         Cell::default()
                     },
                     Cell::from(e.name.clone()).style(COLORS.episode),
-                ];
-
-                Row::new(cells)
+                ])
             })
             .collect::<Table>()
             .widths([
                 Constraint::Length(8),
-                Constraint::Fill(1),
+                Constraint::Length(1),
                 Constraint::Fill(2),
             ])
     }
@@ -152,7 +151,7 @@ impl<'a> IntoTable<'a> for &'a Chapters {
         self.items
             .iter()
             .map(|e| {
-                let mut cells = vec![
+                Row::new(vec![
                     // duration, chapter, name, finished
                     Cell::from(format_duration(e.duration)).style(COLORS.duration),
                     Cell::from(format!("Chapter {}", e.chapter_number)).style(COLORS.chapter_number),
@@ -165,9 +164,7 @@ impl<'a> IntoTable<'a> for &'a Chapters {
                     } else {
                         Cell::from(e.name.clone()).style(COLORS.episode)
                     }
-                ];
-
-                Row::new(cells)
+                ])
             })
             .collect::<Table>()
             .widths([

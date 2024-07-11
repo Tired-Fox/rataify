@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use tupy::api::{Uri, request::Play};
-use crossterm::event::KeyCode;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum GoTo {
@@ -12,25 +11,10 @@ pub enum GoTo {
 
     Album(Uri),
     Artist(Uri),
+    Artists(Vec<(Uri, String)>),
     Playlist(Uri),
     Show(Uri),
     Audiobook(Uri),
-}
-
-impl GoTo {
-    pub fn with_key(&self) -> KeyCode {
-        match self {
-            Self::Album(_) => KeyCode::Char('B'),
-            Self::Artist(_) => KeyCode::Char('A'),
-            Self::Playlist(_) => KeyCode::Char('P'),
-            Self::Show(_) => KeyCode::Char('S'),
-            Self::Queue => KeyCode::Char('B'),
-            Self::Library => KeyCode::Char('L'),
-            Self::Audiobook(_) => KeyCode::Char('K'),
-            Self::LikedSongs => KeyCode::Char('L'),
-            Self::MyEpisodes => KeyCode::Char('M'),
-        }
-    }
 }
 
 impl Display for GoTo {
@@ -45,6 +29,7 @@ impl Display for GoTo {
             Self::Audiobook(_) => write!(f, "Audiobook"),
             Self::LikedSongs => write!(f, "Liked Songs"),
             Self::MyEpisodes => write!(f, "My Episodes"),
+            Self::Artists(_) => write!(f, "Artists"),
         }
     }
 }
@@ -65,50 +50,6 @@ pub enum Action {
     AddToQueue(Uri),
 
     GoTo(GoTo),
-}
-
-impl Action {
-    pub fn with_key(&self) -> KeyCode {
-        match self {
-            Self::Play(_) => KeyCode::Enter,
-            Self::PlayContext(_) => KeyCode::Char('c'),
-            Self::Save(_) => KeyCode::Char('f'),
-            Self::Remove(_) => KeyCode::Char('u'),
-            Self::AddToPlaylist(_) => KeyCode::Char('p'),
-            Self::AddToQueue(_) => KeyCode::Char('b'),
-            Self::GoTo(goto) => goto.with_key(),
-        }
-    }
-}
-
-impl PartialEq<char> for &Action {
-    fn eq(&self, other: &char) -> bool {
-        if let KeyCode::Char(c) = self.with_key() {
-            return &c == other;
-        }
-        false
-    }
-}
-
-impl PartialEq<char> for Action {
-    fn eq(&self, other: &char) -> bool {
-        if let KeyCode::Char(c) = self.with_key() {
-            return &c == other;
-        }
-        false
-    }
-}
-
-impl PartialEq<KeyCode> for &Action {
-    fn eq(&self, other: &KeyCode) -> bool {
-        &self.with_key() == other
-    }
-}
-
-impl PartialEq<KeyCode> for Action {
-    fn eq(&self, other: &KeyCode) -> bool {
-        &self.with_key() == other
-    }
 }
 
 impl Display for Action {

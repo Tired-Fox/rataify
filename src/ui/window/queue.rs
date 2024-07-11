@@ -6,7 +6,7 @@ use ratatui::{
 };
 use tupy::api::response::Item;
 
-use crate::state::{Loading, window::queue::QueueState};
+use crate::{state::{window::queue::QueueState, Loading}, ui::COLORS};
 
 use crate::ui::{format_episode_saved, format_track_saved};
 
@@ -72,11 +72,7 @@ impl StatefulWidget for &mut QueueState {
                     .collect::<Table>()
                     .block(block)
                     .style(*state)
-                    .highlight_style(
-                        Style::default()
-                            .add_modifier(Modifier::BOLD)
-                            .fg(Color::Yellow),
-                    )
+                    .highlight_style(COLORS.highlight)
                     .widths([
                         Constraint::Length(3),
                         Constraint::Length(8),

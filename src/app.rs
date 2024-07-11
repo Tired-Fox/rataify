@@ -18,7 +18,7 @@ use tupy::{
 };
 
 use crate::{
-    errors::install_hooks, key, spotify_util::listen_for_authentication_code, state::{modal::{ActionState, DevicesState}, playback::Playback, window::{landing::Landing, queue::Queue}, Countdown, Modal, State, Viewport, Window}, tui, ui::{self, GoTo, IntoActions}
+    errors::install_hooks, key, spotify_util::listen_for_authentication_code, state::{modal::{ActionState, AddToPlaylistState, ArtistsState, DevicesState}, playback::Playback, window::{Pages, landing::Landing, queue::Queue}, Countdown, Modal, State, Viewport, Window}, tui, ui::{self, GoTo, IntoActions}
 };
 
 static FPS: usize = 24;
@@ -262,8 +262,19 @@ impl App {
                 tx.send(Event::OpenSelectDevice)?;
             }
             Event::Down => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices) => {
-                    self.state.modal_state.devices.lock().unwrap().next()
+                Viewport::Modal(modal) => {
+                    match modal {
+                        Modal::Devices => {
+                            self.state.modal_state.devices.lock().unwrap().next()
+                        },
+                        Modal::Artists => {
+                            self.state.modal_state.artists.lock().unwrap().down()
+                        },
+                        Modal::AddToPlaylist => if let Some(atp) = self.state.modal_state.add_to_playlist.lock().unwrap().as_mut() {
+                            atp.down();
+                        },
+                        _ => {}
+                    }
                 }
                 Viewport::Window => match &mut self.state.window {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().next(),
@@ -274,8 +285,19 @@ impl App {
                 _ => {}
             },
             Event::Up => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices) => {
-                    self.state.modal_state.devices.lock().unwrap().prev()
+                Viewport::Modal(modal) => {
+                    match modal {
+                        Modal::Devices => {
+                            self.state.modal_state.devices.lock().unwrap().prev()
+                        },
+                        Modal::Artists => {
+                            self.state.modal_state.artists.lock().unwrap().up()
+                        },
+                        Modal::AddToPlaylist => if let Some(atp) = self.state.modal_state.add_to_playlist.lock().unwrap().as_mut() {
+                            atp.up();
+                        },
+                        _ => {}
+                    }
                 }
                 Viewport::Window => match &mut self.state.window {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().prev(),
@@ -286,6 +308,16 @@ impl App {
                 _ => {}
             },
             Event::Right => match &mut self.state.viewport {
+                Viewport::Modal(modal) => {
+                    match modal {
+                        Modal::AddToPlaylist => {
+                            if let Some(atp) = self.state.modal_state.add_to_playlist.lock().unwrap().as_mut() {
+                                atp.right().await?;
+                            }
+                        },
+                        _ => {}
+                    }
+                }
                 Viewport::Window => match &mut self.state.window {
                     Window::Library => self.state.window_state.library.lock().unwrap().right().await?,
                     Window::Landing => self.state.window_state.landing.lock().unwrap().right().await?,
@@ -294,6 +326,16 @@ impl App {
                 _ => {}
             },
             Event::Left => match &mut self.state.viewport {
+                Viewport::Modal(modal) => {
+                    match modal {
+                        Modal::AddToPlaylist => {
+                            if let Some(atp) = self.state.modal_state.add_to_playlist.lock().unwrap().as_mut() {
+                                atp.left().await?;
+                            }
+                        },
+                        _ => {}
+                    }
+                }
                 Viewport::Window => match &mut self.state.window {
                     Window::Library => self.state.window_state.library.lock().unwrap().left().await?,
                     Window::Landing => self.state.window_state.landing.lock().unwrap().left().await?,
@@ -370,6 +412,11 @@ impl App {
                     });
                     self.state.viewport = Viewport::Window;
                 }
+                Viewport::Modal(Modal::Artists) => {
+                    let artist = self.state.modal_state.artists.lock().unwrap().select();
+                    self.state.viewport = Viewport::Window;
+                    tx.send(Event::GoTo(GoTo::Artist(artist))).unwrap();
+                }
                 #[allow(clippy::single_match)]
                 Viewport::Window => match self.state.window {
                     Window::Queue => {
@@ -402,7 +449,15 @@ impl App {
                 }
             },
             Event::OpenAddToPlaylist(uri) => {
-                *self.state.modal_state.add_to_playlist.lock().unwrap() = Some(uri.clone());
+                let pages = Pages::new(self.spotify.api.playlists(None)?);
+                let p = pages.clone();
+                tokio::spawn(async move {
+                    p.next().await.unwrap();
+                });
+                *self.state.modal_state.add_to_playlist.lock().unwrap() = Some(AddToPlaylistState::new(
+                    uri.clone(),
+                    pages  
+                ));
                 self.state.viewport = Viewport::Modal(Modal::AddToPlaylist);
             }
             Event::OpenSelectDevice => {
@@ -454,6 +509,15 @@ impl App {
                         self.state.viewport = Viewport::Window;
                         self.state.window = Window::Landing;
                     }
+                    GoTo::Artist(artist) => {
+                        *self.state.window_state.landing.lock().unwrap() = Landing::artist(&self.spotify.api, artist.clone()).await?;
+                        self.state.viewport = Viewport::Window;
+                        self.state.window = Window::Landing;
+                    }
+                    GoTo::Artists(artists) => {
+                        *self.state.modal_state.artists.lock().unwrap() = ArtistsState::new(artists);
+                        self.state.viewport = Viewport::Modal(Modal::Artists);
+                    }
                     // TODO: Map in changing ui based on goto when the other states are implemented
                     _ => todo!(),
                 }
@@ -481,7 +545,7 @@ impl App {
                                         self.state.viewport = Viewport::Window;
                                     }
                                 },
-                                Modal::Devices => if let Some(action) = keymaps.get(&key) {
+                                Modal::Devices | Modal::Artists | Modal::AddToPlaylist => if let Some(action) = keymaps.get(&key) {
                                     tx.send(action.clone()).unwrap();
                                 }
                                 _ => {},

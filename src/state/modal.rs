@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::TableState;
 use tokio::sync::mpsc;
-use tupy::api::{flow::{AuthFlow, Pkce}, response::Device, Resource, Uri, UserApi};
+use tupy::api::{flow::{AuthFlow, Pkce}, response::{Device, PagedPlaylists}, Resource, Uri, UserApi};
 
 use crate::{app::Event, key, ui::action::{Action, GoTo}, Locked, Shared};
 
-use super::IterCollection;
+use super::{window::Pages, IterCollection, Loading};
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct DevicesState {
@@ -49,6 +49,83 @@ impl GoToState {
 
     pub fn get(&self, key: &KeyEvent) -> Option<&GoTo> {
         self.lookup.get(key).map(|i| &self.mappings[*i].1)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ArtistsState {
+    pub state: TableState,
+    pub artists: Vec<(Uri, String)>,
+}
+
+impl ArtistsState {
+    pub fn new(artists: Vec<(Uri, String)>) -> Self {
+        Self {
+            artists,
+            state: TableState::default(),
+        }
+    }
+
+    pub fn down(&mut self) {
+        self.state.next_in_list(self.artists.len());
+    }
+
+    pub fn up(&mut self) {
+        self.state.prev_in_list(self.artists.len());
+    }
+
+    pub fn select(&self) -> Uri {
+        self.artists[self.state.selected().unwrap_or(0)].clone().0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AddToPlaylistState {
+    pub item: Uri,
+    pub state: TableState,
+    pub playlists: Pages<PagedPlaylists, PagedPlaylists>,
+}
+
+impl AddToPlaylistState {
+    pub fn new(item: Uri, playlists: Pages<PagedPlaylists, PagedPlaylists>) -> Self {
+        Self {
+            item,
+            playlists,
+            state: TableState::default(),
+        }
+    }
+
+    pub fn down(&mut self) {
+        if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref().map(|p| p.as_ref()){
+            self.state.next_in_list(items.items.len());
+        };
+    }
+
+    pub fn up(&mut self) {
+        if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref().map(|p| p.as_ref()){
+            self.state.prev_in_list(items.items.len());
+        };
+    }
+
+    pub async fn right(&mut self) -> color_eyre::Result<()> {
+        if self.playlists.has_next().await {
+            self.playlists.next().await?;
+        }
+        Ok(())
+    }
+
+    pub async fn left(&mut self) -> color_eyre::Result<()> {
+        if self.playlists.has_prev().await {
+            self.playlists.prev().await?;
+        }
+        Ok(())
+    }
+
+    pub fn select(&self) -> Option<Uri> {
+        if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref().map(|p| p.as_ref()){
+            return items.items.get(self.state.selected().unwrap_or(0)).map(|p| p.uri.clone())
+        }
+        None
     }
 }
 
@@ -208,7 +285,8 @@ pub struct ModalState {
     pub devices: Shared<Locked<DevicesState>>,
     pub go_to: Shared<Locked<GoToState>>,
     pub actions: Shared<Locked<ActionState>>,
-    pub add_to_playlist: Shared<Locked<Option<Uri>>>,
+    pub add_to_playlist: Shared<Locked<Option<AddToPlaylistState>>>,
+    pub artists: Shared<Locked<ArtistsState>>,
 }
 
 impl Default for ModalState {
@@ -220,6 +298,7 @@ impl Default for ModalState {
                 (key!('L' + SHIFT), GoTo::Library),
             ]))),
             actions: Shared::default(),
+            artists: Shared::default(),
             add_to_playlist: Shared::default(),
         }
     }

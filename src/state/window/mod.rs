@@ -62,7 +62,7 @@ impl<R, P> Pages<R, P>
         self.pager.lock().await.has_prev()
     }
 
-    pub async fn next(&mut self) -> Result<()> {
+    pub async fn next(&self) -> Result<()> {
         *self.items.lock().unwrap() = Some(Loading::Loading);
 
         let items = self.items.clone();
@@ -76,7 +76,7 @@ impl<R, P> Pages<R, P>
         Ok(())
     }
 
-    pub async fn prev(&mut self) -> Result<()> {
+    pub async fn prev(&self) -> Result<()> {
         *self.items.lock().unwrap() = Some(Loading::Loading);
 
         let items = self.items.clone();

@@ -1,4 +1,4 @@
-use crate::state::{window::library::{LibraryState, FromSpotify, LibraryTab}, Loading};
+use crate::{state::{window::library::{FromSpotify, LibraryState, LibraryTab}, Loading}, ui::COLORS};
 use strum::IntoEnumIterator;
 use tupy::api::response::{PagedPlaylists, FollowedArtists, SavedAlbums, SavedShows, SavedAudiobooks};
 use ratatui::{
@@ -90,7 +90,7 @@ impl<'a> Widget for Art<'a> {
             .split(vert[0])[1];
 
         let style = if self.selected {
-            Style::default().yellow()
+            COLORS.highlight
         } else {
             Style::default()
         };
@@ -130,7 +130,7 @@ impl Widget for &LibraryState {
 
         let layout = Layout::vertical([
             Constraint::Length(11),
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Fill(1),
         ])
         .split(block.inner(area));
@@ -141,13 +141,9 @@ impl Widget for &LibraryState {
         });
 
         Tabs::new(LibraryTab::iter().map(|t| Line::from(t.title()).centered()))
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(Color::Yellow),
-            )
+            .highlight_style(COLORS.highlight)
             .padding(" ", " ")
-            .block(Block::bordered().borders(Borders::TOP | Borders::BOTTOM))
+            //.block(Block::bordered().borders(Borders::TOP | Borders::BOTTOM))
             .select(self.selected_tab as usize)
             .divider(symbols::DOT)
             .render(layout[1], buf);
@@ -288,7 +284,7 @@ fn unwrap_render_results<'a, W: StatefulWidget, T: IntoWidgetWrapper<W>>(loading
         },
         Some(Loading::Some(items)) => {
             let block = Block::default()
-                .padding(Padding::uniform(1));
+                .padding(Padding::horizontal(1));
             let area = block.inner(area);
             StatefulWidget::render(items.into_widget_wrapper(), area, buf, &mut state)
         },
@@ -347,7 +343,7 @@ impl<'a> StatefulWidget for Playlists<'a> {
         })
             .collect::<Table>()
             .column_spacing(1)
-            .highlight_style(Style::default().yellow());
+            .highlight_style(COLORS.highlight);
 
         StatefulWidget::render(table, area, buf, state);
     }
@@ -364,7 +360,7 @@ impl<'a> StatefulWidget for Artists<'a> {
         })
             .collect::<Table>()
             .column_spacing(1)
-            .highlight_style(Style::default().yellow());
+            .highlight_style(COLORS.highlight);
 
         StatefulWidget::render(table, area, buf, state);
     }
@@ -382,7 +378,7 @@ impl<'a> StatefulWidget for Albums<'a> {
         })
             .collect::<Table>()
             .column_spacing(1)
-            .highlight_style(Style::default().yellow());
+            .highlight_style(COLORS.highlight);
 
         StatefulWidget::render(table, area, buf, state);
     }
@@ -400,7 +396,7 @@ impl<'a> StatefulWidget for Shows<'a> {
         })
             .collect::<Table>()
             .column_spacing(1)
-            .highlight_style(Style::default().yellow());
+            .highlight_style(COLORS.highlight);
 
         StatefulWidget::render(table, area, buf, state);
     }
@@ -419,7 +415,7 @@ impl<'a> StatefulWidget for Audiobooks<'a> {
         })
             .collect::<Table>()
             .column_spacing(1)
-            .highlight_style(Style::default().yellow());
+            .highlight_style(COLORS.highlight);
 
         StatefulWidget::render(table, area, buf, state);
     }

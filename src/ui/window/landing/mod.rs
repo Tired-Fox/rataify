@@ -1,20 +1,21 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Constraint, Layout, Rect, Margin},
-    style::{Color, Style, Stylize, Styled},
+    layout::{Alignment, Constraint, Layout, Margin, Rect},
+    style::{Color, Style, Styled, Stylize},
     symbols::{border, line},
     text::{Line, Span},
     widgets::{
-        block::{Block, Padding, Position, Title}, Cell, Row, StatefulWidget, Table, TableState, Widget,
-        Scrollbar, ScrollbarState, ScrollbarOrientation, LineGauge 
+        block::{Block, Padding, Position, Title}, Cell, Clear, LineGauge, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget 
     },
 };
+use ratatui_image::Image;
 use tupy::api::response::{Item, PlaylistItems, AlbumTracks, Paged, ShowEpisodes, Chapters};
 
 use crate::{
-    ui::{format_episode, format_track, format_duration, COLORS, PaginationProgress},
-    state::{window::{landing::Landing, Pages}, Loading}
+    state::{window::{landing::{ArtistLanding, Landing}, Pages}, Loading}, ui::{format_duration, format_episode, format_track, PaginationProgress, COLORS}
 };
+
+mod artist;
 
 struct LandingData<'a> {
     progress: PaginationProgress,
@@ -37,7 +38,7 @@ impl Widget for LandingData<'_> {
         let scrollable = self.total > block.inner(area).height as usize;
         let table = self.table
             .block(block)
-            .highlight_style(Style::default().fg(Color::Yellow))
+            .highlight_style(COLORS.highlight)
             .column_spacing(2);
 
         StatefulWidget::render(table, area, buf, &mut self.state);
@@ -54,25 +55,25 @@ impl Widget for &mut Landing {
 fn render(self, area: Rect, buf: &mut Buffer) {
         match self {
             Landing::None => {},
-            Landing::Playlist(pages, state) => {
+            Landing::Playlist{ pages, state, .. } => {
                 let result = pages.items.lock().unwrap();
                 unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Playlist", area,buf)
             },
-            Landing::Album(pages, state) => {
+            Landing::Album{ pages, state, .. } => {
                 let result = pages.items.lock().unwrap();
                 unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Album", area,buf)
             },
-            Landing::Show(pages, state) => {
+            Landing::Show{ pages, state, .. } => {
                 let result = pages.items.lock().unwrap();
                 unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Show", area,buf)
             },
-            Landing::Audiobook(pages, state) => {
+            Landing::Audiobook{ pages, state, .. } => {
                 let result = pages.items.lock().unwrap();
                 unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Audiobook", area,buf)
             },
             // TODO: This one will probably have a mix of albums, tracks, etc.
-            Landing::Artist => {
-                todo!("Artist requires more work since it has a mix of albums, tracks, etc.")
+            Landing::Artist { top_tracks, state, section, albums, artist, cover } => {
+                artist::render(area, buf, artist, top_tracks, albums, state, section, cover);
             }
         }
     }

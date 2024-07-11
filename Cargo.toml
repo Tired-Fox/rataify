@@ -28,3 +28,7 @@ dirs = "5.0.1"
 chrono = "0.4.38"
 strum = { version = "0.26.3", features = ["derive"] }
 strum_macros = "0.26.4"
+rascii_art = "0.4.5"
+image = "0.25.1"
+reqwest = "0.12.5"
+ratatui-image = "1.0.3"

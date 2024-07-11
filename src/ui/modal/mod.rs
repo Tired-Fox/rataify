@@ -1,10 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::{Alignment, Constraint, Layout, Rect}, style::{Color, Style}, symbols::border, widgets::{block::Title, Block, Cell, Clear, Padding, Row, StatefulWidget, Table, TableState, Widget}};
 
+use super::COLORS;
+
 pub mod devices;
 pub mod actions;
 pub mod goto;
 pub mod add_to_playlist;
+pub mod artists;
 
 trait KeyToString {
     fn key_to_string(&self) -> String;
@@ -69,14 +72,14 @@ pub fn render_modal<const N: usize, I: IntoIterator<Item=[String; N]>>(area: Rec
 
     let hoz = Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Length(longest_parts.iter().sum::<usize>() as u16 + 6),
+        Constraint::Length((longest_parts.iter().sum::<usize>() as u16 + 6).max(title.len() as u16 + 2)),
         Constraint::Length(1),
     ])
         .split(area);
 
     let vert = Layout::vertical([
         Constraint::Fill(1),
-        Constraint::Length((count + 4) as u16),
+        Constraint::Length(((count + 4) as u16).min(area.height - 4)),
         Constraint::Length(1),
     ])
         .split(hoz[1]);
@@ -110,20 +113,20 @@ pub fn render_modal_with_state<const N: usize, I: IntoIterator<Item=[String; N]>
             .padding(Padding::symmetric(1, 1))
             .title(Title::from(title).alignment(Alignment::Center))
         )
-        .highlight_style(Style::default().fg(Color::Yellow))
+        .highlight_style(COLORS.highlight)
         .widths(longest_parts.iter().map(|l| Constraint::Length(*l as u16)))
         .column_spacing(2);
 
     let hoz = Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Length(longest_parts.iter().sum::<usize>() as u16 + 6),
+        Constraint::Length((longest_parts.iter().sum::<usize>() as u16 + 6).max(title.len() as u16 + 2)),
         Constraint::Length(1),
     ])
         .split(area);
 
     let vert = Layout::vertical([
         Constraint::Fill(1),
-        Constraint::Length((count + 4) as u16),
+        Constraint::Length(((count + 4) as u16).max(area.height - 4)),
         Constraint::Length(1),
     ])
         .split(hoz[1]);

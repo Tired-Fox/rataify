@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::{Alignment, Constraint, Direction, Layout, Rect}, symbols::{border, DOT}, text::{Line, Span}, widgets::{block::{Position, Title}, Block, Cell, Row, StatefulWidget, Widget}, style::{Color, Style, Stylize}};
-use tupy::{api::{request::Play, response::{Episode, PlaybackItem, Track, SimplifiedTrack, SimplifiedEpisode, SimplifiedChapter}}, Duration};
+use tupy::{api::{request::Play, response::{Episode, PlaybackItem, SimplifiedAlbum, SimplifiedChapter, SimplifiedEpisode, SimplifiedTrack, Track}}, Duration};
 
 pub mod modal;
 pub mod window;
@@ -14,7 +14,7 @@ pub use playback::NoPlayback;
 
 use crate::{state::{playback::{Item, PlaybackState}, Modal, State, Viewport, Window}, key};
 
-use self::modal::{add_to_playlist::AddToPlaylist, goto::UiGoto};
+use self::modal::goto::UiGoto;
 
 /// helper function to create a centered rect using up certain percentage of the available rect `r`
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -160,12 +160,42 @@ pub trait IntoActions {
     fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)>;
 }
 
+impl IntoActions for &SimplifiedAlbum {
+    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action)> {
+        let mut actions = vec![
+            (key!(Enter), Action::PlayContext(Play::album(self.uri.clone(), None, 0))),
+            (key!('C'), Action::GoTo(GoTo::Album(self.uri.clone()))),
+        ];
+
+        if self.artists.len() > 1 {
+            actions.push((key!('A'), Action::GoTo(
+                GoTo::Artists(
+                    self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
+                )
+            )))
+        }
+
+        actions
+    }
+}
+
 impl IntoActions for &Track {
     fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)> {
         let mut actions = vec![
             (key!(Enter),Action::Play(self.uri.clone())),
             (key!('p'),Action::AddToPlaylist(self.uri.clone())),
             (key!('b'),Action::AddToQueue(self.uri.clone())),
+            if self.artists.len() == 1 {
+                (key!('A'), Action::GoTo(
+                    GoTo::Artist(self.artists.first().unwrap().uri.clone())
+                ))
+            } else {
+                (key!('A'), Action::GoTo(
+                    GoTo::Artists(
+                        self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
+                    )
+                ))
+            }
         ];
 
         if context {
@@ -176,7 +206,7 @@ impl IntoActions for &Track {
                 ));
             }
             actions.push((
-                key!('A'),
+                key!('C'),
                 Action::GoTo(GoTo::Album(self.album.uri.clone()))
             ))
         }
@@ -191,6 +221,17 @@ impl IntoActions for &SimplifiedTrack {
             (key!(Enter), Action::Play(self.uri.clone())),
             (key!('p'), Action::AddToPlaylist(self.uri.clone())),
             (key!('b'), Action::AddToQueue(self.uri.clone())),
+            if self.artists.len() == 1 {
+                (key!('A'), Action::GoTo(
+                    GoTo::Artist(self.artists.first().unwrap().uri.clone())
+                ))
+            } else {
+                (key!('A'), Action::GoTo(
+                    GoTo::Artists(
+                        self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
+                    )
+                ))
+            }
         ];
 
         actions
@@ -224,7 +265,7 @@ impl IntoActions for &Episode {
                     ));
                 }
                 actions.push((
-                    key!('S'),
+                    key!('C'),
                     Action::GoTo(GoTo::Show(show.uri.clone()))
                 ));
             }
@@ -298,7 +339,7 @@ impl IntoActions for &PlaybackState {
                             ));
                         }
                         actions.push((
-                            key!('A'),
+                            key!('C'),
                             Action::GoTo(GoTo::Album(t.album.uri.clone()))
                         ));
                     }
@@ -325,7 +366,7 @@ impl IntoActions for &PlaybackState {
                                 ));
                             }
                             actions.push((
-                                key!('S'),
+                                key!('C'),
                                 Action::GoTo(GoTo::Show(show.uri.clone()))
                             ));
                         }
@@ -383,12 +424,18 @@ impl Widget for State {
                     Widget::render(actions, layout[0], buf);
                 }
                 Modal::AddToPlaylist => {
-                    let add_to_playlist = &self.modal_state.add_to_playlist.lock().unwrap();
+                    let add_to_playlist = &mut *self.modal_state.add_to_playlist.lock().unwrap();
                     // TODO:
                     // - Fetch playlists
                     // - Render playlists in modal
                     // - Use loading state
-                    Widget::render(AddToPlaylist(add_to_playlist.as_ref()), layout[0], buf);
+                    if let Some(add_to_playlist) = add_to_playlist.as_mut() {
+                        Widget::render(add_to_playlist, layout[0], buf);
+                    }
+                }
+                Modal::Artists => {
+                    let artists = &mut *self.modal_state.artists.lock().unwrap();
+                    Widget::render(artists, layout[0], buf);
                 }
             }
         }
@@ -406,6 +453,7 @@ pub struct Colors {
     pub like: Style,
     pub finished: Style,
     pub chapter_number: Style,
+    pub highlight: Style,
 }
 
 lazy_static! {
@@ -418,6 +466,7 @@ lazy_static! {
         like: Style::default().fg(Color::Red),
         finished: Style::default().green(),
         chapter_number: Style::default().dim().gray(),
+        highlight: Style::default().fg(Color::Yellow),
     };
 }
 
@@ -428,13 +477,16 @@ pub struct PaginationProgress {
 
 impl Widget for PaginationProgress {
     fn render(self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        if self.total <= 1 {
+            return;
+        }
 
         let mut cells = vec![];
         for _ in 1..(self.current) {
             cells.push(Span::from(DOT).dim().gray());
         }
         cells.push(Span::from(DOT).white().bold());
-        for _ in 0..(self.total - self.current) {
+        for _ in 0..(self.total.saturating_sub(self.current)) {
             cells.push(Span::from(DOT).dim().gray());
         }
     

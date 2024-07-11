@@ -178,6 +178,7 @@ pub enum Modal {
     Devices,
     Action,
     AddToPlaylist,
+    Artists,
     GoTo,
 }
 

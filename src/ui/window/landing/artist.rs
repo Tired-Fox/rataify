@@ -2,8 +2,8 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Margin, Rect},
     style::Stylize,
-    symbols::border::{self, Set},
-    text::{Line, Span},
+    symbols::border,
+    text::Line,
     widgets::{
         Wrap, Paragraph,
         block::{Position, Title},
@@ -11,7 +11,6 @@ use ratatui::{
         Table, TableState, Widget,
     },
 };
-use ratatui_image::Image;
 use tupy::api::response::{Artist, ArtistAlbums, Paged, Track};
 
 use crate::{
@@ -26,16 +25,7 @@ use crate::{
     Locked, Shared,
 };
 
-static DASHED: Set = Set {
-    vertical_left: "┆",
-    vertical_right: "┆",
-    horizontal_top: "┄",
-    horizontal_bottom: "┄",
-    ..border::ROUNDED
-};
-
-static INFO_CUTOFF: u16 = 18;
-static COMPACT: u16 = 21;
+use super::{render_landing, COMPACT};
 
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -48,54 +38,16 @@ pub fn render(
     section: &ArtistLanding,
     cover: &Shared<Locked<Loading<Cover>>>,
 ) {
-    let block = Block::bordered()
-        .border_set(border::ROUNDED)
-        .padding(Padding::symmetric(1, 1))
-        .title(
-            Title::from(format!("[Artist: {}]", artist.name))
-                .alignment(Alignment::Center)
-                .position(Position::Bottom),
-        );
-
-    (&block).render(area, buf);
-    let inner = block.inner(area);
-
-    let hoz = Layout::horizontal([
-        Constraint::Length(28),
-        Constraint::Length(1),
-        Constraint::Fill(1),
-    ])
-    .split(inner);
-
-    // RENDER ARTIST INFORMATION
-    let info_area = match cover.lock().unwrap().as_ref() {
-        Loading::Some(cover) => {
-            let lyt = Layout::vertical([
-                Constraint::Length(14),
-                if area.height < INFO_CUTOFF {
-                    Constraint::Length(0)
-                } else {
-                    Constraint::Fill(1)
-                },
-            ])
-            .split(hoz[0]);
-            Image::new(cover.image.as_ref()).render(lyt[0], buf);
-            lyt[1]
-        }
-        Loading::Loading => Layout::vertical([
-            Constraint::Length(14),
-            if area.height < INFO_CUTOFF {
-                Constraint::Length(0)
-            } else {
-                Constraint::Fill(1)
-            },
-        ])
-        .split(hoz[0])[1],
-        Loading::None => hoz[0],
-    };
-
+    let title = format!("[Artist: {}]", artist.name);
+    let (under, main) = render_landing(
+        area,
+        buf,
+        title.clone(),
+        cover.clone(),
+    );
+    
     let info = [
-        if info_area.height <= 3 {
+        if under.height <= 3 {
             Paragraph::new(artist.genres.join(", "))
         } else {
             Paragraph::new(artist.genres.join(", ")).wrap(Wrap { trim: true })
@@ -104,17 +56,17 @@ pub fn render(
         Paragraph::new(format!("Popularity {}%", artist.popularity)),
     ];
 
-    if info_area.height <= info.len() as u16 {
-        let info_vert = Layout::vertical(vec![Constraint::Length(1); info_area.height as usize])
-            .split(info_area);
+    if under.height <= info.len() as u16 {
+        let info_vert = Layout::vertical(vec![Constraint::Length(1); under.height as usize])
+            .split(under);
 
-        for i in 0..info_area.height as usize {
+        for i in 0..under.height as usize {
             (&info[i]).render(info_vert[i], buf);
         }
     } else {
         let mut constraints = vec![Constraint::Fill(1)];
         constraints.extend(vec![Constraint::Length(1); info.len() - 1]);
-        let info_vert = Layout::vertical(constraints).split(info_area);
+        let info_vert = Layout::vertical(constraints).split(under);
 
         (&info[0]).render(info_vert[0], buf);
         for i in 1..info.len() {
@@ -123,19 +75,19 @@ pub fn render(
     };
 
     let vert = Layout::vertical([
-        if area.height <= COMPACT {
+        if main.height <= COMPACT {
             Constraint::Length(5)
         } else {
             Constraint::Length(10)
         },
         Constraint::Fill(1),
     ])
-    .split(hoz[2]);
+    .split(main);
 
     // RENDER ARTIST'S TOP TRACKS
     let table_top_tracks = top_tracks
         .iter()
-        .map(|t| format_track(t))
+        .map(format_track)
         .collect::<Table>()
         .widths([
             Constraint::Length(8),
@@ -157,36 +109,18 @@ pub fn render(
     // RENDER ALBUMS
     match albums.items.lock().unwrap().as_ref() {
         Some(Loading::Loading) => {
-            let block = Block::bordered()
-                .border_set(border::ROUNDED)
-                .padding(Padding::symmetric(1, 1))
-                .title(
-                    Title::from("[Artist]")
-                        .alignment(Alignment::Center)
-                        .position(Position::Bottom),
-                );
-            (&block).render(area, buf);
             let vert = Layout::vertical([
                 Constraint::Fill(1),
                 Constraint::Length(1),
                 Constraint::Fill(1),
             ])
-            .split(block.inner(area))[1];
+            .split(vert[1])[1];
 
             Line::from("Loading...").centered().render(vert, buf);
         }
         None | Some(Loading::None) => {
-            let block = Block::bordered()
-                .border_set(border::ROUNDED)
-                .padding(Padding::symmetric(1, 1))
-                .title(
-                    Title::from("[Artist]")
-                        .alignment(Alignment::Center)
-                        .position(Position::Bottom),
-                );
-            (&block).render(area, buf);
-            let vert = Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)])
-                .split(block.inner(area))[1];
+            let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
+                .split(vert[1])[1];
 
             Line::from("<No Playlist Items>")
                 .centered()

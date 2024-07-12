@@ -512,7 +512,7 @@ macro_rules! impl_paged {
                 if self.total == 0 {
                     1
                 } else {
-                    (self.total as f32 / self.limit as f32) as usize
+                    (self.total as f32 / self.limit as f32).ceil() as usize
                 }
             }
 
@@ -556,7 +556,7 @@ macro_rules! impl_paged {
                 if self.total == 0 {
                     1
                 } else {
-                    (self.total as f32 / self.limit as f32) as usize
+                    (self.total as f32 / self.limit as f32).ceil() as usize
                 }
             }
 

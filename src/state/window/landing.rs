@@ -35,25 +35,25 @@ pub enum Landing {
         state: TableState,
     },
     Playlist {
-        cover: Loading<DynamicImage>,
+        cover: Shared<Locked<Loading<Cover>>>,
         playlist: Playlist,
         pages: Pages<PlaylistItems, PlaylistItems>,
         state: TableState
     },
     Album {
-        cover: Loading<DynamicImage>,
+        cover: Shared<Locked<Loading<Cover>>>,
         album: Album,
         pages: Pages<AlbumTracks, AlbumTracks>,
         state: TableState
     },
     Show {
-        cover: Loading<DynamicImage>,
+        cover: Shared<Locked<Loading<Cover>>>,
         show: Show,
         pages: Pages<ShowEpisodes, ShowEpisodes>,
         state: TableState
     },
     Audiobook{
-        cover: Loading<DynamicImage>,
+        cover: Shared<Locked<Loading<Cover>>>,
         audiobook: Audiobook,
         pages: Pages<Chapters, Chapters>,
         state: TableState
@@ -93,12 +93,34 @@ async fn get_cover(image: String) -> Option<Cover> {
 
 impl Landing {
     pub async fn playlist(api: &Pkce, playlist: Uri) -> Result<Self> {
-        let mut pages = Pages::new(api.playlist_items(playlist.id(), None)?);
-        pages.next().await?;
+        let pages = Pages::new(api.playlist_items(playlist.id(), None)?);
+
+        let p = pages.clone();
+        tokio::spawn(async move {
+            p.next().await.unwrap();
+        });
+
         let playlist = api.playlist(playlist.id(), None).await?;
+        let cover = match playlist.images.as_ref() {
+            None => Shared::new(Locked::new(Loading::None)),
+            Some(images) => match images.first().as_ref() {
+                None => Shared::new(Locked::new(Loading::None)),
+                Some(i) => {
+                    let cover: Shared<Locked<Loading<Cover>>> = Shared::default();
+
+                    let c = cover.clone();
+                    let url = i.url.clone();
+                    tokio::spawn(async move {
+                        *c.lock().unwrap() = get_cover(url).await.into();
+                    });
+
+                    cover
+                },
+            },
+        };
 
         Ok(Self::Playlist {
-            cover: Loading::None,
+            cover,
             playlist,
             pages,
             state: TableState::default()
@@ -106,33 +128,96 @@ impl Landing {
     }
 
     pub async fn album(api: &Pkce, album: Uri) -> Result<Self> {
-        let mut pages = Pages::new(api.album_tracks(album.id(), None)?);
-        pages.next().await?;
+        let pages = Pages::new(api.album_tracks(album.id(), None)?);
+
+        let p = pages.clone();
+        tokio::spawn(async move {
+            p.next().await.unwrap();
+        });
+
+        let album = api.album(album.id(), None).await?;
+        let cover = match album.images.first().as_ref() {
+            None => Shared::new(Locked::new(Loading::None)),
+            Some(i) => {
+                let cover: Shared<Locked<Loading<Cover>>> = Shared::default();
+
+                let c = cover.clone();
+                let url = i.url.clone();
+                tokio::spawn(async move {
+                    *c.lock().unwrap() = get_cover(url).await.into();
+                });
+
+                cover
+            },
+        };
+
         Ok(Self::Album {
-            cover: Loading::None,
-            album: api.album(album.id(), None).await?,
+            cover,
+            album,
             pages,
             state: TableState::default()
         })
     }
 
     pub async fn show(api: &Pkce, show: Uri) -> Result<Self> {
-        let mut pages = Pages::new(api.show_episodes(show.id(), None)?);
-        pages.next().await?;
+        let pages = Pages::new(api.show_episodes(show.id(), None)?);
+
+        let p = pages.clone();
+        tokio::spawn(async move {
+            p.next().await.unwrap();
+        });
+
+        let show = api.show(show.id(), None).await?;
+        let cover = match show.images.first().as_ref() {
+            None => Shared::new(Locked::new(Loading::None)),
+            Some(i) => {
+                let cover: Shared<Locked<Loading<Cover>>> = Shared::default();
+
+                let c = cover.clone();
+                let url = i.url.clone();
+                tokio::spawn(async move {
+                    *c.lock().unwrap() = get_cover(url).await.into();
+                });
+
+                cover
+            },
+        };
+
         Ok(Self::Show {
-            cover: Loading::None,
-            show: api.show(show.id(), None).await?,
+            cover,
+            show,
             pages,
             state: TableState::default()
         })
     }
 
     pub async fn audiobook(api: &Pkce, audiobook: Uri) -> Result<Self> {
-        let mut pages = Pages::new(api.audiobook_chapters(audiobook.id(), None)?);
-        pages.next().await?;
+        let pages = Pages::new(api.audiobook_chapters(audiobook.id(), None)?);
+
+        let p = pages.clone();
+        tokio::spawn(async move {
+            p.next().await.unwrap();
+        });
+
+        let audiobook = api.audiobook(audiobook.id(), None).await?;
+        let cover = match audiobook.images.first().as_ref() {
+            None => Shared::new(Locked::new(Loading::None)),
+            Some(i) => {
+                let cover: Shared<Locked<Loading<Cover>>> = Shared::default();
+
+                let c = cover.clone();
+                let url = i.url.clone();
+                tokio::spawn(async move {
+                    *c.lock().unwrap() = get_cover(url).await.into();
+                });
+
+                cover
+            },
+        };
+
         Ok(Self::Audiobook {
-            cover: Loading::None,
-            audiobook: api.audiobook(audiobook.id(), None).await?,
+            cover,
+            audiobook,
             pages,
             state: TableState::default()
         })

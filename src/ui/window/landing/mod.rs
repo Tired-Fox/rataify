@@ -12,17 +12,18 @@ use ratatui_image::Image;
 use tupy::api::response::{Item, PlaylistItems, AlbumTracks, Paged, ShowEpisodes, Chapters};
 
 use crate::{
-    state::{window::{landing::{ArtistLanding, Landing}, Pages}, Loading}, ui::{format_duration, format_episode, format_track, PaginationProgress, COLORS}
+    state::{window::{landing::{ArtistLanding, Cover, Landing}, Pages}, Loading}, ui::{format_duration, format_episode, format_track, PaginationProgress, COLORS}, Locked, Shared
 };
 
 mod artist;
+mod playlist;
 
 struct LandingData<'a> {
     progress: PaginationProgress,
     table: Table<'a>,
     total: usize,
     state: TableState,
-    title: &'static str,
+    title: String,
 }
 
 impl Widget for LandingData<'_> {
@@ -55,21 +56,20 @@ impl Widget for &mut Landing {
 fn render(self, area: Rect, buf: &mut Buffer) {
         match self {
             Landing::None => {},
-            Landing::Playlist{ pages, state, .. } => {
-                let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Playlist", area,buf)
+            Landing::Playlist{ pages, state, playlist, cover } => {
+                playlist::render(area, buf, playlist, pages, state, cover);
             },
-            Landing::Album{ pages, state, .. } => {
+            Landing::Album{ pages, state, album, .. } => {
                 let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Album", area,buf)
+                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Album: {}", album.name), area,buf)
             },
-            Landing::Show{ pages, state, .. } => {
+            Landing::Show{ pages, state, show, .. } => {
                 let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Show", area,buf)
+                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Show: {}", show.name), area,buf)
             },
-            Landing::Audiobook{ pages, state, .. } => {
+            Landing::Audiobook{ pages, state, audiobook, .. } => {
                 let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, "Audiobook", area,buf)
+                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Audiobook: {}", audiobook.name), area,buf)
             },
             // TODO: This one will probably have a mix of albums, tracks, etc.
             Landing::Artist { top_tracks, state, section, albums, artist, cover } => {
@@ -177,7 +177,7 @@ impl<'a> IntoTable<'a> for &'a Chapters {
     }
 }
 
-fn unwrap_or_render<'a, T: IntoTable<'a> + Paged>(data: Option<Loading<T>>, state: &mut TableState, title: &'static str, area: Rect, buf: &mut Buffer) {
+fn unwrap_or_render<'a, T: IntoTable<'a> + Paged>(data: Option<Loading<T>>, state: &mut TableState, title: String, area: Rect, buf: &mut Buffer) {
     match data {
         Some(Loading::Loading) => {
             let block = Block::bordered()
@@ -223,4 +223,63 @@ fn unwrap_or_render<'a, T: IntoTable<'a> + Paged>(data: Option<Loading<T>>, stat
             title: title,
         }.render(area, buf),
     }
+}
+
+static INFO_CUTOFF: u16 = 18;
+static COMPACT: u16 = 21;
+
+fn render_landing(
+    area: Rect,
+    buf: &mut Buffer,
+    title: String,
+    cover: Shared<Locked<Loading<Cover>>>,
+) -> (Rect, Rect)
+{
+    let block = Block::bordered()
+        .border_set(border::ROUNDED)
+        .padding(Padding::symmetric(1, 1))
+        .title(
+            Title::from(title)
+                .alignment(Alignment::Center)
+                .position(Position::Bottom),
+        );
+
+    (&block).render(area, buf);
+    let inner = block.inner(area);
+
+    let hoz = Layout::horizontal([
+        Constraint::Length(28),
+        Constraint::Length(1),
+        Constraint::Fill(1),
+    ])
+    .split(inner);
+
+    // RENDER ARTIST INFORMATION
+    let info_area = match cover.lock().unwrap().as_ref() {
+        Loading::Some(cover) => {
+            let lyt = Layout::vertical([
+                Constraint::Length(14),
+                if area.height < INFO_CUTOFF {
+                    Constraint::Length(0)
+                } else {
+                    Constraint::Fill(1)
+                },
+            ])
+            .split(hoz[0]);
+            Image::new(cover.image.as_ref()).render(lyt[0], buf);
+            lyt[1]
+        }
+        Loading::Loading => Layout::vertical([
+            Constraint::Length(14),
+            if area.height < INFO_CUTOFF {
+                Constraint::Length(0)
+            } else {
+                Constraint::Fill(1)
+            },
+        ])
+        .split(hoz[0])[1],
+        Loading::None => hoz[0],
+    };
+
+    (info_area, hoz[2])
 }

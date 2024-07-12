@@ -231,32 +231,34 @@ impl App {
                 }
             }
             Event::Toggle => {
-                if let Some(playback) = self.state.playback.lock().unwrap().playback.as_mut() {
-                    if playback.device.as_ref().is_some() {
-                        let api = self.spotify.api.clone();
-                        let pb = self.state.playback.clone();
-                        tokio::task::spawn(async move {
-                            if api.token().is_expired() {
-                                api.refresh().await.unwrap();
-                            }
+                let device = match self.state.playback.lock().unwrap().playback.as_ref() {
+                    Some(pb) => pb.device.is_some(),
+                    None => false,
+                };
+                if device {
+                    let api = self.spotify.api.clone();
+                    let pb = self.state.playback.clone();
+                    tokio::task::spawn(async move {
+                        if api.token().is_expired() {
+                            api.refresh().await.unwrap();
+                        }
 
-                            let playing = pb.lock().unwrap().playback.as_ref().unwrap().is_playing;
-                            if playing {
-                                api.pause(None).await.unwrap();
-                                if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
-                                    playback.is_playing = false;
-                                    pb.lock().unwrap().last_playback_poll = Local::now();
-                                }
-                            } else {
-                                api.play(Play::Resume, None).await.unwrap();
-                                if let Some(playback) = &mut (*pb.lock().unwrap()).playback {
-                                    playback.is_playing = true;
-                                    pb.lock().unwrap().last_playback_poll = Local::now();
-                                }
+                        let playing = pb.lock().unwrap().playback.as_ref().unwrap().is_playing;
+                        if playing {
+                            api.pause(None).await.unwrap();
+                            if pb.lock().unwrap().playback.is_some() {
+                                pb.lock().unwrap().playback.as_mut().unwrap().is_playing = false;
+                                pb.lock().unwrap().last_playback_poll = Local::now();
                             }
-                        });
-                        return Ok(());
-                    }
+                        } else {
+                            api.play(Play::Resume, None).await.unwrap();
+                            if pb.lock().unwrap().playback.is_some() {
+                                pb.lock().unwrap().playback.as_mut().unwrap().is_playing = true;
+                                pb.lock().unwrap().last_playback_poll = Local::now();
+                            }
+                        }
+                    });
+                    return Ok(());
                 }
 
                 tx.send(Event::OpenSelectDevice)?;

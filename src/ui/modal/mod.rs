@@ -126,7 +126,7 @@ pub fn render_modal_with_state<const N: usize, I: IntoIterator<Item=[String; N]>
 
     let vert = Layout::vertical([
         Constraint::Fill(1),
-        Constraint::Length(((count + 4) as u16).max(area.height - 4)),
+        Constraint::Length(((count + 4) as u16).min(area.height - 4)),
         Constraint::Length(1),
     ])
         .split(hoz[1]);

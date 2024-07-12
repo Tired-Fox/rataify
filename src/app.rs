@@ -530,12 +530,12 @@ impl App {
                         tx.send(action.clone()).unwrap();
                     }
                     Viewport::Modal(modal) => {
-                        match key {
-                            key!('q') => tx.send(Event::Close).unwrap(),
-                            key!(Esc) => tx.send(Event::Close).unwrap(),
-                            key!('c' + CONTROL) => tx.send(Event::Quit).unwrap(),
-                            key!('C' + SHIFT + CONTROL) => tx.send(Event::Quit).unwrap(),
-                            _ => match modal {
+                        if key == key!('q') || key == key!(Esc) {
+                            tx.send(Event::Close).unwrap();
+                        } else if key == key!('c' + CONTROL) || key == key!('C' + SHIFT + CONTROL) {
+                            tx.send(Event::Quit).unwrap();
+                        } else {
+                            match modal {
                                 Modal::GoTo => {
                                     let go_to = &mut self.state.modal_state.go_to.lock().unwrap();
                                     if go_to.contains(&key) {

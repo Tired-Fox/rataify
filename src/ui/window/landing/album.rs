@@ -4,12 +4,12 @@ use ratatui::{
     style::Stylize,
     text::{Line, Span},
     widgets::{
-        Paragraph, Wrap,
+        Paragraph, Wrap, Row, Cell,
         Block, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
         Table, TableState, Widget,
     },
 };
-use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
+use tupy::api::response::{Album, AlbumTracks, Paged, ReleaseDate};
 
 use crate::{
     state::{
@@ -19,50 +19,43 @@ use crate::{
         },
         Loading,
     },
-    ui::{format_track, format_episode, PaginationProgress, COLORS},
+    ui::{format_duration, PaginationProgress, COLORS, components::OpenInSpotify},
     Locked, Shared,
 };
 
-use super::{render_landing, HTML_UNICODE};
+use super::render_landing;
 
 #[allow(clippy::too_many_arguments)]
 pub fn render(
     area: Rect,
     buf: &mut Buffer,
-    playlist: &Playlist,
-    pages: &Pages<PlaylistItems, PlaylistItems>,
+    album: &Album,
+    pages: &Pages<AlbumTracks, AlbumTracks>,
     state: &TableState,
     cover: &mut Shared<Locked<Loading<Cover>>>,
 ) {
-    let title = format!("[Playlist: {}]", playlist.name);
+    let title = format!("[Album: {}]", album.name);
     let (under, main) = render_landing(
         area,
         buf,
         title.clone(),
         cover.clone(),
     );
-    
-    let description = playlist.description.clone().unwrap_or_default();
-    let description = HTML_UNICODE.replace_all(&description, |captures: &regex::Captures| {
-        match captures.name("decimal") {
-            Some(decimal) => std::char::from_u32(u32::from_str_radix(decimal.as_str(), 10).unwrap()).unwrap().to_string(),
-            None => std::char::from_u32(u32::from_str_radix(captures.name("hex").unwrap().as_str(), 16).unwrap()).unwrap().to_string(),
-        }
-    });
 
+    let artists = album.artists.iter().map(|v| v.name.clone()).collect::<Vec<_>>().join(", ");
     let info = [
-        if under.height <= 3 {
-            Paragraph::new(description)
+        if under.height <= 2 {
+            Paragraph::new(artists)
         } else {
-            Paragraph::new(description).wrap(Wrap { trim: true })
+            Paragraph::new(artists).wrap(Wrap { trim: true })
         },
-        Paragraph::new(playlist.owner.name.clone().unwrap_or(playlist.owner.id.clone())).bold(),
-        Paragraph::new(match playlist.public.unwrap_or_default() {
-            true => Span::from("Public").cyan(),
-            false => Span::from("Private").magenta(),
-        }),
+        Paragraph::new(format!("Released: {}", match album.release {
+            ReleaseDate::Day(date) => date.format("%b %d, %Y"),
+            ReleaseDate::Month(date) => date.format("%b, %Y"),
+            ReleaseDate::Year(date) => date.format("%Y"),
+        })).bold(),
     ];
-
+    
     if under.height <= info.len() as u16 {
         let info_vert = Layout::vertical(vec![Constraint::Length(1); under.height as usize])
             .split(under);
@@ -81,7 +74,8 @@ pub fn render(
         }
     };
     
-    // RENDER PLAYLIST ITEMS
+    // RENDER ALBUM TRACKS
+    //
     match pages.items.lock().unwrap().as_ref() {
         Some(Loading::Loading) => {
             let vert = Layout::vertical([
@@ -97,7 +91,7 @@ pub fn render(
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
                 .split(main)[1];
 
-            Line::from("<No Playlist Items>")
+            Line::from("<No Album Items>")
                 .centered()
                 .red()
                 .render(vert, buf);
@@ -106,23 +100,25 @@ pub fn render(
             let scrollable = data.limit() >= main.height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
-            let table_albums = data
-                .items
+            let table_tracks = data.items
                 .iter()
-                .map(|a| match &a.item {
-                    Item::Track(track) => format_track(track),
-                    Item::Episode(episode) => format_episode(episode),
+                .map(|track| {
+                    Row::new(vec![
+                        Cell::from(format_duration(track.duration)).style(COLORS.duration),
+                        Cell::from(track.name.clone()).style(COLORS.track),
+                        Cell::from(track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")).style(COLORS.artists),
+                    ])
                 })
                 .collect::<Table>()
-                .block(block)
                 .widths([
                     Constraint::Length(8),
-                    Constraint::Length(1),
                     Constraint::Fill(1),
-                    Constraint::Fill(2),
+                    Constraint::Fill(1),
                 ])
+                .block(block)
                 .highlight_style(COLORS.highlight);
-            StatefulWidget::render(table_albums, main, buf, &mut state.clone());
+
+            StatefulWidget::render(table_tracks, main, buf, &mut state.clone());
 
             PaginationProgress {
                 current: data.page(),

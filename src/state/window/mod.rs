@@ -76,6 +76,20 @@ impl<R, P> Pages<R, P>
         Ok(())
     }
 
+    pub async fn refresh(&self) -> Result<()> {
+        *self.items.lock().unwrap() = Some(Loading::Loading);
+
+        let items = self.items.clone();
+        let pager = self.pager.clone();
+        let pages = self.pages.clone();
+        tokio::task::spawn(async move {
+            let mut pager = pager.lock().await;
+            *items.lock().unwrap() = Some(Loading::from(pager.current().await.unwrap()));
+            *pages.lock().unwrap() = (pager.page(), pager.total_pages())
+        });
+        Ok(())
+    }
+
     pub async fn prev(&self) -> Result<()> {
         *self.items.lock().unwrap() = Some(Loading::Loading);
 

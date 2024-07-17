@@ -7,6 +7,7 @@ pub mod modal;
 pub mod window;
 pub mod playback;
 pub mod action;
+pub mod components;
 
 pub use action::{Action, GoTo};
 
@@ -490,8 +491,12 @@ impl Widget for PaginationProgress {
             cells.push(Span::from(DOT).dim().gray());
         }
     
+        let vert = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1)
+        ]).split(area)[1];
         Line::from(cells)
             .centered()
-            .render(area, buf);
+            .render(vert, buf);
     }
 }

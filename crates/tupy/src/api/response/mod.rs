@@ -173,6 +173,7 @@ where
     pub(crate) total: usize,
     pub(crate) flow: F,
     pub(crate) next: Option<String>,
+    pub(crate) current: Option<String>,
     pub(crate) prev: Option<String>,
     pub(crate) resolve: Arc<dyn Fn(T) -> R + Send>
 }
@@ -227,6 +228,7 @@ where
             page_size:  N,
             flow,
             next,
+            current: None,
             prev,
             resolve: Arc::new(resolve)
         }
@@ -279,6 +281,8 @@ where
             None => return Ok(None),
         };
 
+        self.current = Some(next.clone());
+
         let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token()).await?;
         let eb = body.clone();
         let body = body.into_boxed_str();
@@ -306,6 +310,34 @@ where
         response
     }
 
+    async fn current(&mut self) -> Result<Option<Self::Item>, Error> {
+        if self.current.is_none() {
+            return Ok(None);
+        }
+
+        let current = self.current.as_ref().unwrap();
+        let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, current).send_raw(self.flow.token()).await?;
+        let body = body.into_boxed_str();
+        let response = match pares!(P: Box::leak(body)) {
+            Ok(item) => {
+                let result = (self.resolve)(item);
+                self.total = result.total();
+
+                if result.items().is_empty() || (result.page() + result.limit() >= result.total()) {
+                    self.prev = result.prev().map(|s| s.to_string());
+                    self.next = None;
+                } else {
+                    self.prev = result.prev().map(|s| s.to_string());
+                    self.next = result.next().map(|s| s.to_string());
+                }
+
+                Ok(Some(result))
+            },
+            Err(e) => Err(Error::custom(e))
+        };
+        response
+    }
+
     async fn prev(&mut self) -> Result<Option<Self::Item>, Error> {
         if self.offset < 1 {
             return Ok(None);
@@ -315,6 +347,8 @@ where
             Some(prev) => prev,
             None => return Ok(None),
         };
+
+        self.current = Some(prev.clone());
 
         let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, prev).send_raw(self.flow.token()).await?;
         let body = body.into_boxed_str();

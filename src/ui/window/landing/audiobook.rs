@@ -4,12 +4,12 @@ use ratatui::{
     style::Stylize,
     text::{Line, Span},
     widgets::{
-        Paragraph, Wrap,
+        Paragraph, Wrap, Row, Cell,
         Block, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
         Table, TableState, Widget,
     },
 };
-use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
+use tupy::api::response::{Audiobook, Chapters, Paged};
 
 use crate::{
     state::{
@@ -19,7 +19,7 @@ use crate::{
         },
         Loading,
     },
-    ui::{format_track, format_episode, PaginationProgress, COLORS},
+    ui::{format_duration, PaginationProgress, COLORS, components::OpenInSpotify},
     Locked, Shared,
 };
 
@@ -29,12 +29,12 @@ use super::{render_landing, HTML_UNICODE};
 pub fn render(
     area: Rect,
     buf: &mut Buffer,
-    playlist: &Playlist,
-    pages: &Pages<PlaylistItems, PlaylistItems>,
+    audiobook: &Audiobook,
+    pages: &Pages<Chapters, Chapters>,
     state: &TableState,
     cover: &mut Shared<Locked<Loading<Cover>>>,
 ) {
-    let title = format!("[Playlist: {}]", playlist.name);
+    let title = format!("[Audiobook: {}]", audiobook.name);
     let (under, main) = render_landing(
         area,
         buf,
@@ -42,7 +42,8 @@ pub fn render(
         cover.clone(),
     );
     
-    let description = playlist.description.clone().unwrap_or_default();
+    // desc, authors, narrators, publisher
+    let description = audiobook.description.clone();
     let description = HTML_UNICODE.replace_all(&description, |captures: &regex::Captures| {
         match captures.name("decimal") {
             Some(decimal) => std::char::from_u32(u32::from_str_radix(decimal.as_str(), 10).unwrap()).unwrap().to_string(),
@@ -51,16 +52,7 @@ pub fn render(
     });
 
     let info = [
-        if under.height <= 3 {
-            Paragraph::new(description)
-        } else {
-            Paragraph::new(description).wrap(Wrap { trim: true })
-        },
-        Paragraph::new(playlist.owner.name.clone().unwrap_or(playlist.owner.id.clone())).bold(),
-        Paragraph::new(match playlist.public.unwrap_or_default() {
-            true => Span::from("Public").cyan(),
-            false => Span::from("Private").magenta(),
-        }),
+        Paragraph::new(description).wrap(Wrap { trim: true })
     ];
 
     if under.height <= info.len() as u16 {
@@ -81,7 +73,8 @@ pub fn render(
         }
     };
     
-    // RENDER PLAYLIST ITEMS
+    // RENDER SHOW EPISODES
+    //
     match pages.items.lock().unwrap().as_ref() {
         Some(Loading::Loading) => {
             let vert = Layout::vertical([
@@ -97,7 +90,7 @@ pub fn render(
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
                 .split(main)[1];
 
-            Line::from("<No Playlist Items>")
+            Line::from("<No Audiobook Chapters>")
                 .centered()
                 .red()
                 .render(vert, buf);
@@ -106,23 +99,33 @@ pub fn render(
             let scrollable = data.limit() >= main.height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
-            let table_albums = data
-                .items
+            let table_chapters = data.items
                 .iter()
-                .map(|a| match &a.item {
-                    Item::Track(track) => format_track(track),
-                    Item::Episode(episode) => format_episode(episode),
+                .map(|e| {
+                    Row::new(vec![
+                        // duration, chapter, name, finished
+                        Cell::from(format_duration(e.duration)).style(COLORS.duration),
+                        Cell::from(format!("Chapter {}", e.chapter_number + 1)).style(COLORS.chapter_number),
+                        if e.resume_point.fully_played {
+                            Cell::from(Line::from(vec![
+                                Span::from(e.name.clone()).style(COLORS.episode),
+                                Span::from(" ✓").style(COLORS.finished)
+                            ]))
+                        } else {
+                            Cell::from(e.name.clone()).style(COLORS.episode)
+                        }
+                    ])
                 })
                 .collect::<Table>()
-                .block(block)
                 .widths([
                     Constraint::Length(8),
-                    Constraint::Length(1),
+                    Constraint::Length(8 + format!("{}", data.total).len() as u16),
                     Constraint::Fill(1),
-                    Constraint::Fill(2),
                 ])
+                .block(block)
                 .highlight_style(COLORS.highlight);
-            StatefulWidget::render(table_albums, main, buf, &mut state.clone());
+
+            StatefulWidget::render(table_chapters, main, buf, &mut state.clone());
 
             PaginationProgress {
                 current: data.page(),

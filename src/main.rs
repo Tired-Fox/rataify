@@ -37,6 +37,8 @@ async fn main() -> Result<()> {
             (key!('j'), Event::Down),
             (key!(Tab), Event::Tab),
             (key!(BackTab + SHIFT), Event::Backtab),
+            (key!('r' + CONTROL), Event::Refresh),
+            (key!('R' + SHIFT + CONTROL), Event::Refresh),
 
             // Quit / Close
             (key!('q'), Event::Close),

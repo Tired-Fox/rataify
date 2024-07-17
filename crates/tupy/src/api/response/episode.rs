@@ -28,7 +28,7 @@ pub struct Show {
     pub images: Vec<Image>,
     /// True if all of the shows episodes are hosted outside of Spotify's CDN.
     #[serde(default)]
-    pub is_externally_hosted: bool,
+    pub is_externally_hosted: Option<bool>,
     /// A list of the languages used in the show, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
     #[serde(default)]
     pub languages: Vec<String>,
@@ -73,7 +73,7 @@ pub struct Episode {
     pub is_playable: bool,
     /// True if the episode is hosted outside of Spotify's CDN.
     #[serde(default)]
-    pub is_externally_hosted: bool,
+    pub is_externally_hosted: Option<bool>,
     /// A list of the languages used in the episode, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
     #[serde(default)]
     pub languages: Vec<String>,
@@ -121,7 +121,7 @@ pub struct SimplifiedEpisode {
     pub is_playable: bool,
     /// True if the episode is hosted outside of Spotify's CDN.
     #[serde(default)]
-    pub is_externally_hosted: bool,
+    pub is_externally_hosted: Option<bool>,
     /// A list of the languages used in the episode, identified by their [ISO 639](https://en.wikipedia.org/wiki/ISO_639) code.
     #[serde(default)]
     pub languages: Vec<String>,

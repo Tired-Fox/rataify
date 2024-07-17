@@ -17,6 +17,13 @@ use crate::{
 
 mod artist;
 mod playlist;
+mod album;
+mod show;
+mod audiobook;
+
+lazy_static::lazy_static! {
+    pub static ref HTML_UNICODE: regex::Regex = regex::Regex::new("&#(?:(?<decimal>[0-9]+)|x(?<hex>[0-9a-fA-F]+));").unwrap();
+}
 
 struct LandingData<'a> {
     progress: PaginationProgress,
@@ -59,169 +66,19 @@ fn render(self, area: Rect, buf: &mut Buffer) {
             Landing::Playlist{ pages, state, playlist, cover } => {
                 playlist::render(area, buf, playlist, pages, state, cover);
             },
-            Landing::Album{ pages, state, album, .. } => {
-                let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Album: {}", album.name), area,buf)
+            Landing::Album{ pages, state, album, cover } => {
+                album::render(area, buf, album, pages, state, cover);
             },
-            Landing::Show{ pages, state, show, .. } => {
-                let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Show: {}", show.name), area,buf)
+            Landing::Show{ pages, state, show, cover } => {
+                show::render(area, buf, show, pages, state, cover);
             },
-            Landing::Audiobook{ pages, state, audiobook, .. } => {
-                let result = pages.items.lock().unwrap();
-                unwrap_or_render(result.as_ref().map(|p| p.as_ref()), state, format!("Audiobook: {}", audiobook.name), area,buf)
+            Landing::Audiobook{ pages, state, audiobook, cover } => {
+                audiobook::render(area, buf, audiobook, pages, state, cover);
             },
-            // TODO: This one will probably have a mix of albums, tracks, etc.
             Landing::Artist { top_tracks, state, section, albums, artist, cover } => {
                 artist::render(area, buf, artist, top_tracks, albums, state, section, cover);
             }
         }
-    }
-}
-
-trait IntoTable<'a> {
-    fn into_table(self) -> Table<'a>;
-}
-
-impl<'a> IntoTable<'a> for &'a PlaylistItems {
-    fn into_table(self) -> Table<'a> {
-        self.items
-            .iter()
-            .map(|item| {
-                match &item.item {
-                    Item::Track(track) => format_track(&track),
-                    Item::Episode(episode) => format_episode(&episode),
-                }
-            })
-            .collect::<Table>()
-            .widths([
-                Constraint::Length(8),
-                Constraint::Length(1),
-                Constraint::Fill(1),
-                Constraint::Fill(2),
-            ])
-    }
-}
-
-impl<'a> IntoTable<'a> for &'a AlbumTracks {
-    fn into_table(self) -> Table<'a> {
-        self.items
-            .iter()
-            .map(|track| {
-                Row::new(vec![
-                    Cell::from(format_duration(track.duration)).style(COLORS.duration),
-                    Cell::from(track.name.clone()).style(COLORS.track),
-                    Cell::from(track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")).style(COLORS.artists),
-                ])
-            })
-            .collect::<Table>()
-            .widths([
-                Constraint::Length(8),
-                Constraint::Fill(1),
-                Constraint::Fill(2),
-            ])
-    }
-}
-
-impl<'a> IntoTable<'a> for &'a ShowEpisodes {
-    fn into_table(self) -> Table<'a> {
-        self.items
-            .iter()
-            .map(|e| {
-                Row::new(vec![
-                    Cell::from(format_duration(e.duration)).style(COLORS.duration),
-                    if e.resume_point.fully_played {
-                        Cell::from("✓").style(COLORS.finished)
-                    } else {
-                        Cell::default()
-                    },
-                    Cell::from(e.name.clone()).style(COLORS.episode),
-                ])
-            })
-            .collect::<Table>()
-            .widths([
-                Constraint::Length(8),
-                Constraint::Length(1),
-                Constraint::Fill(2),
-            ])
-    }
-}
-
-impl<'a> IntoTable<'a> for &'a Chapters {
-    fn into_table(self) -> Table<'a> {
-        self.items
-            .iter()
-            .map(|e| {
-                Row::new(vec![
-                    // duration, chapter, name, finished
-                    Cell::from(format_duration(e.duration)).style(COLORS.duration),
-                    Cell::from(format!("Chapter {}", e.chapter_number)).style(COLORS.chapter_number),
-                    Cell::from(e.name.clone()).style(COLORS.episode),
-                    if e.resume_point.fully_played {
-                        Cell::from(Line::from(vec![
-                            Span::from(e.name.clone()).style(COLORS.episode),
-                            Span::from(" ✓").style(COLORS.finished)
-                        ]))
-                    } else {
-                        Cell::from(e.name.clone()).style(COLORS.episode)
-                    }
-                ])
-            })
-            .collect::<Table>()
-            .widths([
-                Constraint::Length(8),
-                Constraint::Length(8 + format!("{}", self.total).len() as u16),
-                Constraint::Fill(1),
-                Constraint::Fill(2),
-            ])
-    }
-}
-
-fn unwrap_or_render<'a, T: IntoTable<'a> + Paged>(data: Option<Loading<T>>, state: &mut TableState, title: String, area: Rect, buf: &mut Buffer) {
-    match data {
-        Some(Loading::Loading) => {
-            let block = Block::bordered()
-                .border_set(border::ROUNDED)
-                .padding(Padding::symmetric(1, 1))
-                .title(Title::from(format!("[{}]", title)).alignment(Alignment::Center).position(Position::Bottom));
-            (&block).render(area, buf);
-            let vert = Layout::vertical([
-                Constraint::Fill(1),
-                Constraint::Length(1),
-                Constraint::Fill(1),
-            ])
-                .split(block.inner(area))[1];
-
-            Line::from("Loading...").centered().render(vert, buf);
-        }
-        None | Some(Loading::None) => {
-            let block = Block::bordered()
-                .border_set(border::ROUNDED)
-                .padding(Padding::symmetric(1, 1))
-                .title(Title::from(format!("[{}]", title)).alignment(Alignment::Center).position(Position::Bottom));
-            (&block).render(area, buf);
-            let vert = Layout::vertical([
-                Constraint::Fill(1),
-                Constraint::Length(1),
-                Constraint::Fill(1),
-            ])
-                .split(block.inner(area))[1];
-
-            Line::from("<No Playlist Items>")
-                .centered()
-                .red()
-                .render(vert, buf);
-        }
-        Some(Loading::Some(data)) => LandingData {
-            progress: PaginationProgress {
-                current: data.page(),
-                total: data.max_page(),
-            },
-            total: data.items().len(),
-            state: state.clone(),
-            table: data.into_table(),
-            title: title,
-        }.render(area, buf),
     }
 }
 
@@ -248,7 +105,7 @@ fn render_landing(
     let inner = block.inner(area);
 
     let hoz = Layout::horizontal([
-        Constraint::Length(28),
+        Constraint::Length(30),
         Constraint::Length(1),
         Constraint::Fill(1),
     ])

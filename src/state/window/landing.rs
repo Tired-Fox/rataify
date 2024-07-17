@@ -345,15 +345,10 @@ impl Landing {
                     state.select(Some(0));
                 }
             },
-            Landing::Artist{state, section, top_tracks, albums, ..} => match section {
-                ArtistLanding::Albums => {
-                    if albums.items.lock().unwrap().is_some() && albums.has_next().await {
-                        albums.next().await?;
-                        state.select(Some(0));
-                    }
-                },
-                _ => {}
-            },
+            Landing::Artist{state, section: ArtistLanding::Albums, albums, ..} => if albums.items.lock().unwrap().is_some() && albums.has_next().await {
+                albums.next().await?;
+                state.select(Some(0));
+            }
             _ => {},
         }
         Ok(())
@@ -385,15 +380,45 @@ impl Landing {
                     state.select(Some(0));
                 }
             },
-            Landing::Artist{state, section, top_tracks, albums, ..} => match section {
-                ArtistLanding::Albums => {
-                    if albums.items.lock().unwrap().is_some() && albums.has_prev().await {
-                        albums.prev().await?;
-                        state.select(Some(0));
-                    }
-                },
-                _ => {}
+            Landing::Artist{state, section: ArtistLanding::Albums, albums, ..} => if albums.items.lock().unwrap().is_some() && albums.has_prev().await {
+                albums.prev().await?;
+                state.select(Some(0));
+            }
+            _ => {},
+        }
+        Ok(())
+    }
+
+    pub async fn refresh(&mut self) -> Result<()> {
+        match self {
+            Landing::Playlist{ pages, state, .. } => {
+                if pages.items.lock().unwrap().is_some() {
+                    pages.refresh().await?;
+                    state.select(None);
+                }
             },
+            Landing::Album{ pages, state, .. } => {
+                if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
+                    pages.refresh().await?;
+                    state.select(None);
+                }
+            },
+            Landing::Show{ pages, state, .. } => {
+                if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
+                    pages.refresh().await?;
+                    state.select(None);
+                }
+            },
+            Landing::Audiobook{ pages, state, .. } => {
+                if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
+                    pages.refresh().await?;
+                    state.select(None);
+                }
+            },
+            Landing::Artist{state, section: ArtistLanding::Albums, albums, ..} => if albums.items.lock().unwrap().is_some() && albums.has_prev().await {
+                albums.refresh().await?;
+                state.select(None);
+            }
             _ => {},
         }
         Ok(())

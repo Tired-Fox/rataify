@@ -46,13 +46,21 @@ pub fn render(
         cover.clone(),
     );
     
+    let followers = artist.followers.total.to_string()
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(std::str::from_utf8)
+        .collect::<Result<Vec<&str>, _>>()
+        .unwrap()
+        .join(",");
     let info = [
         if under.height <= 3 {
             Paragraph::new(artist.genres.join(", "))
         } else {
             Paragraph::new(artist.genres.join(", ")).wrap(Wrap { trim: true })
         },
-        Paragraph::new(format!("{} Followers", artist.followers.total)),
+        Paragraph::new(format!("{followers} Followers")),
         Paragraph::new(format!("Popularity {}%", artist.popularity)),
     ];
 
@@ -129,7 +137,7 @@ pub fn render(
         }
         Some(Loading::Some(data)) => {
             let scrollable = data.limit() >= vert[1].height as usize;
-            let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 1, 0));
+            let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
             let table_albums = data
                 .items

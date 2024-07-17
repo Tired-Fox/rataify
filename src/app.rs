@@ -56,6 +56,7 @@ pub enum Event {
     Select,
     Tab,
     Backtab,
+    Refresh,
 
     // Open menu
     OpenAddToPlaylist(Uri),
@@ -282,9 +283,7 @@ impl App {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().next(),
                     Window::Library => self.state.window_state.library.lock().unwrap().down().await,
                     Window::Landing => self.state.window_state.landing.lock().unwrap().down(),
-                    _ => {}
                 },
-                _ => {}
             },
             Event::Up => match &mut self.state.viewport {
                 Viewport::Modal(modal) => {
@@ -305,9 +304,7 @@ impl App {
                     Window::Queue => self.state.window_state.queue.lock().unwrap().prev(),
                     Window::Library => self.state.window_state.library.lock().unwrap().up().await,
                     Window::Landing => self.state.window_state.landing.lock().unwrap().up(),
-                    _ => {}
                 },
-                _ => {}
             },
             Event::Right => match &mut self.state.viewport {
                 Viewport::Modal(modal) => {
@@ -325,7 +322,6 @@ impl App {
                     Window::Landing => self.state.window_state.landing.lock().unwrap().right().await?,
                     _ => {}
                 },
-                _ => {}
             },
             Event::Left => match &mut self.state.viewport {
                 Viewport::Modal(modal) => {
@@ -343,7 +339,6 @@ impl App {
                     Window::Landing => self.state.window_state.landing.lock().unwrap().left().await?,
                     _ => {}
                 },
-                _ => {}
             },
             Event::Tab => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
@@ -402,6 +397,32 @@ impl App {
                     }
                 });
             }
+            Event::Refresh => match &mut self.state.viewport {
+                Viewport::Modal(Modal::Devices) => {
+                    if let Ok(devices) = self.spotify.api.devices().await {
+                        self.state.modal_state.devices.lock().unwrap().devices = devices;
+                        self.state.modal_state.devices.lock().unwrap().state.select(Some(0))
+                    } else {
+                        return Err(eyre!("Failed to get devices"));
+                    }
+                }
+                Viewport::Modal(Modal::Artists) => {
+                    self.state.window_state.landing.lock().unwrap().refresh().await?;
+                }
+                #[allow(clippy::single_match)]
+                Viewport::Window => match self.state.window {
+                    Window::Queue => {
+                        tx.send(Event::UpdateQueue).unwrap();
+                    }
+                    Window::Library => {
+                        self.state.window_state.library.lock().unwrap().refresh().await?;
+                    }
+                    Window::Landing => {
+                        self.state.window_state.landing.lock().unwrap().refresh().await?;
+                    }
+                },
+                _ => {}
+            }
             Event::Select => match &mut self.state.viewport {
                 Viewport::Modal(Modal::Devices) => {
                     let device = self.state.modal_state.devices.lock().unwrap().select();
@@ -439,7 +460,6 @@ impl App {
                             self.state.viewport = Viewport::Modal(Modal::Action);
                         }
                     }
-                    _ => {}
                 },
                 _ => {}
             },
@@ -496,11 +516,6 @@ impl App {
                         self.state.viewport = Viewport::Window;
                         self.state.window = Window::Landing;
                     }
-                    //GoTo::Artist(artist) => {
-                    //    *self.state.window_state.landing.lock().unwrap() = Landing::artist(&self.spotify.api, artist.clone()).await?;
-                    //    self.state.viewport = Viewport::Window;
-                    //    self.state.window = Window::Landing;
-                    //}
                     GoTo::Show(show) => {
                         *self.state.window_state.landing.lock().unwrap() = Landing::show(&self.spotify.api, show.clone()).await?;
                         self.state.viewport = Viewport::Window;
@@ -550,11 +565,9 @@ impl App {
                                 Modal::Devices | Modal::Artists | Modal::AddToPlaylist => if let Some(action) = keymaps.get(&key) {
                                     tx.send(action.clone()).unwrap();
                                 }
-                                _ => {},
                             }
                         }
                     }
-                    _ => {}
                 }
             }
             Event::ToggleRepeat => {

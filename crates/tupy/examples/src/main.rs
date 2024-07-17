@@ -75,27 +75,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    }
     //}
 
-    let mut search = spotify.api.search::<2, _>(&[Query::text("Release Radar")], &[SearchType::Playlist], None, false)?;
-    if let Some(playlists) = search.playlists() {
-        if let Some(page) = playlists.next().await? {
-            for playlist in page.items {
-                if playlist.name.as_str() == "Release Radar" && playlist.owner.id.as_str() == "spotify" {
-                    println!("{:#?}", playlist);
-                }
-            }
+    let mut shows = spotify.api.saved_shows::<20>()?;
+    while let Some(page) = shows.next().await? {
+        for item in page.items {
+            println!("[{}] {}", item.show.uri, item.show.name);
         }
     }
-
-    let mut search = spotify.api.search::<2, _>(&[Query::text("Discover Weekly")], &[SearchType::Playlist], None, false)?;
-    if let Some(playlists) = search.playlists() {
-        if let Some(page) = playlists.next().await? {
-            for playlist in page.items {
-                if playlist.name.as_str() == "Discover Weekly" && playlist.owner.id.as_str() == "spotify" {
-                    println!("{:#?}", playlist);
-                }
-            }
-        }
-    }
+    
+    //let mut search = spotify.api.search::<2, _>(&[Query::text("Release Radar")], &[SearchType::Playlist], None, false)?;
+    //if let Some(playlists) = search.playlists() {
+    //    if let Some(page) = playlists.next().await? {
+    //        for playlist in page.items {
+    //            if playlist.name.as_str() == "Release Radar" && playlist.owner.id.as_str() == "spotify" {
+    //                println!("{:#?}", playlist);
+    //            }
+    //        }
+    //    }
+    //}
+    //
+    //let mut search = spotify.api.search::<2, _>(&[Query::text("Discover Weekly")], &[SearchType::Playlist], None, false)?;
+    //if let Some(playlists) = search.playlists() {
+    //    if let Some(page) = playlists.next().await? {
+    //        for playlist in page.items {
+    //            if playlist.name.as_str() == "Discover Weekly" && playlist.owner.id.as_str() == "spotify" {
+    //                println!("{:#?}", playlist);
+    //            }
+    //        }
+    //    }
+    //}
 
     //let playback = spotify.api.playback_state(None).await?;
     //if let Some(playback) = playback {

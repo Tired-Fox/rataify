@@ -4,12 +4,12 @@ use ratatui::{
     style::Stylize,
     text::{Line, Span},
     widgets::{
-        Paragraph, Wrap,
+        Paragraph, Wrap, Row, Cell,
         Block, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
         Table, TableState, Widget,
     },
 };
-use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
+use tupy::api::response::{Show, ShowEpisodes, Paged};
 
 use crate::{
     state::{
@@ -19,7 +19,7 @@ use crate::{
         },
         Loading,
     },
-    ui::{format_track, format_episode, PaginationProgress, COLORS},
+    ui::{format_duration, PaginationProgress, COLORS, components::OpenInSpotify},
     Locked, Shared,
 };
 
@@ -29,12 +29,12 @@ use super::{render_landing, HTML_UNICODE};
 pub fn render(
     area: Rect,
     buf: &mut Buffer,
-    playlist: &Playlist,
-    pages: &Pages<PlaylistItems, PlaylistItems>,
+    show: &Show,
+    pages: &Pages<ShowEpisodes, ShowEpisodes>,
     state: &TableState,
     cover: &mut Shared<Locked<Loading<Cover>>>,
 ) {
-    let title = format!("[Playlist: {}]", playlist.name);
+    let title = format!("[Show: {}]", show.name);
     let (under, main) = render_landing(
         area,
         buf,
@@ -42,7 +42,7 @@ pub fn render(
         cover.clone(),
     );
     
-    let description = playlist.description.clone().unwrap_or_default();
+    let description = show.description.clone().unwrap_or_default();
     let description = HTML_UNICODE.replace_all(&description, |captures: &regex::Captures| {
         match captures.name("decimal") {
             Some(decimal) => std::char::from_u32(u32::from_str_radix(decimal.as_str(), 10).unwrap()).unwrap().to_string(),
@@ -51,16 +51,12 @@ pub fn render(
     });
 
     let info = [
-        if under.height <= 3 {
+        if under.height <= 2 {
             Paragraph::new(description)
         } else {
             Paragraph::new(description).wrap(Wrap { trim: true })
         },
-        Paragraph::new(playlist.owner.name.clone().unwrap_or(playlist.owner.id.clone())).bold(),
-        Paragraph::new(match playlist.public.unwrap_or_default() {
-            true => Span::from("Public").cyan(),
-            false => Span::from("Private").magenta(),
-        }),
+        Paragraph::new(show.publisher.clone().unwrap_or_default()).bold(),
     ];
 
     if under.height <= info.len() as u16 {
@@ -81,7 +77,8 @@ pub fn render(
         }
     };
     
-    // RENDER PLAYLIST ITEMS
+    // RENDER SHOW EPISODES
+    //
     match pages.items.lock().unwrap().as_ref() {
         Some(Loading::Loading) => {
             let vert = Layout::vertical([
@@ -97,7 +94,7 @@ pub fn render(
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Fill(1)])
                 .split(main)[1];
 
-            Line::from("<No Playlist Items>")
+            Line::from("<No Show Items>")
                 .centered()
                 .red()
                 .render(vert, buf);
@@ -106,23 +103,29 @@ pub fn render(
             let scrollable = data.limit() >= main.height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
-            let table_albums = data
-                .items
+            let table_episodes = data.items
                 .iter()
-                .map(|a| match &a.item {
-                    Item::Track(track) => format_track(track),
-                    Item::Episode(episode) => format_episode(episode),
+                .map(|e| {
+                    Row::new(vec![
+                        Cell::from(format_duration(e.duration)).style(COLORS.duration),
+                        if e.resume_point.fully_played {
+                            Cell::from("✓").style(COLORS.finished)
+                        } else {
+                            Cell::default()
+                        },
+                        Cell::from(e.name.clone()).style(COLORS.episode),
+                    ])
                 })
                 .collect::<Table>()
-                .block(block)
                 .widths([
                     Constraint::Length(8),
                     Constraint::Length(1),
-                    Constraint::Fill(1),
                     Constraint::Fill(2),
                 ])
+                .block(block)
                 .highlight_style(COLORS.highlight);
-            StatefulWidget::render(table_albums, main, buf, &mut state.clone());
+
+            StatefulWidget::render(table_episodes, main, buf, &mut state.clone());
 
             PaginationProgress {
                 current: data.page(),

@@ -3,12 +3,10 @@ use std::{fmt::Debug, ops::Add};
 use std::collections::HashMap;
 use crossterm::event::KeyEvent;
 use strum::EnumCount;
-use tokio::sync::Mutex;
 
 use color_eyre::Result;
 use color_eyre::eyre::Error;
 use ratatui::widgets::TableState;
-use serde::Deserialize;
 use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType, Play}, response::{Paged, FollowedArtists, SavedAudiobooks, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
 
 use crate::key;
@@ -179,26 +177,22 @@ pub struct LibraryState {
 impl LibraryState {
     pub async fn tab(&mut self) -> Result<()> {
         self.selected_tab += 1;
+        self.result_state.select(Some(0));
         match self.selected_tab {
             LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_next() => {
                 self.playlists.next().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Artists if self.artists.items.lock().unwrap().is_none() && self.artists.pager.lock().await.has_next() => {
                 self.artists.next().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Albums if self.albums.items.lock().unwrap().is_none() && self.albums.pager.lock().await.has_next() => {
                 self.albums.next().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Shows if self.shows.items.lock().unwrap().is_none() && self.shows.pager.lock().await.has_next() => {
                 self.shows.next().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Audiobooks if self.audiobooks.items.lock().unwrap().is_none() && self.audiobooks.pager.lock().await.has_next() => {
                 self.audiobooks.next().await?;
-                self.result_state.select(Some(0));
             }
             _ =>{}
         }
@@ -207,26 +201,22 @@ impl LibraryState {
 
     pub async fn backtab(&mut self) -> Result<()> {
         self.selected_tab -= 1;
+        self.result_state.select(Some(0));
         match self.selected_tab {
             LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_prev() => {
                 self.playlists.prev().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Artists if self.artists.items.lock().unwrap().is_none() && self.artists.pager.lock().await.has_prev() => {
                 self.artists.prev().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Albums if self.albums.items.lock().unwrap().is_none() && self.albums.pager.lock().await.has_prev() => {
                 self.albums.prev().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Shows if self.shows.items.lock().unwrap().is_none() && self.shows.pager.lock().await.has_prev() => {
                 self.shows.prev().await?;
-                self.result_state.select(Some(0));
             },
             LibraryTab::Audiobooks if self.audiobooks.items.lock().unwrap().is_none() && self.audiobooks.pager.lock().await.has_prev() => {
                 self.audiobooks.prev().await?;
-                self.result_state.select(Some(0));
             }
             _ =>{}
         }
@@ -296,6 +286,35 @@ impl LibraryState {
                     }
                     _ =>{}
                 }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn refresh(&mut self) -> Result<()> {
+        if let Selection::Results = self.selection {
+            match self.selected_tab {
+                LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_some() => {
+                    self.playlists.refresh().await?;
+                    self.result_state.select(None);
+                },
+                LibraryTab::Artists if self.artists.items.lock().unwrap().is_some() => {
+                    self.artists.refresh().await?;
+                    self.result_state.select(None);
+                },
+                LibraryTab::Albums if self.albums.items.lock().unwrap().is_some() => {
+                    self.albums.refresh().await?;
+                    self.result_state.select(None);
+                },
+                LibraryTab::Shows if self.shows.items.lock().unwrap().is_some() => {
+                    self.shows.refresh().await?;
+                    self.result_state.select(None);
+                },
+                LibraryTab::Audiobooks if self.audiobooks.items.lock().unwrap().is_some() => {
+                    self.audiobooks.refresh().await?;
+                    self.result_state.select(None);
+                }
+                _ =>{}
             }
         }
         Ok(())

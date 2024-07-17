@@ -26,6 +26,8 @@ pub trait Pagination {
     #[allow(async_fn_in_trait)]
     async fn next(&mut self) -> Result<Option<Self::Item>, Error>;
     #[allow(async_fn_in_trait)]
+    async fn current(&mut self) -> Result<Option<Self::Item>, Error>;
+    #[allow(async_fn_in_trait)]
     async fn prev(&mut self) -> Result<Option<Self::Item>, Error>;
 }
 

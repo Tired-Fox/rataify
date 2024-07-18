@@ -5,7 +5,7 @@ use ratatui::widgets::TableState;
 use tokio::sync::mpsc;
 use tupy::api::{flow::{AuthFlow, Pkce}, response::{Device, PagedPlaylists}, Resource, Uri, UserApi};
 
-use crate::{app::Event, key, ui::action::{Action, GoTo}, Locked, Shared};
+use crate::{app::Event, key, state::actions::{Action, GoTo}, Locked, Shared};
 
 use super::{window::Pages, IterCollection, Loading};
 
@@ -166,39 +166,45 @@ impl ActionState {
                     });
                 }
                 Action::PlayContext(play) => tx.send(Event::Play(play.clone())).unwrap(),
-                Action::Save(uri) => {
+                Action::Save(uri, callback) => {
                     let api = api.clone();
                     let uri = uri.clone();
+                    let callback = callback.clone();
                     match uri.resource() {
                         Resource::Track => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.save_tracks([uri]).await.unwrap();
+                            callback(true).unwrap()
                         });},
                         Resource::Episode => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.save_episodes([uri]).await.unwrap();
+                            callback(true).unwrap()
                         });},
                         Resource::Artist => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.follow_artists([uri]).await.unwrap();
+                            callback(true).unwrap()
                         });},
                         Resource::Album => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.save_albums([uri]).await.unwrap();
+                            callback(true).unwrap()
                         });},
                         Resource::Playlist => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.follow_playlist(uri, true).await.unwrap();
+                            callback(true).unwrap()
                         });},
                         Resource::Show => {
                             tokio::task::spawn(async move {
@@ -206,44 +212,51 @@ impl ActionState {
                                     api.refresh().await.unwrap();
                                 }
                                 api.save_shows([uri]).await.unwrap();
+                                callback(true).unwrap()
                             });
                         },
                         _ => {}
                     }
                 }
-                Action::Remove(uri) => {
+                Action::Remove(uri, callback) => {
                     let api = api.clone();
                     let uri = uri.clone();
+                    let callback = callback.clone();
                     match uri.resource() {
                         Resource::Track => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.remove_saved_tracks([uri]).await.unwrap();
+                            callback(false).unwrap()
                         });},
                         Resource::Episode => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.remove_saved_episodes([uri]).await.unwrap();
+                            callback(false).unwrap()
                         });},
                         Resource::Artist => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.unfollow_artists([uri]).await.unwrap();
+                            callback(false).unwrap()
                         });},
                         Resource::Album => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.remove_saved_albums([uri]).await.unwrap();
+                            callback(false).unwrap()
                         });},
                         Resource::Playlist => {tokio::task::spawn(async move {
                             if api.token().is_expired() {
                                 api.refresh().await.unwrap();
                             }
                             api.unfollow_playlist(uri).await.unwrap();
+                            callback(false).unwrap()
                         });},
                         Resource::Show => {
                             tokio::task::spawn(async move {
@@ -251,6 +264,7 @@ impl ActionState {
                                     api.refresh().await.unwrap();
                                 }
                                 api.remove_saved_shows([uri]).await.unwrap();
+                                callback(false).unwrap()
                             });
                         },
                         _ => {}

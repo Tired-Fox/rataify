@@ -1,18 +1,15 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Margin, Rect},
-    style::{Color, Style, Styled, Stylize},
-    symbols::{border, line},
-    text::{Line, Span},
+    symbols::border,
     widgets::{
-        block::{Block, Padding, Position, Title}, Cell, Clear, LineGauge, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget 
+        block::{Block, Padding, Position, Title}, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget 
     },
 };
 use ratatui_image::Image;
-use tupy::api::response::{Item, PlaylistItems, AlbumTracks, Paged, ShowEpisodes, Chapters};
 
 use crate::{
-    state::{window::{landing::{ArtistLanding, Cover, Landing}, Pages}, Loading}, ui::{format_duration, format_episode, format_track, PaginationProgress, COLORS}, Locked, Shared
+    state::{window::landing::{Cover, Landing}, Loading}, ui::{PaginationProgress, COLORS}, Locked, Shared
 };
 
 mod artist;
@@ -76,7 +73,9 @@ fn render(self, area: Rect, buf: &mut Buffer) {
                 audiobook::render(area, buf, audiobook, pages, state, section, cover);
             },
             Landing::Artist { top_tracks, state, section, albums, artist, cover, landing_section } => {
-                artist::render(area, buf, artist, top_tracks, albums, state, section, landing_section, cover);
+                let top_tracks = top_tracks.lock().unwrap();
+                let artist = &*artist.lock().unwrap();
+                artist::render(area, buf, artist, top_tracks.as_slice(), albums, state, section, landing_section, cover);
             }
         }
     }

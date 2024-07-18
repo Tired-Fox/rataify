@@ -4,12 +4,12 @@ use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, widgets::TableState};
 use ratatui_image::{picker::Picker, protocol::Protocol, Resize};
 use strum::EnumCount;
-use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, Track}, PublicApi, Uri};
+use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, Track}, PublicApi, Uri, UserApi};
 
 use super::Pages;
-use crate::{key, state::{IterCollection, Loading}, ui::{Action, ActionLabel, IntoActions}, Locked, Shared};
+use crate::{key, state::{wrappers::{Saved, GetUri}, IterCollection, Loading}, state::actions::{Action, action_label, IntoActions}, Locked, Shared};
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, strum_macros::EnumIs)]
 pub enum ArtistLanding {
     #[default]
     Tracks,
@@ -21,7 +21,7 @@ pub struct Cover {
     pub image: Box<dyn Protocol>,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, strum_macros::EnumIter, strum_macros::FromRepr, strum_macros::EnumCount)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, strum_macros::EnumIs, strum_macros::EnumIter, strum_macros::FromRepr, strum_macros::EnumCount)]
 pub enum LandingSection {
     Context,
     #[default]
@@ -34,8 +34,8 @@ pub enum Landing {
     None,
     Artist {
         cover: Shared<Locked<Loading<Cover>>>,
-        artist: Artist,
-        top_tracks: Vec<Track>,
+        artist: Shared<Locked<Saved<Artist>>>,
+        top_tracks: Shared<Locked<Vec<Saved<Track>>>>,
         albums: Pages<ArtistAlbums, ArtistAlbums>,
 
         section: ArtistLanding,
@@ -263,10 +263,16 @@ impl Landing {
             },
         };
 
+        let top_tracks = api.artist_top_tracks(uri.id(), None).await?;
+        let saved_top_tracks = api.check_saved_tracks(top_tracks.iter().map(|t| t.id.clone())).await?;
+
         Ok(Self::Artist {
             cover,
-            artist,
-            top_tracks: api.artist_top_tracks(uri.id(), None).await?,
+            artist: Shared::new(Locked::new(Saved::new(
+                api.check_follow_artists([artist.id.clone()]).await?[0],
+                artist
+            ))),
+            top_tracks: Shared::new(Locked::new(top_tracks.into_iter().zip(saved_top_tracks.into_iter()).map(|(t, s)| Saved::new(s, t)).collect())),
             albums: pages,
             section: ArtistLanding::default(),
             state: TableState::default(),
@@ -290,6 +296,7 @@ impl Landing {
             },
             Landing::Artist{state, section, top_tracks, albums, ..} => match section {
                 ArtistLanding::Tracks => {
+                    let top_tracks = top_tracks.lock().unwrap();
                     if state.selected().unwrap_or(0) >= top_tracks.len() - 1 {
                         state.select(Some(0));
                         *section = ArtistLanding::Albums;
@@ -321,11 +328,11 @@ impl Landing {
             },
             Landing::Artist{state, section, top_tracks, albums, ..} => match section {
                 ArtistLanding::Tracks => {
-                    state.prev_in_list(top_tracks.len())
+                    state.prev_in_list(top_tracks.lock().unwrap().len())
                 },
                 ArtistLanding::Albums => if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
                     if state.selected().unwrap_or(0) == 0 {
-                        state.select(Some(top_tracks.len() - 1));
+                        state.select(Some(top_tracks.lock().unwrap().len() - 1));
                         *section = ArtistLanding::Tracks;
                     } else {
                         state.prev_in_list(items.items.len());
@@ -338,31 +345,31 @@ impl Landing {
 
     pub async fn right(&mut self) -> Result<()> {
         match self {
-            Landing::Playlist{ pages, state, .. } => {
+            Landing::Playlist{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_next().await {
                     pages.next().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Album{ pages, state, .. } => {
+            Landing::Album{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_next().await {
                     pages.next().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Show{ pages, state, .. } => {
+            Landing::Show{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_next().await {
                     pages.next().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Audiobook{ pages, state, .. } => {
+            Landing::Audiobook{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_next().await {
                     pages.next().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Artist{state, section: ArtistLanding::Albums, albums, ..} => if albums.items.lock().unwrap().is_some() && albums.has_next().await {
+            Landing::Artist{ state, section: ArtistLanding::Albums, albums, landing_section, .. } if landing_section.is_content() => if albums.items.lock().unwrap().is_some() && albums.has_next().await {
                 albums.next().await?;
                 state.select(Some(0));
             }
@@ -373,31 +380,31 @@ impl Landing {
 
     pub async fn left(&mut self) -> Result<()> {
         match self {
-            Landing::Playlist{ pages, state, .. } => {
+            Landing::Playlist{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
                     pages.prev().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Album{ pages, state, .. } => {
+            Landing::Album{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
                     pages.prev().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Show{ pages, state, .. } => {
+            Landing::Show{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
                     pages.prev().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Audiobook{ pages, state, .. } => {
+            Landing::Audiobook{ pages, state, section, .. } if section.is_content() => {
                 if pages.items.lock().unwrap().is_some() && pages.has_prev().await {
                     pages.prev().await?;
                     state.select(Some(0));
                 }
             },
-            Landing::Artist{state, section: ArtistLanding::Albums, albums, ..} => if albums.items.lock().unwrap().is_some() && albums.has_prev().await {
+            Landing::Artist{state, section: ArtistLanding::Albums, albums, landing_section, ..} if landing_section.is_content() => if albums.items.lock().unwrap().is_some() && albums.has_prev().await {
                 albums.prev().await?;
                 state.select(Some(0));
             }
@@ -507,7 +514,7 @@ impl Landing {
                     LandingSection::Content => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                         let index = state.selected().unwrap_or(0);
                         let mut actions = vec![
-                            (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), Some(items.offset + index), 0)), ActionLabel::Play)
+                            (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
                         ];
                         actions.extend(match items.items.get(index) {
                             Some(PlaylistItemInfo { item: Item::Track(t), .. }) => t.into_ui_actions(false),
@@ -519,7 +526,7 @@ impl Landing {
                         None
                     },
                     LandingSection::Context => Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), None, 0)), ActionLabel::Play)
+                        (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), None, 0)), action_label::PLAY)
                     ])
                 };
             },
@@ -530,7 +537,7 @@ impl Landing {
                         let index = state.selected().unwrap_or(0);
                         items.items.get(index).map(|t| {
                             let mut actions = vec![
-                                (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), Some(items.offset + index), 0)), ActionLabel::Play)
+                                (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
                             ];
                             actions.extend(t.into_ui_actions(false));
                             actions
@@ -539,7 +546,7 @@ impl Landing {
                         None
                     },
                     LandingSection::Context => Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), None, 0)), ActionLabel::Play)
+                        (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), None, 0)), action_label::PLAY)
                     ]),
                 };
             },
@@ -549,7 +556,7 @@ impl Landing {
                         let index = state.selected().unwrap_or(0);
                         items.items.get(index).map(|t| {
                             let mut actions = vec![
-                                (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), Some(items.offset + index), 0)), ActionLabel::Play)
+                                (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
                             ];
                             actions.extend(t.into_ui_actions(false));
                             actions
@@ -558,7 +565,7 @@ impl Landing {
                         None
                     },
                     LandingSection::Context => Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), None, 0)), ActionLabel::Play)
+                        (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), None, 0)), action_label::PLAY)
                     ])
                 }
             },
@@ -568,7 +575,7 @@ impl Landing {
                         let index = state.selected().unwrap_or(0);
                         items.items.get(index).map(|t| {
                             let mut actions = vec![
-                                (key!(Enter), Action::PlayContext(Play::show(audiobook.id.clone(), Some(items.offset + index), 0)), ActionLabel::Play)
+                                (key!(Enter), Action::PlayContext(Play::show(audiobook.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
                             ];
                             actions.extend(t.into_ui_actions(false));
                             actions
@@ -577,7 +584,7 @@ impl Landing {
                         None
                     },
                     LandingSection::Context => Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::show(audiobook.id.clone(), None, 0)), ActionLabel::Play)
+                        (key!(Enter), Action::PlayContext(Play::show(audiobook.id.clone(), None, 0)), action_label::PLAY)
                     ])
                 }
             },
@@ -586,21 +593,41 @@ impl Landing {
                     LandingSection::Content => match section {
                         ArtistLanding::Albums => if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
                             let index = state.selected().unwrap_or(0);
-                            items.items.get(index).map(|t| t.into_ui_actions(false))
+                            return items.items.get(index).map(|t| t.into_ui_actions(false))
                         } else {
                             None
                         },
                         ArtistLanding::Tracks => {
                             let index = state.selected().unwrap_or(0);
-                            return top_tracks.get(index).map(|t| t.into_ui_actions(false))
+                            let tt = top_tracks.clone();
+                            return top_tracks.lock().unwrap().get(index).map(|t| {
+                                let mut actions = vec![
+                                    (key!(Enter), Action::Play(t.as_ref().uri.clone()), action_label::PLAY)
+                                ];
+                                actions.extend(t.into_ui_actions(false, move |saved| {
+                                    tt.lock().unwrap()[index].saved = saved;
+                                    Ok(())
+                                }));
+                                actions
+                            })
                         },
                     },
-                    LandingSection::Context => Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::artist(artist.id.clone())), ActionLabel::Play),
-                        // TODO: Need to know if already saved: Use save or remove depending on
-                        // state
-                        (key!('f'), Action::Save(artist.uri.clone()), ActionLabel::Save),
-                    ])
+                    LandingSection::Context => {
+                        let a = artist.clone();
+                        let update_saved = move |saved| {
+                            a.lock().unwrap().saved = saved;
+                            Ok(())
+                        };
+                        let artist = artist.lock().unwrap();
+                        Some(vec![
+                            (key!(Enter), Action::PlayContext(Play::artist(artist.as_ref().id.clone())), action_label::PLAY),
+                            if artist.saved {
+                                (key!('r'), Action::remove(artist.as_ref().uri.clone(), update_saved), action_label::REMOVE)
+                            } else {
+                                (key!('f'), Action::save(artist.as_ref().uri.clone(), update_saved), action_label::SAVE)
+                            },
+                        ])
+                    }
                 }
             },
             _ => {},

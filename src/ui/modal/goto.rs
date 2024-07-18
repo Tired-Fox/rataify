@@ -1,7 +1,7 @@
 use crossterm::event::KeyEvent;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
-use crate::ui::action::GoTo;
+use crate::state::actions::GoTo;
 
 use super::{render_modal, KeyToString};
 

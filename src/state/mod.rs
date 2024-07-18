@@ -13,6 +13,8 @@ use self::playback::Playback;
 pub mod modal;
 pub mod window;
 pub mod playback;
+pub mod wrappers;
+pub mod actions;
 
 pub trait IterCollection {
     fn next_in_list(&mut self, len: usize);

@@ -1,11 +1,10 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Constraint, Layout, Margin, Rect},
+    layout::{Constraint, Layout, Margin, Rect},
     style::{Style, Stylize},
-    symbols::border,
     text::Line,
     widgets::{
-        block::{Position, Title}, Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
+        Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
 use tupy::api::response::{Artist, ArtistAlbums, Paged, Track};
@@ -15,10 +14,9 @@ use crate::{
         window::{
             landing::{ArtistLanding, Cover, LandingSection},
             Pages,
-        },
-        Loading,
+        }, wrappers::Saved, Loading
     },
-    ui::{format_track, PaginationProgress, COLORS},
+    ui::{format_track_saved, PaginationProgress, COLORS},
     Locked, Shared,
 };
 
@@ -28,15 +26,15 @@ use super::{render_landing, COMPACT};
 pub fn render(
     area: Rect,
     buf: &mut Buffer,
-    artist: &Artist,
-    top_tracks: &[Track],
+    artist: &Saved<Artist>,
+    top_tracks: &[Saved<Track>],
     albums: &Pages<ArtistAlbums, ArtistAlbums>,
     state: &TableState,
     section: &ArtistLanding,
     landing_section: &LandingSection,
     cover: &Shared<Locked<Loading<Cover>>>,
 ) {
-    let title = format!("[Artist: {}]", artist.name);
+    let title = format!("[Artist: {}]", artist.as_ref().name);
     let (under, main) = render_landing(
         area,
         buf,
@@ -44,7 +42,7 @@ pub fn render(
         cover.clone(),
     );
     
-    let followers = artist.followers.total.to_string()
+    let followers = artist.as_ref().followers.total.to_string()
         .as_bytes()
         .rchunks(3)
         .rev()
@@ -56,13 +54,14 @@ pub fn render(
     let info_highlight = if let LandingSection::Context = landing_section { COLORS.highlight } else { Style::default() };
 
     let info = [
-        if under.height <= 3 {
-            Paragraph::new(artist.genres.join(", ")).style(info_highlight)
+        Paragraph::new(Line::from(if artist.saved { "♥" } else { "" }).centered().style(COLORS.like)),
+        if under.height <= 4 {
+            Paragraph::new(artist.as_ref().genres.join(", ")).style(info_highlight)
         } else {
-            Paragraph::new(artist.genres.join(", ")).style(info_highlight).wrap(Wrap { trim: true })
+            Paragraph::new(artist.as_ref().genres.join(", ")).style(info_highlight).wrap(Wrap { trim: true })
         },
         Paragraph::new(format!("{followers} Followers")).style(info_highlight),
-        Paragraph::new(format!("Popularity {}%", artist.popularity)).style(info_highlight),
+        Paragraph::new(format!("Popularity {}%", artist.as_ref().popularity)).style(info_highlight),
     ];
 
     if under.height <= info.len() as u16 {
@@ -73,8 +72,8 @@ pub fn render(
             (&info[i]).render(info_vert[i], buf);
         }
     } else {
-        let mut constraints = vec![Constraint::Fill(1)];
-        constraints.extend(vec![Constraint::Length(1); info.len() - 1]);
+        let mut constraints = vec![Constraint::Length(1), Constraint::Fill(1)];
+        constraints.extend(vec![Constraint::Length(1); info.len() - 2]);
         let info_vert = Layout::vertical(constraints).split(under);
 
         (&info[0]).render(info_vert[0], buf);
@@ -96,24 +95,28 @@ pub fn render(
     // RENDER ARTIST'S TOP TRACKS
     let table_top_tracks = top_tracks
         .iter()
-        .map(format_track)
+        .map(|v| format_track_saved(v.as_ref(), v.saved))
         .collect::<Table>()
         .widths([
+            Constraint::Length(1),
             Constraint::Length(8),
             Constraint::Length(1),
             Constraint::Fill(1),
             Constraint::Fill(2),
         ])
-        .highlight_style(COLORS.highlight);
+        .highlight_style(if landing_section.is_content() && section.is_tracks() { COLORS.highlight } else { Style::default() });
 
-    match section {
-        ArtistLanding::Tracks => {
-            StatefulWidget::render(table_top_tracks, vert[0], buf, &mut state.clone());
+        match section {
+            ArtistLanding::Tracks => {
+                StatefulWidget::render(table_top_tracks, vert[0], buf, &mut state.clone());
+            }
+            ArtistLanding::Albums => {
+                let mut temp_state = TableState::default();
+                temp_state.select(Some(top_tracks.len() - 1));
+                StatefulWidget::render(table_top_tracks, vert[0], buf, &mut temp_state);
+            }
         }
-        ArtistLanding::Albums => {
-            Widget::render(table_top_tracks, vert[0], buf);
-        }
-    }
+    
 
     // RENDER ALBUMS
     match albums.items.lock().unwrap().as_ref() {

@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Alignment, Constraint},
-    style::{Color, Modifier, Style},
+    style::Style,
     symbols::border,
     widgets::{block::{Position, Title}, Block, Padding, Paragraph, StatefulWidget, Table, Widget},
 };
@@ -56,7 +56,7 @@ impl StatefulWidget for &mut QueueState {
                 //    .widths([Constraint::Length(10); 3]);
                 // TODO: Handle rendering in scrollable area ???
                 
-                let max_name = q.items.iter().map(|i| match &i.item {
+                let max_name = q.items.iter().map(|i| match &i.as_ref() {
                     Item::Track(t) => t.name.len(),
                     Item::Episode(e) => e.name.len() + if e.resume_point.fully_played { 2 } else { 0 },
                 }).max().unwrap_or(0);
@@ -64,7 +64,7 @@ impl StatefulWidget for &mut QueueState {
                 let table = q
                     .items
                     .iter()
-                    .map(|item|  match &item.item {
+                    .map(|item|  match item.as_ref() {
                         // TODO: Format each line for specific item type
                         Item::Track(t) => format_track_saved(&t, item.saved),
                         Item::Episode(e) => format_episode_saved(&e, item.saved),

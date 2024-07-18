@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io::stderr};
 
 use color_eyre::{eyre::eyre, Result};
-use crossterm::event::{KeyCode, KeyEvent, MouseEvent};
+use crossterm::event::{KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
 use ratatui::{
     backend::CrosstermBackend,
@@ -18,7 +18,7 @@ use tupy::{
 };
 
 use crate::{
-    errors::install_hooks, key, spotify_util::listen_for_authentication_code, state::{modal::{ActionState, AddToPlaylistState, ArtistsState, DevicesState}, playback::Playback, window::{Pages, landing::Landing, queue::Queue}, Countdown, Modal, State, Viewport, Window}, tui, ui::{self, GoTo, IntoActions}
+    errors::install_hooks, key, spotify_util::listen_for_authentication_code, state::{actions::{IntoActions, GoTo}, modal::{ActionState, AddToPlaylistState, ArtistsState, DevicesState}, playback::Playback, window::{Pages, landing::Landing, queue::Queue}, Countdown, Modal, State, Viewport, Window}, tui
 };
 
 static FPS: usize = 24;
@@ -94,6 +94,7 @@ impl App {
             scopes::USER_READ_PLAYBACK_POSITION,
             scopes::PLAYLIST_READ_PRIVATE,
             scopes::PLAYLIST_MODIFY_PUBLIC,
+            scopes::PLAYLIST_MODIFY_PRIVATE,
         ])
         .expect("Failed to get TUPY_CLIENT_ID and TUPY_REDIRECT_URI environment variables.");
 

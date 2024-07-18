@@ -13,7 +13,8 @@ use std::{
 
 pub use auth::{OAuth, Token};
 use flow::AuthFlow;
-use reqwest::{StatusCode, Method, header::{HeaderName, HeaderValue}};
+use reqwest::{StatusCode, header::{HeaderName, HeaderValue}};
+pub use reqwest::Method;
 
 pub use public::PublicApi;
 use serde::{Deserialize, Deserializer};
@@ -26,7 +27,7 @@ pub(crate) static API_BASE_URL: &str = "https://api.spotify.com/v1";
 pub type DefaultResponse = HashMap<String, serde_json::Value>;
 
 /// Wrapper to build and send spotify requests using `reqwest`
-pub(crate) struct SpotifyRequest<B: Into<reqwest::Body>> {
+pub struct SpotifyRequest<B: Into<reqwest::Body>> {
     pub method: Method,
     pub url: String,
     pub headers: HashMap<HeaderName, String>,

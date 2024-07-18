@@ -105,6 +105,15 @@ impl<T> Loading<T> {
             Self::Loading => Loading::Loading,
         }
     }
+
+    #[inline]
+    pub fn as_mut(&mut self) -> Loading<&mut T> {
+        match *self {
+            Self::Some(ref mut t) => Loading::Some(t),
+            Self::None => Loading::None,
+            Self::Loading => Loading::Loading,
+        }
+    }
 }
 
 impl<T> From<Option<T>> for Loading<T> {

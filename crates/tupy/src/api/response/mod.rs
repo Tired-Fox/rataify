@@ -234,6 +234,10 @@ where
         }
     }
 
+    pub fn flow(&self) -> &F {
+        &self.flow
+    }
+
     pub fn page(&self) -> usize {
         self.offset.max(0) as usize + 1
     }

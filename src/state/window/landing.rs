@@ -4,9 +4,9 @@ use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, widgets::TableState};
 use ratatui_image::{picker::Picker, protocol::Protocol, Resize};
 use strum::EnumCount;
-use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, Track}, PublicApi, Uri, UserApi};
+use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, SimplifiedAlbum, Track}, PublicApi, Uri, UserApi};
 
-use super::Pages;
+use super::{MappedPages, Pages};
 use crate::{key, state::{wrappers::{Saved, GetUri}, IterCollection, Loading}, state::actions::{Action, action_label, IntoActions}, Locked, Shared};
 
 #[derive(Default, Debug, Clone, Copy, strum_macros::EnumIs)]
@@ -36,7 +36,7 @@ pub enum Landing {
         cover: Shared<Locked<Loading<Cover>>>,
         artist: Shared<Locked<Saved<Artist>>>,
         top_tracks: Shared<Locked<Vec<Saved<Track>>>>,
-        albums: Pages<ArtistAlbums, ArtistAlbums>,
+        albums: MappedPages<Vec<Saved<SimplifiedAlbum>>, ArtistAlbums, ArtistAlbums>,
 
         section: ArtistLanding,
         state: TableState,
@@ -240,7 +240,18 @@ impl Landing {
     }
 
     pub async fn artist(api: &Pkce, uri: Uri) -> Result<Self> {
-        let pages = Pages::new(api.artist_albums(uri.id(), None, &[IncludeGroup::Single, IncludeGroup::Album, IncludeGroup::AppearsOn])?);
+        let pages = MappedPages::new(
+            api.artist_albums(uri.id(), None, &[IncludeGroup::Single, IncludeGroup::Album, IncludeGroup::AppearsOn])?,
+            |data, api| Box::pin(async move {
+                Ok(match data {
+                    Some(data) => {
+                        let checked = api.check_saved_albums(data.items.iter().map(|v| v.id.clone())).await?;
+                        Some(data.items.into_iter().zip(checked.into_iter()).map(|(d, s)| Saved::new(s, d)).collect())
+                    },
+                    None => None
+                })
+            })
+        );
 
         let p = pages.clone();
         tokio::spawn(async move {
@@ -305,7 +316,7 @@ impl Landing {
                     }
                 },
                 ArtistLanding::Albums => if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
-                    state.next_in_list(items.items.len());
+                    state.next_in_list(items.len());
                 }
             },
             _ => {},
@@ -335,7 +346,7 @@ impl Landing {
                         state.select(Some(top_tracks.lock().unwrap().len() - 1));
                         *section = ArtistLanding::Tracks;
                     } else {
-                        state.prev_in_list(items.items.len());
+                        state.prev_in_list(items.len());
                     }
                 },
             },
@@ -591,12 +602,20 @@ impl Landing {
             Landing::Artist{state, section, top_tracks, albums, landing_section, artist, ..} => {
                 return match landing_section {
                     LandingSection::Content => match section {
-                        ArtistLanding::Albums => if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
-                            let index = state.selected().unwrap_or(0);
-                            return items.items.get(index).map(|t| t.into_ui_actions(false))
-                        } else {
-                            None
-                        },
+                        ArtistLanding::Albums => {
+                            let i = albums.items.clone();
+                            if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
+                                let index = state.selected().unwrap_or(0);
+                                items.get(index).map(|t| t.into_ui_actions(false, move |saved| {
+                                    if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                        items[index].saved = saved;
+                                    } 
+                                    Ok(())
+                                }))
+                            } else {
+                                None
+                            }
+                        }
                         ArtistLanding::Tracks => {
                             let index = state.selected().unwrap_or(0);
                             let tt = top_tracks.clone();

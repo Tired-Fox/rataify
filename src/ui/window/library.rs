@@ -130,7 +130,7 @@ impl Widget for &LibraryState {
 
         let layout = Layout::vertical([
             Constraint::Length(11),
-            Constraint::Length(2),
+            Constraint::Length(1),
             Constraint::Fill(1),
         ])
         .split(block.inner(area));

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crossterm::event::KeyEvent;
-use tupy::api::{response::{Episode, Track}, Uri};
+use tupy::api::{response::{Episode, Track, SimplifiedAlbum}, Uri};
 
 use crate::{key, state::actions::{Action, action_label, IntoActions}};
 
@@ -15,6 +15,11 @@ impl GetUri for Track {
     }
 }
 impl GetUri for Episode {
+    fn get_uri(&self) -> Uri {
+        self.uri.clone()
+    }
+}
+impl GetUri for SimplifiedAlbum {
     fn get_uri(&self) -> Uri {
         self.uri.clone()
     }

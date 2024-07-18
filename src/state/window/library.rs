@@ -7,10 +7,10 @@ use strum::EnumCount;
 use color_eyre::Result;
 use color_eyre::eyre::Error;
 use ratatui::widgets::TableState;
-use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType, Play}, response::{Paged, FollowedArtists, SavedAudiobooks, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
+use tupy::{api::{flow::{AuthFlow, Pkce}, request::{Query, SearchType, Play}, response::{Paged, FollowedArtists, SavedAudiobooks, SimplifiedPlaylist, SavedAlbums, Paginated, PagedPlaylists, SavedShows}, PublicApi, UserApi, Uri}, Pagination};
 
 use crate::key;
-use crate::{state::{IterCollection, Loading, actions::{action_label, Action, GoTo}}, PAGE_SIZE};
+use crate::{state::{IterCollection, Loading, actions::{action_label, Action, GoTo}, wrappers::Saved}, PAGE_SIZE};
 use super::Pages;
 
 static USER_PLAYLISTS_FILENAME: &str = "user.playlists.cache";
@@ -430,52 +430,97 @@ impl LibraryState {
                 },
             },
             Selection::Results => match self.selected_tab {
-                LibraryTab::Playlists => if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
-                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
-                    return Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::playlist(item.uri.clone(), None, 0)), action_label::PLAY),
-                        (key!('R' + SHIFT), Action::remove(item.uri.clone(), |saved| Ok(())), action_label::REMOVE),
-                        // TODO: Action to add entire playlist to queue
-                        (key!('C' + SHIFT), Action::GoTo(GoTo::Playlist(item.uri.clone())), action_label::GO_TO_PLAYLIST),
-                    ])
+                LibraryTab::Playlists => {
+                    let i = self.playlists.items.clone();
+                    if let Some(Loading::Some(items)) = self.playlists.items.lock().unwrap().as_ref() {
+                        let index = self.result_state.selected().unwrap_or(0);
+                        let item = items.items.get(index)?;
+                        return Some(vec![
+                            (key!(Enter), Action::PlayContext(Play::playlist(item.uri.clone(), None, 0)), action_label::PLAY),
+                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items.items.remove(index);
+                                }
+                                Ok(())
+                            }), action_label::REMOVE),
+                            // TODO: Action to add entire playlist to queue
+                            (key!('C' + SHIFT), Action::GoTo(GoTo::Playlist(item.uri.clone())), action_label::GO_TO_PLAYLIST),
+                        ])
+                    }
                 },
-                LibraryTab::Artists => if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
-                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
-                    return Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::artist(item.uri.clone())), action_label::PLAY),
-                        (key!('R' + SHIFT), Action::remove(item.uri.clone(), |saved| Ok(())), action_label::REMOVE),
-                        (key!('C' + SHIFT), Action::GoTo(GoTo::Artist(item.uri.clone())), action_label::GO_TO_ARTIST),
-                    ])
+                LibraryTab::Artists => {
+                    let i = self.artists.items.clone();
+                    if let Some(Loading::Some(items)) = self.artists.items.lock().unwrap().as_ref() {
+                        let index = self.result_state.selected().unwrap_or(0);
+                        let item = items.items.get(index)?;
+                        return Some(vec![
+                            (key!(Enter), Action::PlayContext(Play::artist(item.uri.clone())), action_label::PLAY),
+                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items.items.remove(index);
+                                }
+                                Ok(())
+                            }), action_label::REMOVE),
+                            (key!('C' + SHIFT), Action::GoTo(GoTo::Artist(item.uri.clone())), action_label::GO_TO_ARTIST),
+                        ])
+                    }
                 },
-                LibraryTab::Albums => if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
-                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
-                    return Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::album(item.album.uri.clone(), None, 0)), action_label::PLAY),
-                        (key!('R' + SHIFT), Action::remove(item.album.uri.clone(), |saved| Ok(())), action_label::REMOVE),
-                        (key!('C' + SHIFT), Action::GoTo(GoTo::Album(item.album.uri.clone())), action_label::GO_TO_ALBUM),
-                        if item.album.artists.len() > 1 {
-                            (key!('A' + SHIFT), Action::GoTo(GoTo::Artists(item.album.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>())), action_label::SELECT_ARTIST)
-                        } else {
-                            (key!('A' + SHIFT), Action::GoTo(GoTo::Artist(item.album.artists[0].uri.clone())), action_label::GO_TO_ARTIST)
-                        }
-                    ])
+                LibraryTab::Albums => {
+                    let i = self.albums.items.clone();
+                    if let Some(Loading::Some(items)) = self.albums.items.lock().unwrap().as_ref() {
+                        let index = self.result_state.selected().unwrap_or_default();
+                        let item = items.items.get(index)?;
+                        return Some(vec![
+                            (key!(Enter), Action::PlayContext(Play::album(item.album.uri.clone(), None, 0)), action_label::PLAY),
+                            (key!('R' + SHIFT), Action::remove(item.album.uri.clone(), move |_| {
+                                    if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                        items.items.remove(index);
+                                    }
+                                    Ok(())
+                                }), action_label::REMOVE),
+                            (key!('C' + SHIFT), Action::GoTo(GoTo::Album(item.album.uri.clone())), action_label::GO_TO_ALBUM),
+                            if item.album.artists.len() > 1 {
+                                (key!('A' + SHIFT), Action::GoTo(GoTo::Artists(item.album.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>())), action_label::SELECT_ARTIST)
+                            } else {
+                                (key!('A' + SHIFT), Action::GoTo(GoTo::Artist(item.album.artists[0].uri.clone())), action_label::GO_TO_ARTIST)
+                            }
+                        ])
+                    }
                 },
-                LibraryTab::Shows => if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
-                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
-                    return Some(vec![
-                        (key!(Enter), Action::PlayContext(Play::show(item.show.uri.clone(), None, 0)), action_label::PLAY),
-                        (key!('R' + SHIFT), Action::remove(item.show.uri.clone(), |saved| Ok(())), action_label::REMOVE),
-                        (key!('C' + SHIFT), Action::GoTo(GoTo::Show(item.show.uri.clone())), action_label::GO_TO_SHOW),
-                    ])
+                LibraryTab::Shows => {
+                    let i = self.shows.items.clone();
+                    if let Some(Loading::Some(items)) = self.shows.items.lock().unwrap().as_ref() {
+                        let index = self.result_state.selected().unwrap_or_default();
+                        let item = items.items.get(index)?;
+                        return Some(vec![
+                            (key!(Enter), Action::PlayContext(Play::show(item.show.uri.clone(), None, 0)), action_label::PLAY),
+                            (key!('R' + SHIFT), Action::remove(item.show.uri.clone(), move |_| {
+                                        if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                            items.items.remove(index);
+                                        }
+                                        Ok(())
+                                    }), action_label::REMOVE),
+                            (key!('C' + SHIFT), Action::GoTo(GoTo::Show(item.show.uri.clone())), action_label::GO_TO_SHOW),
+                        ])
+                    }
                 },
-                LibraryTab::Audiobooks => if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
-                    let item = items.items.get(self.result_state.selected().unwrap_or(0))?;
-                    return Some(vec![
-                        // TODO: Double check this action
-                        (key!(Enter), Action::PlayContext(Play::show(item.uri.clone(), None, 0)), action_label::PLAY),
-                        (key!('R' + SHIFT), Action::remove(item.uri.clone(), |saved| Ok(())), action_label::REMOVE),
-                        (key!('C' + SHIFT), Action::GoTo(GoTo::Audiobook(item.uri.clone())), action_label::GO_TO_AUDIOBOOK)
-                    ])
+                LibraryTab::Audiobooks => {
+                    let i = self.audiobooks.items.clone();
+                    if let Some(Loading::Some(items)) = self.audiobooks.items.lock().unwrap().as_ref() {
+                        let index = self.result_state.selected().unwrap_or_default();
+                        let item = items.items.get(index)?;
+                        return Some(vec![
+                            // TODO: Double check this action
+                            (key!(Enter), Action::PlayContext(Play::show(item.uri.clone(), None, 0)), action_label::PLAY),
+                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
+                                            if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                                items.items.remove(index);
+                                            }
+                                            Ok(())
+                                        }), action_label::REMOVE),
+                            (key!('C' + SHIFT), Action::GoTo(GoTo::Audiobook(item.uri.clone())), action_label::GO_TO_AUDIOBOOK)
+                        ])
+                    }
                 }
             }
         }

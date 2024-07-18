@@ -7,13 +7,13 @@ use ratatui::{
         Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
-use tupy::api::response::{Artist, ArtistAlbums, Paged, Track};
+use tupy::api::response::{Artist, ArtistAlbums, Paged, SimplifiedAlbum, Track};
 
 use crate::{
     state::{
         window::{
             landing::{ArtistLanding, Cover, LandingSection},
-            Pages,
+            MappedPages,
         }, wrappers::Saved, Loading
     },
     ui::{format_track_saved, PaginationProgress, COLORS},
@@ -28,7 +28,7 @@ pub fn render(
     buf: &mut Buffer,
     artist: &Saved<Artist>,
     top_tracks: &[Saved<Track>],
-    albums: &Pages<ArtistAlbums, ArtistAlbums>,
+    albums: &MappedPages<Vec<Saved<SimplifiedAlbum>>, ArtistAlbums, ArtistAlbums>,
     state: &TableState,
     section: &ArtistLanding,
     landing_section: &LandingSection,
@@ -98,7 +98,7 @@ pub fn render(
         .map(|v| format_track_saved(v.as_ref(), v.saved))
         .collect::<Table>()
         .widths([
-            Constraint::Length(1),
+            Constraint::Length(2),
             Constraint::Length(8),
             Constraint::Length(1),
             Constraint::Fill(1),
@@ -140,18 +140,19 @@ pub fn render(
                 .render(vert, buf);
         }
         Some(Loading::Some(data)) => {
-            let scrollable = data.limit() >= vert[1].height as usize;
+            let (page, max_page, limit) = albums.pages.lock().unwrap().clone();
+            let scrollable = limit >= vert[1].height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
             let table_albums = data
-                .items
                 .iter()
                 .map(|a| {
                     Row::new(vec![
-                        Cell::from(a.name.clone()).style(COLORS.context),
-                        Cell::from(format!("{:?}", a.album_type)),
+                        Cell::from(if a.saved { "♥" } else { "" }).style(COLORS.like),
+                        Cell::from(a.as_ref().name.clone()).style(COLORS.context),
+                        Cell::from(format!("{:?}", a.as_ref().album_type)),
                         Cell::from(
-                            a.artists
+                            a.as_ref().artists
                                 .iter()
                                 .map(|a| a.name.clone())
                                 .collect::<Vec<_>>()
@@ -163,6 +164,7 @@ pub fn render(
                 .collect::<Table>()
                 .block(block)
                 .widths([
+                    Constraint::Length(2),
                     Constraint::Fill(3),
                     Constraint::Length(11),
                     Constraint::Fill(1),
@@ -170,8 +172,8 @@ pub fn render(
                 .highlight_style(COLORS.highlight);
 
             PaginationProgress {
-                current: data.page(),
-                total: data.max_page(),
+                current: page,
+                total: max_page,
             }
             .render(vert[1], buf);
 
@@ -180,16 +182,16 @@ pub fn render(
                 LandingSection::Content => match section {
                     ArtistLanding::Tracks => {
                         Widget::render(table_albums, vert[1], buf);
-                        ScrollbarState::new(data.items.len()).position(0)
+                        ScrollbarState::new(data.len()).position(0)
                     }
                     ArtistLanding::Albums => {
                         StatefulWidget::render(table_albums, vert[1], buf, &mut state.clone());
-                        ScrollbarState::new(data.items.len()).position(state.selected().unwrap_or(0))
+                        ScrollbarState::new(data.len()).position(state.selected().unwrap_or(0))
                     }
                 },
                 LandingSection::Context => {
                     Widget::render(table_albums, vert[1], buf);
-                    ScrollbarState::new(data.items.len()).position(0)
+                    ScrollbarState::new(data.len()).position(0)
                 }
             };
 

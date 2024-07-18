@@ -63,20 +63,20 @@ impl Widget for &mut Landing {
 fn render(self, area: Rect, buf: &mut Buffer) {
         match self {
             Landing::None => {},
-            Landing::Playlist{ pages, state, playlist, cover } => {
-                playlist::render(area, buf, playlist, pages, state, cover);
+            Landing::Playlist{ pages, state, playlist, cover, section } => {
+                playlist::render(area, buf, playlist, pages, state, section, cover);
             },
-            Landing::Album{ pages, state, album, cover } => {
-                album::render(area, buf, album, pages, state, cover);
+            Landing::Album{ pages, state, album, cover, section } => {
+                album::render(area, buf, album, pages, state, section, cover);
             },
-            Landing::Show{ pages, state, show, cover } => {
-                show::render(area, buf, show, pages, state, cover);
+            Landing::Show{ pages, state, show, cover, section } => {
+                show::render(area, buf, show, pages, state, section, cover);
             },
-            Landing::Audiobook{ pages, state, audiobook, cover } => {
-                audiobook::render(area, buf, audiobook, pages, state, cover);
+            Landing::Audiobook{ pages, state, audiobook, cover, section } => {
+                audiobook::render(area, buf, audiobook, pages, state, section, cover);
             },
-            Landing::Artist { top_tracks, state, section, albums, artist, cover } => {
-                artist::render(area, buf, artist, top_tracks, albums, state, section, cover);
+            Landing::Artist { top_tracks, state, section, albums, artist, cover, landing_section } => {
+                artist::render(area, buf, artist, top_tracks, albums, state, section, landing_section, cover);
             }
         }
     }

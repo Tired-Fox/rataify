@@ -1,12 +1,10 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Rect},
-    style::Stylize,
+    style::{Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Paragraph, Wrap,
-        Block, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-        Table, TableState, Widget,
+        Block, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
 use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
@@ -14,12 +12,12 @@ use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
 use crate::{
     state::{
         window::{
-            landing::Cover,
+            landing::{Cover, LandingSection},
             Pages,
         },
         Loading,
     },
-    ui::{format_track, format_episode, PaginationProgress, COLORS},
+    ui::{format_episode, format_track, PaginationProgress, COLORS},
     Locked, Shared,
 };
 
@@ -32,6 +30,7 @@ pub fn render(
     playlist: &Playlist,
     pages: &Pages<PlaylistItems, PlaylistItems>,
     state: &TableState,
+    section: &LandingSection,
     cover: &mut Shared<Locked<Loading<Cover>>>,
 ) {
     let title = format!("[Playlist: {}]", playlist.name);
@@ -50,16 +49,18 @@ pub fn render(
         }
     });
 
+    let info_highlight = if let LandingSection::Context = section { COLORS.highlight } else { Style::default() };
+
     let info = [
         if under.height <= 3 {
-            Paragraph::new(description)
+            Paragraph::new(description).style(info_highlight)
         } else {
-            Paragraph::new(description).wrap(Wrap { trim: true })
+            Paragraph::new(description).style(info_highlight).wrap(Wrap { trim: true })
         },
-        Paragraph::new(playlist.owner.name.clone().unwrap_or(playlist.owner.id.clone())).bold(),
+        Paragraph::new(playlist.owner.name.clone().unwrap_or(playlist.owner.id.clone())).style(info_highlight).bold(),
         Paragraph::new(match playlist.public.unwrap_or_default() {
-            true => Span::from("Public").cyan(),
-            false => Span::from("Private").magenta(),
+            true => Span::from("Public").style(info_highlight).cyan(),
+            false => Span::from("Private").style(info_highlight).magenta(),
         }),
     ];
 
@@ -122,7 +123,11 @@ pub fn render(
                     Constraint::Fill(2),
                 ])
                 .highlight_style(COLORS.highlight);
-            StatefulWidget::render(table_albums, main, buf, &mut state.clone());
+
+            match section {
+                LandingSection::Content => StatefulWidget::render(table_albums, main, buf, &mut state.clone()),
+                LandingSection::Context => Widget::render(table_albums, main, buf)
+            }
 
             PaginationProgress {
                 current: data.page(),

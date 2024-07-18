@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::{Alignment, Constraint, Direction, Layout, Rect}, symbols::{border, DOT}, text::{Line, Span}, widgets::{block::{Position, Title}, Block, Cell, Row, StatefulWidget, Widget}, style::{Color, Style, Stylize}};
-use tupy::{api::{request::Play, response::{Episode, PlaybackItem, SimplifiedAlbum, SimplifiedChapter, SimplifiedEpisode, SimplifiedTrack, Track}}, Duration};
+use tupy::{api::{request::Play, response::{Context, Episode, PlaybackItem, SimplifiedAlbum, SimplifiedChapter, SimplifiedEpisode, SimplifiedTrack, Track}}, Duration};
 
 pub mod modal;
 pub mod window;
@@ -9,7 +9,7 @@ pub mod playback;
 pub mod action;
 pub mod components;
 
-pub use action::{Action, GoTo};
+pub use action::{ActionLabel, Action, GoTo};
 
 pub use playback::NoPlayback;
 
@@ -158,14 +158,14 @@ fn format_episode_saved<'l>(episode: &Episode, saved: bool) -> Row<'l> {
 }
 
 pub trait IntoActions {
-    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)>;
+    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action, &'static str)>;
 }
 
 impl IntoActions for &SimplifiedAlbum {
-    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
-            (key!(Enter), Action::PlayContext(Play::album(self.uri.clone(), None, 0))),
-            (key!('C'), Action::GoTo(GoTo::Album(self.uri.clone()))),
+            (key!(Enter), Action::PlayContext(Play::album(self.uri.clone(), None, 0)), ActionLabel::Play),
+            (key!('C'), Action::GoTo(GoTo::Album(self.uri.clone())), ActionLabel::GoToAlbum),
         ];
 
         if self.artists.len() > 1 {
@@ -173,7 +173,7 @@ impl IntoActions for &SimplifiedAlbum {
                 GoTo::Artists(
                     self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
                 )
-            )))
+            ), ActionLabel::SelectArtist))
         }
 
         actions
@@ -181,21 +181,20 @@ impl IntoActions for &SimplifiedAlbum {
 }
 
 impl IntoActions for &Track {
-    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
-            (key!(Enter),Action::Play(self.uri.clone())),
-            (key!('p'),Action::AddToPlaylist(self.uri.clone())),
-            (key!('b'),Action::AddToQueue(self.uri.clone())),
+            (key!('p'),Action::AddToPlaylist(self.uri.clone()), ActionLabel::AddToPlaylist),
+            (key!('b'),Action::AddToQueue(self.uri.clone()), ActionLabel::AddToQueue),
             if self.artists.len() == 1 {
                 (key!('A'), Action::GoTo(
                     GoTo::Artist(self.artists.first().unwrap().uri.clone())
-                ))
+                ), ActionLabel::GoToArtist)
             } else {
                 (key!('A'), Action::GoTo(
                     GoTo::Artists(
                         self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
                     )
-                ))
+                ), ActionLabel::SelectArtist)
             }
         ];
 
@@ -203,12 +202,14 @@ impl IntoActions for &Track {
             if self.album.total_tracks > 1 {
                 actions.push((
                     key!('c'),
-                    Action::PlayContext(Play::album(self.album.uri.clone(), None, 0))
+                    Action::PlayContext(Play::album(self.album.uri.clone(), None, 0)),
+                    ActionLabel::PlayAlbum
                 ));
             }
             actions.push((
                 key!('C'),
-                Action::GoTo(GoTo::Album(self.album.uri.clone()))
+                Action::GoTo(GoTo::Album(self.album.uri.clone())),
+                ActionLabel::GoToAlbum
             ))
         }
 
@@ -217,21 +218,20 @@ impl IntoActions for &Track {
 }
 
 impl IntoActions for &SimplifiedTrack {
-    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let actions = vec![
-            (key!(Enter), Action::Play(self.uri.clone())),
-            (key!('p'), Action::AddToPlaylist(self.uri.clone())),
-            (key!('b'), Action::AddToQueue(self.uri.clone())),
+            (key!('p'), Action::AddToPlaylist(self.uri.clone()), ActionLabel::AddToPlaylist),
+            (key!('b'), Action::AddToQueue(self.uri.clone()), ActionLabel::AddToQueue),
             if self.artists.len() == 1 {
                 (key!('A'), Action::GoTo(
                     GoTo::Artist(self.artists.first().unwrap().uri.clone())
-                ))
+                ), ActionLabel::GoToArtist)
             } else {
                 (key!('A'), Action::GoTo(
                     GoTo::Artists(
                         self.artists.iter().map(|a| (a.uri.clone(), a.name.clone())).collect::<Vec<_>>()
                     )
-                ))
+                ), ActionLabel::SelectArtist)
             }
         ];
 
@@ -240,21 +240,19 @@ impl IntoActions for &SimplifiedTrack {
 }
 
 impl IntoActions for &SimplifiedEpisode {
-    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         vec![
-            (key!(Enter), Action::Play(self.uri.clone())),
-            (key!('p'), Action::AddToPlaylist(self.uri.clone())),
-            (key!('b'), Action::AddToQueue(self.uri.clone())),
+            (key!('p'), Action::AddToPlaylist(self.uri.clone()), ActionLabel::AddToPlaylist),
+            (key!('b'), Action::AddToQueue(self.uri.clone()), ActionLabel::AddToQueue),
         ]
     }
 }
 
 impl IntoActions for &Episode {
-    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
-            (key!(Enter), Action::Play(self.uri.clone())),
-            (key!('p'), Action::AddToPlaylist(self.uri.clone())),
-            (key!('b'), Action::AddToQueue(self.uri.clone())),
+            (key!('p'), Action::AddToPlaylist(self.uri.clone()), ActionLabel::AddToPlaylist),
+            (key!('b'), Action::AddToQueue(self.uri.clone()), ActionLabel::AddToQueue),
         ];
 
         if context {
@@ -262,12 +260,14 @@ impl IntoActions for &Episode {
                 if show.total_episodes > 1 {
                     actions.push((
                         key!('c'),
-                        Action::PlayContext(Play::show(show.uri.clone(), None, 0))
+                        Action::PlayContext(Play::show(show.uri.clone(), None, 0)),
+                        ActionLabel::PlayShow
                     ));
                 }
                 actions.push((
                     key!('C'),
-                    Action::GoTo(GoTo::Show(show.uri.clone()))
+                    Action::GoTo(GoTo::Show(show.uri.clone())),
+                    ActionLabel::GoToShow
                 ));
             }
         }
@@ -277,34 +277,51 @@ impl IntoActions for &Episode {
 }
 
 impl IntoActions for &SimplifiedChapter {
-    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         vec![
-            (key!(Enter), Action::Play(self.uri.clone())),
-            (key!('p'), Action::AddToPlaylist(self.uri.clone())),
-            (key!('b'), Action::AddToQueue(self.uri.clone())),
+            (key!('p'), Action::AddToPlaylist(self.uri.clone()), ActionLabel::AddToPlaylist),
+            (key!('b'), Action::AddToQueue(self.uri.clone()), ActionLabel::AddToQueue),
         ]
     }
 }
 
 impl IntoActions for &Item {
-    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         match &self.item {
             tupy::api::response::Item::Track(t) => {
                 let mut actions = vec![
-                    (
-                        key!('f'),
-                        if !self.saved { Action::Save(t.uri.clone()) } else { Action::Remove(t.uri.clone()) }
-                    )
+                    if !self.saved {
+                        (
+                            key!('f'),
+                            Action::Save(t.uri.clone()),
+                            ActionLabel::Save
+                        )
+                    } else {
+                        (
+                            key!('r'),
+                            Action::Remove(t.uri.clone()),
+                            ActionLabel::Remove,
+                        )
+                    },
                 ];
                 actions.extend(t.into_ui_actions(context));
                 actions
             },
             tupy::api::response::Item::Episode(e) => {
                 let mut actions = vec![
-                    (
-                        key!('f'),
-                        if !self.saved { Action::Save(e.uri.clone()) } else { Action::Remove(e.uri.clone()) }
-                    )
+                    if !self.saved {
+                        (
+                            key!('f'),
+                            Action::Save(e.uri.clone()),
+                            ActionLabel::Save
+                        )
+                    } else {
+                        (
+                            key!('r'),
+                            Action::Remove(e.uri.clone()),
+                            ActionLabel::Remove,
+                        )
+                    },
                 ];
                 actions.extend(e.into_ui_actions(context));
                 actions
@@ -314,21 +331,30 @@ impl IntoActions for &Item {
 }
 
 impl IntoActions for &PlaybackState {
-    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action)> {
+    fn into_ui_actions(self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         if let Some(pb) = self.playback.as_ref() {
             match &pb.item {
                 PlaybackItem::Track(t) => {
                     let mut actions = vec![
                         // TODO: Wrap the playback fetching on if it is saved. If it has the
                         // functionality then add the action to save/remove it from saved items
-                        
-                        (
-                            key!('f'),
-                            if !pb.saved { Action::Save(t.uri.clone()) } else { Action::Remove(t.uri.clone()) }
-                        ),
+                        if !pb.saved {
+                            (
+                                key!('f'),
+                                Action::Save(t.uri.clone()),
+                                ActionLabel::Save
+                            )
+                        } else {
+                            (
+                                key!('r'),
+                                Action::Remove(t.uri.clone()),
+                                ActionLabel::Remove,
+                            )
+                        },
                         (
                             key!('p'),
-                            Action::AddToPlaylist(t.uri.clone())
+                            Action::AddToPlaylist(t.uri.clone()),
+                            ActionLabel::AddToPlaylist
                         ),
                     ];
 
@@ -336,26 +362,46 @@ impl IntoActions for &PlaybackState {
                         if t.album.total_tracks > 1 {
                             actions.push((
                                 key!('c'),
-                                Action::PlayContext(Play::album(t.album.uri.clone(), None, 0))
+                                Action::PlayContext(Play::album(t.album.uri.clone(), None, 0)),
+                                ActionLabel::PlayAlbum
                             ));
                         }
                         actions.push((
-                            key!('C'),
-                            Action::GoTo(GoTo::Album(t.album.uri.clone()))
+                            key!('A'),
+                            Action::GoTo(GoTo::Album(t.album.uri.clone())),
+                            ActionLabel::GoToAlbum,
                         ));
+                        match pb.context.as_ref() {
+                            Some(Context{ uri, .. }) => {
+                                actions.push((
+                                    key!('C'), Action::GoTo(GoTo::try_from(uri.clone()).unwrap()), ActionLabel::GoToContext
+                                ))
+                            },
+                            None => {}
+                        }
                     }
 
                     actions
                 }
                 PlaybackItem::Episode(e) => {
                     let mut actions = vec![
-                        (
-                            key!('f'),
-                            if !pb.saved { Action::Save(e.uri.clone()) } else { Action::Remove(e.uri.clone()) }
-                        ),
+                        if !pb.saved {
+                            (
+                                key!('f'),
+                                Action::Save(e.uri.clone()),
+                                ActionLabel::Save
+                            )
+                        } else {
+                            (
+                                key!('r'),
+                                Action::Remove(e.uri.clone()),
+                                ActionLabel::Remove,
+                            )
+                        },
                         (
                             key!('p'),
-                            Action::AddToPlaylist(e.uri.clone())
+                            Action::AddToPlaylist(e.uri.clone()),
+                            ActionLabel::AddToPlaylist
                         ),
                     ];
                     if context {
@@ -363,12 +409,14 @@ impl IntoActions for &PlaybackState {
                             if show.total_episodes > 1 {
                                 actions.push((
                                     key!('c'),
-                                    Action::PlayContext(Play::show(show.uri.clone(), None, 0))
+                                    Action::PlayContext(Play::show(show.uri.clone(), None, 0)),
+                                    ActionLabel::PlayShow
                                 ));
                             }
                             actions.push((
                                 key!('C'),
-                                Action::GoTo(GoTo::Show(show.uri.clone()))
+                                Action::GoTo(GoTo::Show(show.uri.clone())),
+                                ActionLabel::GoToShow
                             ));
                         }
                     }

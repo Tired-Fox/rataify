@@ -2,7 +2,7 @@ use crossterm::event::KeyEvent;
 use ratatui::widgets::TableState;
 use tupy::api::response;
 
-use crate::{state::{IterCollection, Loading, playback::Item}, ui::{Action, IntoActions}};
+use crate::{key, state::{playback::Item, IterCollection, Loading}, ui::{Action, ActionLabel, IntoActions}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Queue {
@@ -41,9 +41,15 @@ impl QueueState {
         }
     }
 
-    pub fn select(&self) -> Option<Vec<(KeyEvent, Action)>> {
+    pub fn select(&self) -> Option<Vec<(KeyEvent, Action, &'static str)>> {
         if let Loading::Some(ref q) = self.queue {
-            q.items.get(self.state.selected().unwrap_or(0)).map(|i| i.into_ui_actions(true))
+            q.items.get(self.state.selected().unwrap_or(0)).map(|i| {
+                let mut actions = vec![
+                    (key!(Enter), Action::Play(i.uri()), ActionLabel::Play)
+                ];
+                actions.extend(i.into_ui_actions(true));
+                actions
+            })
         } else {
             None
         }

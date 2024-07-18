@@ -1,12 +1,10 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Rect},
-    style::Stylize,
+    style::{Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Paragraph, Wrap, Row, Cell,
-        Block, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-        Table, TableState, Widget,
+        Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
 use tupy::api::response::{Audiobook, Chapters, Paged};
@@ -14,12 +12,12 @@ use tupy::api::response::{Audiobook, Chapters, Paged};
 use crate::{
     state::{
         window::{
-            landing::Cover,
+            landing::{Cover, LandingSection},
             Pages,
         },
         Loading,
     },
-    ui::{format_duration, PaginationProgress, COLORS, components::OpenInSpotify},
+    ui::{components::OpenInSpotify, format_duration, PaginationProgress, COLORS},
     Locked, Shared,
 };
 
@@ -32,6 +30,7 @@ pub fn render(
     audiobook: &Audiobook,
     pages: &Pages<Chapters, Chapters>,
     state: &TableState,
+    section: &LandingSection,
     cover: &mut Shared<Locked<Loading<Cover>>>,
 ) {
     let title = format!("[Audiobook: {}]", audiobook.name);
@@ -51,8 +50,10 @@ pub fn render(
         }
     });
 
+    let info_highlight = if let LandingSection::Context = section { COLORS.highlight } else { Style::default() };
+
     let info = [
-        Paragraph::new(description).wrap(Wrap { trim: true })
+        Paragraph::new(description).style(info_highlight).wrap(Wrap { trim: true })
     ];
 
     if under.height <= info.len() as u16 {
@@ -125,7 +126,10 @@ pub fn render(
                 .block(block)
                 .highlight_style(COLORS.highlight);
 
-            StatefulWidget::render(table_chapters, main, buf, &mut state.clone());
+            match section {
+                LandingSection::Content => StatefulWidget::render(table_chapters, main, buf, &mut state.clone()),
+                LandingSection::Context => Widget::render(table_chapters, main, buf)
+            }
 
             PaginationProgress {
                 current: data.page(),

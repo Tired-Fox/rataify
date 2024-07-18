@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use tupy::{api::response::{self, Device, PlaybackAction, PlaybackActionScope, PlaybackItem, Repeat}, DateTime, Duration, Local};
+use tupy::{api::{response::{self, Context, Device, PlaybackAction, PlaybackActionScope, PlaybackItem, Repeat}, Uri}, DateTime, Duration, Local};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Playback {
     pub saved: bool,
+    pub context: Option<Context>,
     pub device: Option<Device>,
     pub repeat: Repeat,
     pub shuffle: bool,
@@ -60,6 +61,7 @@ impl From<response::Playback> for Playback {
             is_playing: pb.is_playing,
             item: pb.item,
             actions: pb.actions,
+            context: pb.context,
         }
     }
 }
@@ -75,6 +77,20 @@ impl Item {
         Self {
             item,
             saved,
+        }
+    }
+
+    pub fn id(&self) -> String {
+        match &self.item {
+            response::Item::Track(t) => t.id.clone(),
+            response::Item::Episode(e) => e.id.clone(),
+        }
+    }
+
+    pub fn uri(&self) -> Uri {
+        match &self.item {
+            response::Item::Track(t) => t.uri.clone(),
+            response::Item::Episode(e) => e.uri.clone(),
         }
     }
 }

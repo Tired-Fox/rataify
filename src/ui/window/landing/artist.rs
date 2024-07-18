@@ -1,14 +1,11 @@
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Margin, Rect},
-    style::Stylize,
+    style::{Style, Stylize},
     symbols::border,
     text::Line,
     widgets::{
-        Wrap, Paragraph,
-        block::{Position, Title},
-        Block, Cell, Padding, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-        Table, TableState, Widget,
+        block::{Position, Title}, Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
 use tupy::api::response::{Artist, ArtistAlbums, Paged, Track};
@@ -16,7 +13,7 @@ use tupy::api::response::{Artist, ArtistAlbums, Paged, Track};
 use crate::{
     state::{
         window::{
-            landing::{ArtistLanding, Cover},
+            landing::{ArtistLanding, Cover, LandingSection},
             Pages,
         },
         Loading,
@@ -36,6 +33,7 @@ pub fn render(
     albums: &Pages<ArtistAlbums, ArtistAlbums>,
     state: &TableState,
     section: &ArtistLanding,
+    landing_section: &LandingSection,
     cover: &Shared<Locked<Loading<Cover>>>,
 ) {
     let title = format!("[Artist: {}]", artist.name);
@@ -54,14 +52,17 @@ pub fn render(
         .collect::<Result<Vec<&str>, _>>()
         .unwrap()
         .join(",");
+
+    let info_highlight = if let LandingSection::Context = landing_section { COLORS.highlight } else { Style::default() };
+
     let info = [
         if under.height <= 3 {
-            Paragraph::new(artist.genres.join(", "))
+            Paragraph::new(artist.genres.join(", ")).style(info_highlight)
         } else {
-            Paragraph::new(artist.genres.join(", ")).wrap(Wrap { trim: true })
+            Paragraph::new(artist.genres.join(", ")).style(info_highlight).wrap(Wrap { trim: true })
         },
-        Paragraph::new(format!("{followers} Followers")),
-        Paragraph::new(format!("Popularity {}%", artist.popularity)),
+        Paragraph::new(format!("{followers} Followers")).style(info_highlight),
+        Paragraph::new(format!("Popularity {}%", artist.popularity)).style(info_highlight),
     ];
 
     if under.height <= info.len() as u16 {
@@ -172,14 +173,20 @@ pub fn render(
             .render(vert[1], buf);
 
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-            let mut scrollbar_state = match section {
-                ArtistLanding::Tracks => {
+            let mut scrollbar_state = match landing_section {
+                LandingSection::Content => match section {
+                    ArtistLanding::Tracks => {
+                        Widget::render(table_albums, vert[1], buf);
+                        ScrollbarState::new(data.items.len()).position(0)
+                    }
+                    ArtistLanding::Albums => {
+                        StatefulWidget::render(table_albums, vert[1], buf, &mut state.clone());
+                        ScrollbarState::new(data.items.len()).position(state.selected().unwrap_or(0))
+                    }
+                },
+                LandingSection::Context => {
                     Widget::render(table_albums, vert[1], buf);
                     ScrollbarState::new(data.items.len()).position(0)
-                }
-                ArtistLanding::Albums => {
-                    StatefulWidget::render(table_albums, vert[1], buf, &mut state.clone());
-                    ScrollbarState::new(data.items.len()).position(state.selected().unwrap_or(0))
                 }
             };
 

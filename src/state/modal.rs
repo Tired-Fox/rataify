@@ -132,13 +132,13 @@ impl AddToPlaylistState {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ActionState {
     lookup: HashMap<KeyEvent, usize>,
-    pub mappings: Vec<(KeyEvent, Action)>,
+    pub mappings: Vec<(KeyEvent, Action, &'static str)>,
 }
 
 impl ActionState {
-    pub fn new(mappings: Vec<(KeyEvent, Action)>) -> Self {
+    pub fn new(mappings: Vec<(KeyEvent, Action, &'static str)>) -> Self {
         Self {
-            lookup: mappings.iter().enumerate().map(|(i, (k, _))| (*k, i)).collect(),
+            lookup: mappings.iter().enumerate().map(|(i, (k, _, _))| (*k, i)).collect(),
             mappings,
         }
     }

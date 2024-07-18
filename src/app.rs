@@ -87,6 +87,7 @@ impl App {
             scopes::USER_LIBRARY_READ,
             scopes::USER_LIBRARY_MODIFY,
             scopes::USER_FOLLOW_READ,
+            scopes::USER_FOLLOW_MODIFY,
             scopes::USER_READ_CURRENTLY_PLAYING,
             scopes::USER_READ_PLAYBACK_STATE,
             scopes::USER_MODIFY_PLAYBACK_STATE,
@@ -342,6 +343,7 @@ impl App {
             },
             Event::Tab => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().tab()?,
                     Window::Library => self.state.window_state.library.lock().unwrap().tab().await?,
                     _ => {}
                 },
@@ -349,6 +351,7 @@ impl App {
             },
             Event::Backtab => match &mut self.state.viewport {
                 Viewport::Window => match &mut self.state.window {
+                    Window::Landing => self.state.window_state.landing.lock().unwrap().backtab()?,
                     Window::Library => self.state.window_state.library.lock().unwrap().backtab().await?,
                     _ => {}
                 },

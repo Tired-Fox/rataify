@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use tupy::api::{Uri, request::Play};
+use color_eyre::{Result, eyre::eyre, Report};
+use tupy::api::{request::Play, Resource, Uri};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum GoTo {
@@ -15,6 +16,20 @@ pub enum GoTo {
     Playlist(Uri),
     Show(Uri),
     Audiobook(Uri),
+}
+
+impl TryFrom<Uri> for GoTo {
+    type Error = Report;
+
+    fn try_from(value: Uri) -> Result<Self> {
+        Ok(match value.resource() {
+            Resource::Playlist => Self::Playlist(value),
+            Resource::Album => Self::Album(value),
+            Resource::Show => Self::Show(value),
+            Resource::Artist => Self::Artist(value),
+            _ => return Err(eyre!("Invalid uri cannot be convert to a GoTo action: {value}"))
+        })
+    }
 }
 
 impl Display for GoTo {
@@ -32,6 +47,30 @@ impl Display for GoTo {
             Self::Artists(_) => write!(f, "Artists"),
         }
     }
+}
+
+pub mod ActionLabel {
+    pub static AddToPlaylist: &str = "Add to Playlist";
+    pub static AddToQueue: &str = "Add to Queue";
+
+    pub static Play: &str = "Play";
+    pub static Remove: &str = "Remove";
+    pub static Save: &str = "Save";
+
+    pub static GoToPlaylist: &str = "Go to Playlist";
+    pub static PlayPlaylist: &str = "Play Playlist";
+
+    pub static GoToAlbum: &str = "Go to Album";
+    pub static PlayAlbum: &str = "Play Album";
+
+    pub static GoToShow: &str = "Go to Show";
+    pub static PlayShow: &str = "Play Show";
+
+    pub static GoToArtist: &str = "Go to Artist";
+    pub static SelectArtist: &str = "Select an Artist";
+
+    pub static GoToAudiobook: &str = "Go to Audiobook";
+    pub static GoToContext: &str = "Go to Context";
 }
 
 #[derive(Debug, Clone, PartialEq)]

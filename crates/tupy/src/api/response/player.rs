@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use chrono::{DateTime, Duration, Local};
 use serde::Deserialize;
 
-use crate::api::IntoSpotifyParam;
+use crate::api::{IntoSpotifyParam, Uri};
 
 use super::{deserialize_datetime, deserialize_duration_opt, deserialize_timestamp, Cursors, Episode, ExternalUrls, Item, Paged, Track};
 
@@ -92,7 +92,7 @@ pub struct Context {
     /// External URLs for this context.
     pub external_urls: Option<ExternalUrls>,
     /// The URI of the context.
-    pub uri: String,
+    pub uri: Uri,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, Copy)]

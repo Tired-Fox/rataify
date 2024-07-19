@@ -5,11 +5,19 @@ use ratatui::{widgets::Widget, style::Style};
 
 static BASE_URL: &str = "https://open.spotify.com";
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct OpenInSpotify {
     pub uri: Uri,
     pub label: String
 }
 impl OpenInSpotify {
+    pub fn new<S: Display>(uri: Uri, label: S) -> Self {
+        Self {
+            uri,
+            label: label.to_string()
+        }
+    }
+
     pub fn playlist<S: Display, L: Display>(id: S, label: L) -> Self {
         Self {
             uri: Uri::playlist(id),

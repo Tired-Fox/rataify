@@ -13,7 +13,7 @@ use tupy::{api::{flow::Pkce, response::{Paginated, Paged}}, Pagination};
 use tokio::sync::Mutex;
 
 use super::Loading;
-use crate::{Shared, Locked, PAGE_SIZE};
+use crate::{Shared, Locked, PAGE_SIZE, errors::LogErrorDefault};
 
 #[derive(Debug, Clone)]
 pub struct WindowState {
@@ -70,9 +70,9 @@ impl<R, P> Pages<R, P>
         let items = self.items.clone();
         let pager = self.pager.clone();
         let pages = self.pages.clone();
-        tokio::task::spawn(async move {
+        tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(pager.next().await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(pager.next().await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages())
         });
         Ok(())
@@ -84,9 +84,9 @@ impl<R, P> Pages<R, P>
         let items = self.items.clone();
         let pager = self.pager.clone();
         let pages = self.pages.clone();
-        tokio::task::spawn(async move {
+        tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(pager.current().await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(pager.current().await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages())
         });
         Ok(())
@@ -100,7 +100,7 @@ impl<R, P> Pages<R, P>
         let pages = self.pages.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(pager.prev().await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(pager.prev().await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages())
         });
         Ok(())
@@ -154,9 +154,9 @@ impl<M, R, P> MappedPages<M, R, P>
         let pager = self.pager.clone();
         let pages = self.pages.clone();
         let mapper = self.mapper.clone();
-        tokio::task::spawn(async move {
+        tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.next().await.unwrap(), pager.flow().clone()).await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(mapper(pager.next().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
         });
         Ok(())
@@ -169,9 +169,9 @@ impl<M, R, P> MappedPages<M, R, P>
         let pager = self.pager.clone();
         let pages = self.pages.clone();
         let mapper = self.mapper.clone();
-        tokio::task::spawn(async move {
+        tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.current().await.unwrap(), pager.flow().clone()).await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(mapper(pager.current().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
         });
         Ok(())
@@ -186,7 +186,7 @@ impl<M, R, P> MappedPages<M, R, P>
         let mapper = self.mapper.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.prev().await.unwrap(), pager.flow().clone()).await.unwrap()));
+            *items.lock().unwrap() = Some(Loading::from(mapper(pager.prev().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
             *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
         });
         Ok(())

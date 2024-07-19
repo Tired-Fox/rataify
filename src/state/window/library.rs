@@ -19,17 +19,22 @@ static USER_FILENAME: &str = "user.id.cache";
 pub struct UserPlaylists {
     pub release: Option<Uri>,
     pub discover: Option<Uri>,
+    pub daylist: Option<Uri>,
 }
 
 impl UserPlaylists {
     pub fn to_cache_string(&self) -> String {
         let mut buffer = Vec::new();
-        if let Some(release) = &self.release {
+        if let Some(release) = self.release.as_ref() {
             buffer.push(format!("Release Radar=>{release}"));
         }
 
-        if let Some(discover) = &self.discover {
+        if let Some(discover) = self.discover.as_ref() {
             buffer.push(format!("Discover Weekly=>{discover}"));
+        }
+
+        if let Some(daylist) = self.daylist.as_ref() {
+            buffer.push(format!("daylist=>{daylist}"));
         }
         buffer.join("\n")
     }
@@ -42,6 +47,8 @@ pub enum FromSpotify {
     ReleaseRadar,
     #[strum(serialize = "Discover Weekly")]
     DiscoverWeekly,
+    #[strum(serialize = "Daylist")]
+    Daylist,
     #[strum(serialize = "Liked Songs")]
     LikedSongs,
     #[strum(serialize = "My Episodes")]
@@ -86,6 +93,7 @@ impl FromSpotify {
             Self::DiscoverWeekly => "Discover Weekly",
             Self::LikedSongs => "Liked Songs",
             Self::MyEpisodes => "My Episodes",
+            Self::Daylist => "Daylist",
         }
     }
 }
@@ -180,7 +188,9 @@ pub struct LibraryState {
 impl LibraryState {
     pub async fn tab(&mut self) -> Result<()> {
         self.selected_tab += 1;
-        self.result_state.select(Some(0));
+        if self.result_state.selected().is_some() {
+            self.result_state.select(Some(0));
+        }
         match self.selected_tab {
             LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_next() => {
                 self.playlists.next().await?;
@@ -204,7 +214,9 @@ impl LibraryState {
 
     pub async fn backtab(&mut self) -> Result<()> {
         self.selected_tab -= 1;
-        self.result_state.select(Some(0));
+        if self.result_state.selected().is_some() {
+            self.result_state.select(Some(0));
+        }
         match self.selected_tab {
             LibraryTab::Playlists if self.playlists.items.lock().unwrap().is_none() && self.playlists.pager.lock().await.has_next() => {
                 self.playlists.next().await?;
@@ -416,6 +428,12 @@ impl LibraryState {
                         (key!('C' + SHIFT), Action::GoTo(GoTo::Playlist(discover.clone())), action_label::GO_TO_PLAYLIST),
                     ])
                 },
+                FromSpotify::Daylist => if let Some(daylist) = self.user_playlists.daylist.as_ref() {
+                    return Some(vec![
+                        (key!(Enter), Action::PlayContext(Play::playlist(daylist.clone(), None, 0)), action_label::PLAY),
+                        (key!('C' + SHIFT), Action::GoTo(GoTo::Playlist(daylist.clone())), action_label::GO_TO_PLAYLIST),
+                    ])
+                },
                 FromSpotify::LikedSongs => {
                     let uri = Uri::collection(self.user_id.clone());
                     return Some(vec![
@@ -437,7 +455,7 @@ impl LibraryState {
                         let item = items.items.get(index)?;
                         return Some(vec![
                             (key!(Enter), Action::PlayContext(Play::playlist(item.uri.clone(), None, 0)), action_label::PLAY),
-                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
+                            (key!('r'), Action::remove(item.uri.clone(), move |_| {
                                 if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
                                     items.items.remove(index);
                                 }
@@ -455,7 +473,7 @@ impl LibraryState {
                         let item = items.items.get(index)?;
                         return Some(vec![
                             (key!(Enter), Action::PlayContext(Play::artist(item.uri.clone())), action_label::PLAY),
-                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
+                            (key!('r'), Action::remove(item.uri.clone(), move |_| {
                                 if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
                                     items.items.remove(index);
                                 }
@@ -472,7 +490,7 @@ impl LibraryState {
                         let item = items.items.get(index)?;
                         return Some(vec![
                             (key!(Enter), Action::PlayContext(Play::album(item.album.uri.clone(), None, 0)), action_label::PLAY),
-                            (key!('R' + SHIFT), Action::remove(item.album.uri.clone(), move |_| {
+                            (key!('r'), Action::remove(item.album.uri.clone(), move |_| {
                                     if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
                                         items.items.remove(index);
                                     }
@@ -494,7 +512,7 @@ impl LibraryState {
                         let item = items.items.get(index)?;
                         return Some(vec![
                             (key!(Enter), Action::PlayContext(Play::show(item.show.uri.clone(), None, 0)), action_label::PLAY),
-                            (key!('R' + SHIFT), Action::remove(item.show.uri.clone(), move |_| {
+                            (key!('r'), Action::remove(item.show.uri.clone(), move |_| {
                                         if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
                                             items.items.remove(index);
                                         }
@@ -510,14 +528,13 @@ impl LibraryState {
                         let index = self.result_state.selected().unwrap_or_default();
                         let item = items.items.get(index)?;
                         return Some(vec![
-                            // TODO: Double check this action
                             (key!(Enter), Action::PlayContext(Play::show(item.uri.clone(), None, 0)), action_label::PLAY),
-                            (key!('R' + SHIFT), Action::remove(item.uri.clone(), move |_| {
-                                            if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
-                                                items.items.remove(index);
-                                            }
-                                            Ok(())
-                                        }), action_label::REMOVE),
+                            (key!('r'), Action::remove(item.uri.clone(), move |_| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items.items.remove(index);
+                                }
+                                Ok(())
+                            }), action_label::REMOVE),
                             (key!('C' + SHIFT), Action::GoTo(GoTo::Audiobook(item.uri.clone())), action_label::GO_TO_AUDIOBOOK)
                         ])
                     }
@@ -532,14 +549,33 @@ impl LibraryState {
         let cache_user_id_path = dirs::cache_dir().unwrap().join(dir).join(USER_FILENAME);
         let mut user_playlists = UserPlaylists::default();
 
+        let parent = cache_playlist_path.parent().unwrap();
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+
         if !cache_playlist_path.exists() {
-            if api.token().is_expired() {
-                api.refresh().await?;
+            std::fs::File::create(&cache_playlist_path)?;
+        }
+
+        let cache = std::fs::read_to_string(&cache_playlist_path).unwrap();
+        for line in cache.lines() {
+            match line.split_once("=>") {
+                Some(("Release Radar", uri)) => user_playlists.release = Some(uri.parse().map_err(|e| Error::msg(e))?),
+                Some(("Discover Weekly", uri)) => user_playlists.discover = Some(uri.parse().map_err(|e| Error::msg(e))?),
+                Some(("daylist", uri)) => user_playlists.discover = Some(uri.parse().map_err(|e| Error::msg(e))?),
+                _ => {}
             }
+        }
+
+        if api.token().is_expired() {
+            api.refresh().await?;
+        }
 
 
-            // Search for Release Radar playlist on spotify. It is done this way as the user may
-            // not follow the playlist.
+        // Search for Release Radar playlist on spotify. It is done this way as the user may
+        // not follow the playlist.
+        if user_playlists.release.is_none() {
             let mut search = api.search::<2, _>(&[Query::text("Release Radar")], &[SearchType::Playlist], None, false)?;
             if let Some(playlists) = search.playlists() {
                 if let Some(page) = playlists.next().await? {
@@ -551,9 +587,11 @@ impl LibraryState {
                     }
                 }
             }
+        }
 
-            // Search for Discover Weekly playlist on spotify. It is done this way as the user may
-            // not follow the playlist.
+        // Search for Discover Weekly playlist on spotify. It is done this way as the user may
+        // not follow the playlist.
+        if user_playlists.discover.is_none() {
             let mut search = api.search::<2, _>(&[Query::text("Discover Weekly")], &[SearchType::Playlist], None, false)?;
             if let Some(playlists) = search.playlists() {
                 if let Some(page) = playlists.next().await? {
@@ -565,18 +603,25 @@ impl LibraryState {
                     }
                 }
             }
-
-            std::fs::write(cache_playlist_path, user_playlists.to_cache_string())?;
-        } else {
-            let cache = std::fs::read_to_string(cache_playlist_path).unwrap();
-            for line in cache.lines() {
-                match line.split_once("=>") {
-                    Some(("Release Radar", uri)) => user_playlists.release = Some(uri.parse().map_err(|e| Error::msg(e))?),
-                    Some(("Discover Weekly", uri)) => user_playlists.discover = Some(uri.parse().map_err(|e| Error::msg(e))?),
-                    _ => {}
+        }
+        
+        // Search for daylist playlist on spotify. It is done this way as the user may
+        // not follow the playlist.
+        if user_playlists.daylist.is_none() {
+            let mut search = api.search::<2, _>(&[Query::text("daylist")], &[SearchType::Playlist], None, false)?;
+            if let Some(playlists) = search.playlists() {
+                if let Some(page) = playlists.next().await? {
+                    for playlist in page.items {
+                        if playlist.name.starts_with("daylist") && playlist.owner.id.as_str() == "spotify" {
+                            user_playlists.daylist = Some(playlist.uri);
+                            break;
+                        }
+                    }
                 }
             }
         }
+
+        std::fs::write(cache_playlist_path, user_playlists.to_cache_string())?;
 
         let user_id = if !cache_user_id_path.exists() {
             if api.token().is_expired() {
@@ -589,7 +634,7 @@ impl LibraryState {
             std::fs::read_to_string(cache_user_id_path)?
         };
 
-        let mut layout_state = Self {
+        let layout_state = Self {
             user_id,
             user_playlists,
             selection: Selection::default(),

@@ -285,6 +285,10 @@ where
             None => return Ok(None),
         };
 
+        if self.flow.token().is_expired() {
+            self.flow.refresh().await?;
+        }
+
         self.current = Some(next.clone());
 
         let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, next).send_raw(self.flow.token()).await?;
@@ -317,6 +321,10 @@ where
     async fn current(&mut self) -> Result<Option<Self::Item>, Error> {
         if self.current.is_none() {
             return Ok(None);
+        }
+
+        if self.flow.token().is_expired() {
+            self.flow.refresh().await?;
         }
 
         let current = self.current.as_ref().unwrap();
@@ -352,8 +360,11 @@ where
             None => return Ok(None),
         };
 
-        self.current = Some(prev.clone());
+        if self.flow.token().is_expired() {
+            self.flow.refresh().await?;
+        }
 
+        self.current = Some(prev.clone());
         let SpotifyResponse { body, .. } = SpotifyRequest::new(Method::GET, prev).send_raw(self.flow.token()).await?;
         let body = body.into_boxed_str();
         let response = match pares!(P: Box::leak(body)) {

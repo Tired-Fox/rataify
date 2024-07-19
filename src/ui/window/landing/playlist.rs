@@ -21,7 +21,7 @@ use crate::{
     Locked, Shared,
 };
 
-use super::{render_landing, HTML_UNICODE};
+use super::{render_landing, HTML_TAG, HTML_UNICODE};
 
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -44,10 +44,11 @@ pub fn render(
     let description = playlist.description.clone().unwrap_or_default();
     let description = HTML_UNICODE.replace_all(&description, |captures: &regex::Captures| {
         match captures.name("decimal") {
-            Some(decimal) => std::char::from_u32(u32::from_str_radix(decimal.as_str(), 10).unwrap()).unwrap().to_string(),
+            Some(decimal) => std::char::from_u32(decimal.as_str().parse::<u32>().unwrap()).unwrap().to_string(),
             None => std::char::from_u32(u32::from_str_radix(captures.name("hex").unwrap().as_str(), 16).unwrap()).unwrap().to_string(),
         }
-    });
+    }).to_string();
+    let description = HTML_TAG.replace_all(description.as_str(), "").to_string();
 
     let info_highlight = if let LandingSection::Context = section { COLORS.highlight } else { Style::default() };
 
@@ -122,12 +123,9 @@ pub fn render(
                     Constraint::Fill(1),
                     Constraint::Fill(2),
                 ])
-                .highlight_style(COLORS.highlight);
+                .highlight_style(if section.is_content() { COLORS.highlight } else { Style::default() });
 
-            match section {
-                LandingSection::Content => StatefulWidget::render(table_albums, main, buf, &mut state.clone()),
-                LandingSection::Context => Widget::render(table_albums, main, buf)
-            }
+            StatefulWidget::render(table_albums, main, buf, &mut state.clone());
 
             PaginationProgress {
                 current: data.page(),

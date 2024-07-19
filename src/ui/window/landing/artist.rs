@@ -169,7 +169,7 @@ pub fn render(
                     Constraint::Length(11),
                     Constraint::Fill(1),
                 ])
-                .highlight_style(COLORS.highlight);
+                .highlight_style(if landing_section.is_content() { COLORS.highlight } else { Style::default() });
 
             PaginationProgress {
                 current: page,
@@ -178,20 +178,14 @@ pub fn render(
             .render(vert[1], buf);
 
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-            let mut scrollbar_state = match landing_section {
-                LandingSection::Content => match section {
-                    ArtistLanding::Tracks => {
-                        Widget::render(table_albums, vert[1], buf);
-                        ScrollbarState::new(data.len()).position(0)
-                    }
-                    ArtistLanding::Albums => {
-                        StatefulWidget::render(table_albums, vert[1], buf, &mut state.clone());
-                        ScrollbarState::new(data.len()).position(state.selected().unwrap_or(0))
-                    }
-                },
-                LandingSection::Context => {
+            let mut scrollbar_state = match section {
+                ArtistLanding::Tracks => {
                     Widget::render(table_albums, vert[1], buf);
                     ScrollbarState::new(data.len()).position(0)
+                }
+                ArtistLanding::Albums => {
+                    StatefulWidget::render(table_albums, vert[1], buf, &mut state.clone());
+                    ScrollbarState::new(data.len()).position(state.selected().unwrap_or(0))
                 }
             };
 

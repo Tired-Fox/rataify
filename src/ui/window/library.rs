@@ -1,5 +1,5 @@
 use crate::{state::{window::library::{FromSpotify, LibraryState, LibraryTab}, Loading}, ui::COLORS};
-use strum::IntoEnumIterator;
+use strum::{EnumCount, IntoEnumIterator};
 use tupy::api::response::{PagedPlaylists, FollowedArtists, SavedAlbums, SavedShows, SavedAudiobooks};
 use ratatui::{
     buffer::Buffer,
@@ -23,7 +23,7 @@ impl FromSpotify {
                 Line::default(),
                 Line::default(),
                 Line::default(),
-                Line::from("RR").centered(),
+                Line::from("📡").centered(),
                 Line::default(),
                 Line::default(),
                 Line::default(),
@@ -32,7 +32,7 @@ impl FromSpotify {
                 Line::default(),
                 Line::default(),
                 Line::default(),
-                Line::from("DW").centered(),
+                Line::from("🔍").centered(),
                 Line::default(),
                 Line::default(),
                 Line::default(),
@@ -41,7 +41,7 @@ impl FromSpotify {
                 Line::default(),
                 Line::default(),
                 Line::default(),
-                Line::from("♥").centered().red(),
+                Line::from("🎵").centered().red(),
                 Line::default(),
                 Line::default(),
                 Line::default(),
@@ -50,7 +50,16 @@ impl FromSpotify {
                 Line::default(),
                 Line::default(),
                 Line::default(),
-                Line::from("✓").centered().green(),
+                Line::from("🎙️").centered().green(),
+                Line::default(),
+                Line::default(),
+                Line::default(),
+            ]),
+            FromSpotify::Daylist => (self.title(), [
+                Line::default(),
+                Line::default(),
+                Line::default(),
+                Line::from("🌤").centered(),
                 Line::default(),
                 Line::default(),
                 Line::default(),
@@ -130,12 +139,12 @@ impl Widget for &LibraryState {
 
         let layout = Layout::vertical([
             Constraint::Length(11),
-            Constraint::Length(1),
+            Constraint::Length(2),
             Constraint::Fill(1),
         ])
         .split(block.inner(area));
 
-        let from_spotify = Layout::horizontal([Constraint::Percentage(25); 4]).split(layout[0]);
+        let from_spotify = Layout::horizontal([Constraint::Percentage(100/FromSpotify::COUNT as u16); FromSpotify::COUNT]).split(layout[0]);
         FromSpotify::iter().enumerate().for_each(|(i, f)| {
             f.render(from_spotify[i], buf, self.selection.is_spotify_playlist() && self.selected_spotify_playlist == f);
         });

@@ -132,13 +132,13 @@ pub async fn listen_for_authentication_code(
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     let callback = Callback::new(state.to_string(), tx);
-    let handle = tokio::task::spawn(async move {
+    let handle = tokio::spawn(async move {
         loop {
             let (stream, _) = listener.accept().await.unwrap();
             let io = hyper_util::rt::TokioIo::new(stream);
 
             let cb = callback.clone();
-            tokio::task::spawn(async move {
+            tokio::spawn(async move {
                 if let Err(err) = hyper::server::conn::http1::Builder::new()
                     .serve_connection(io, cb)
                     .await

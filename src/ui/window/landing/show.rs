@@ -124,12 +124,9 @@ pub fn render(
                     Constraint::Fill(2),
                 ])
                 .block(block)
-                .highlight_style(COLORS.highlight);
+                .highlight_style(if section.is_content() { COLORS.highlight } else { Style::default() });
 
-            match section {
-                LandingSection::Content => StatefulWidget::render(table_episodes, main, buf, &mut state.clone()),
-                LandingSection::Context => Widget::render(table_episodes, main, buf)
-            }
+            StatefulWidget::render(table_episodes, main, buf, &mut state.clone());
 
             PaginationProgress {
                 current: data.page(),

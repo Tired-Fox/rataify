@@ -194,11 +194,6 @@ impl IntoActions for SimplifiedAlbum {
     fn into_ui_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
             (
-                key!(Enter),
-                Action::PlayContext(Play::album(self.uri.clone(), None, 0)),
-                action_label::PLAY,
-            ),
-            (
                 key!('C'),
                 Action::GoTo(GoTo::Album(self.uri.clone())),
                 action_label::GO_TO_ALBUM,

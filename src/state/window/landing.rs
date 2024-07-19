@@ -7,7 +7,7 @@ use strum::EnumCount;
 use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, SimplifiedAlbum, Track}, PublicApi, Uri, UserApi};
 
 use super::{MappedPages, Pages};
-use crate::{key, state::{wrappers::{Saved, GetUri}, IterCollection, Loading}, state::actions::{Action, action_label, IntoActions}, Locked, Shared};
+use crate::{errors::LogError, key, state::{actions::{action_label, Action, IntoActions}, wrappers::{GetUri, Saved}, IterCollection, Loading}, Locked, Shared};
 
 #[derive(Default, Debug, Clone, Copy, strum_macros::EnumIs)]
 pub enum ArtistLanding {
@@ -109,7 +109,7 @@ impl Landing {
 
         let p = pages.clone();
         tokio::spawn(async move {
-            p.next().await.unwrap();
+            p.next().await.log_error();
         });
 
         let playlist = api.playlist(playlist.id(), None).await?;
@@ -145,7 +145,7 @@ impl Landing {
 
         let p = pages.clone();
         tokio::spawn(async move {
-            p.next().await.unwrap();
+            p.next().await.log_error();
         });
 
         let album = api.album(album.id(), None).await?;
@@ -178,7 +178,7 @@ impl Landing {
 
         let p = pages.clone();
         tokio::spawn(async move {
-            p.next().await.unwrap();
+            p.next().await.log_error();
         });
 
         let show = api.show(show.id(), None).await?;
@@ -211,7 +211,7 @@ impl Landing {
 
         let p = pages.clone();
         tokio::spawn(async move {
-            p.next().await.unwrap();
+            p.next().await.log_error();
         });
 
         let audiobook = api.audiobook(audiobook.id(), None).await?;
@@ -255,7 +255,7 @@ impl Landing {
 
         let p = pages.clone();
         tokio::spawn(async move {
-            p.next().await.unwrap();
+            p.next().await.log_error();
         });
 
         let artist = api.artist(uri.id()).await?;
@@ -426,24 +426,19 @@ impl Landing {
 
     pub fn tab(&mut self) -> Result<()> {
         match self {
-            Landing::Playlist { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Playlist { section, .. } => {
                 *section = LandingSection::from_repr(((*section as usize) + 1) % LandingSection::COUNT).unwrap();
             },
-            Landing::Album { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Album { section, .. } => {
                 *section = LandingSection::from_repr(((*section as usize) + 1) % LandingSection::COUNT).unwrap();
             },
-            Landing::Show { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Show { section, .. } => {
                 *section = LandingSection::from_repr(((*section as usize) + 1) % LandingSection::COUNT).unwrap();
             },
-            Landing::Artist { state, landing_section, .. } => {
-                state.select(Some(0));
+            Landing::Artist { landing_section, .. } => {
                 *landing_section = LandingSection::from_repr(((*landing_section as usize) + 1) % LandingSection::COUNT).unwrap();
             },
-            Landing::Audiobook { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Audiobook { section, .. } => {
                 *section = LandingSection::from_repr(((*section as usize) + 1) % LandingSection::COUNT).unwrap();
             },
             _ => {}
@@ -453,28 +448,23 @@ impl Landing {
 
     pub fn backtab(&mut self) -> Result<()> {
         match self {
-            Landing::Playlist { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Playlist { section, .. } => {
                 let value = ((*section as isize) - 1) % LandingSection::COUNT as isize;
                 *section = LandingSection::from_repr(value as usize).unwrap();
             },
-            Landing::Album { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Album { section, .. } => {
                 let value = ((*section as isize) - 1) % LandingSection::COUNT as isize;
                 *section = LandingSection::from_repr(value as usize).unwrap();
             },
-            Landing::Show { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Show { section, .. } => {
                 let value = ((*section as isize) - 1) % LandingSection::COUNT as isize;
                 *section = LandingSection::from_repr(value as usize).unwrap();
             },
-            Landing::Artist { state, landing_section, .. } => {
-                state.select(Some(0));
+            Landing::Artist { landing_section, .. } => {
                 let value = ((*landing_section as isize) - 1) % LandingSection::COUNT as isize;
                 *landing_section = LandingSection::from_repr(value as usize).unwrap();
             },
-            Landing::Audiobook { state, section, .. } => {
-                state.select(Some(0));
+            Landing::Audiobook { section, .. } => {
                 let value = ((*section as isize) - 1) % LandingSection::COUNT as isize;
                 *section = LandingSection::from_repr(value as usize).unwrap();
             },
@@ -606,12 +596,18 @@ impl Landing {
                             let i = albums.items.clone();
                             if let Some(Loading::Some(items)) = albums.items.lock().unwrap().as_ref() {
                                 let index = state.selected().unwrap_or(0);
-                                items.get(index).map(|t| t.into_ui_actions(false, move |saved| {
-                                    if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
-                                        items[index].saved = saved;
-                                    } 
-                                    Ok(())
-                                }))
+                                items.get(index).map(|t| {
+                                    let mut actions = vec![
+                                        (key!(Enter), Action::PlayContext(Play::album(t.as_ref().id.clone(), None, 0)), action_label::PLAY)
+                                    ];
+                                    actions.extend(t.into_ui_actions(false, move |saved| {
+                                        if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                            items[index].saved = saved;
+                                        } 
+                                        Ok(())
+                                    }));
+                                    actions
+                                })
                             } else {
                                 None
                             }

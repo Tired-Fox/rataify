@@ -32,6 +32,27 @@ impl WindowState {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Page {
+    pub offset: usize,
+    pub total: usize,
+    pub limit: usize,
+    pub page: usize,
+    pub max_page: usize,
+}
+
+impl Page {
+    pub fn from_paged<P: Paged>(paged: &P) -> Self {
+        Self {
+            offset: paged.offset(),
+            total: paged.total(),
+            limit: paged.limit(),
+            page: paged.page(),
+            max_page: paged.max_page()
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Pages<R, P>
     where 
@@ -40,7 +61,7 @@ pub struct Pages<R, P>
 {
     pub pager: Shared<Mutex<Paginated<R, P, Pkce, PAGE_SIZE>>>,
     pub items: Shared<Locked<Option<Loading<R>>>>,
-    pub pages: Shared<Locked<(usize, usize)>>,
+    pub page: Shared<Locked<Page>>,
 }
 
 impl<R, P> Pages<R, P>
@@ -52,7 +73,7 @@ impl<R, P> Pages<R, P>
         Self {
             pager: Shared::new(Mutex::new(pager)),
             items: Shared::default(),
-            pages: Shared::default(),
+            page: Shared::default(),
         }
     }
 
@@ -69,11 +90,14 @@ impl<R, P> Pages<R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(pager.next().await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages())
+            let next = pager.next().await.log_error_or_default();
+            if let Some(n) = next.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(n);
+            }
+            *items.lock().unwrap() = Some(Loading::from(next));
         });
         Ok(())
     }
@@ -83,11 +107,14 @@ impl<R, P> Pages<R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
+            let current = pager.current().await.log_error_or_default();
+            if let Some(c) = current.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(c);
+            }
             *items.lock().unwrap() = Some(Loading::from(pager.current().await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages())
         });
         Ok(())
     }
@@ -97,11 +124,14 @@ impl<R, P> Pages<R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(pager.prev().await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages())
+            let prev = pager.prev().await.log_error_or_default();
+            if let Some(p) = prev.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(p);
+            }
+            *items.lock().unwrap() = Some(Loading::from(prev));
         });
         Ok(())
     }
@@ -115,7 +145,7 @@ pub struct MappedPages<M, R, P>
         P: Clone + Send,
 {
     pub pager: Shared<Mutex<Paginated<R, P, Pkce, PAGE_SIZE>>>,
-    pub pages: Shared<Locked<(usize, usize, usize)>>,
+    pub page: Shared<Locked<Page>>,
 
     pub mapper: Shared<dyn Fn(Option<R>, Pkce) -> Pin<Box<dyn Future<Output = Result<Option<M>>> + Send>> + Send + Sync>,
     pub items: Shared<Locked<Option<Loading<M>>>>,
@@ -133,7 +163,7 @@ impl<M, R, P> MappedPages<M, R, P>
     {
         Self {
             pager: Shared::new(Mutex::new(pager)),
-            pages: Shared::default(),
+            page: Shared::default(),
             mapper: Shared::new(mapper),
             items: Shared::default(),
         }
@@ -152,12 +182,15 @@ impl<M, R, P> MappedPages<M, R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         let mapper = self.mapper.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.next().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
+            let next = pager.next().await.unwrap();
+            if let Some(n) = next.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(n);
+            }
+            *items.lock().unwrap() = Some(Loading::from(mapper(next, pager.flow().clone()).await.log_error_or_default()));
         });
         Ok(())
     }
@@ -167,12 +200,15 @@ impl<M, R, P> MappedPages<M, R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         let mapper = self.mapper.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.current().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
+            let current = pager.current().await.unwrap();
+            if let Some(c) = current.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(c);
+            }
+            *items.lock().unwrap() = Some(Loading::from(mapper(current, pager.flow().clone()).await.log_error_or_default()));
         });
         Ok(())
     }
@@ -182,12 +218,15 @@ impl<M, R, P> MappedPages<M, R, P>
 
         let items = self.items.clone();
         let pager = self.pager.clone();
-        let pages = self.pages.clone();
+        let page = self.page.clone();
         let mapper = self.mapper.clone();
         tokio::spawn(async move {
             let mut pager = pager.lock().await;
-            *items.lock().unwrap() = Some(Loading::from(mapper(pager.prev().await.unwrap(), pager.flow().clone()).await.log_error_or_default()));
-            *pages.lock().unwrap() = (pager.page(), pager.total_pages(), pager.total())
+            let prev = pager.prev().await.unwrap();
+            if let Some(p) = prev.as_ref() {
+                *page.lock().unwrap() = Page::from_paged(p);
+            }
+            *items.lock().unwrap() = Some(Loading::from(mapper(prev, pager.flow().clone()).await.log_error_or_default()));
         });
         Ok(())
     }

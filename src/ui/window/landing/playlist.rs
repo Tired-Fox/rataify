@@ -7,17 +7,15 @@ use ratatui::{
         Block, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
-use tupy::api::response::{Playlist, PlaylistItems, Paged, Item};
+use tupy::api::response::{Item, Playlist, PlaylistItemInfo, PlaylistItems};
 
 use crate::{
     state::{
         window::{
-            landing::{Cover, LandingSection},
-            Pages,
-        },
-        Loading,
+            landing::{Cover, LandingSection}, MappedPages
+        }, wrappers::Saved, Loading
     },
-    ui::{format_episode, format_track, PaginationProgress, COLORS},
+    ui::{format_episode_saved, format_track_saved, PaginationProgress, COLORS},
     Locked, Shared,
 };
 
@@ -28,7 +26,7 @@ pub fn render(
     area: Rect,
     buf: &mut Buffer,
     playlist: &Playlist,
-    pages: &Pages<PlaylistItems, PlaylistItems>,
+    pages: &MappedPages<Vec<Saved<PlaylistItemInfo>>, PlaylistItems, PlaylistItems>,
     state: &TableState,
     section: &LandingSection,
     cover: &mut Shared<Locked<Loading<Cover>>>,
@@ -105,19 +103,20 @@ pub fn render(
                 .render(vert, buf);
         }
         Some(Loading::Some(data)) => {
-            let scrollable = data.limit() >= main.height as usize;
+            let page = pages.page.lock().unwrap();
+            let scrollable = page.limit >= main.height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
             let table_albums = data
-                .items
                 .iter()
-                .map(|a| match &a.item {
-                    Item::Track(track) => format_track(track),
-                    Item::Episode(episode) => format_episode(episode),
+                .map(|a| match &a.as_ref().item {
+                    Item::Track(track) => format_track_saved(track, a.saved),
+                    Item::Episode(episode) => format_episode_saved(episode, a.saved),
                 })
                 .collect::<Table>()
                 .block(block)
                 .widths([
+                    Constraint::Length(2),
                     Constraint::Length(8),
                     Constraint::Length(1),
                     Constraint::Fill(1),
@@ -128,14 +127,14 @@ pub fn render(
             StatefulWidget::render(table_albums, main, buf, &mut state.clone());
 
             PaginationProgress {
-                current: data.page(),
-                total: data.max_page(),
+                current: page.page,
+                total: page.max_page,
             }
             .render(main, buf);
 
             if scrollable {
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-                let mut scrollbar_state = ScrollbarState::new(data.items.len()).position(state.selected().unwrap_or(0));
+                let mut scrollbar_state = ScrollbarState::new(data.len()).position(state.selected().unwrap_or(0));
                 StatefulWidget::render(
                     scrollbar,
                     main.inner(Margin {

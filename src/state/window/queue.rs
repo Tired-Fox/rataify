@@ -2,7 +2,7 @@ use crossterm::event::KeyEvent;
 use ratatui::widgets::TableState;
 use tupy::api::response::{self, Item};
 
-use crate::{key, state::{IterCollection, Loading, actions::{Action, action_label, IntoActions}, wrappers::{Saved, GetUri}}};
+use crate::{key, state::{IterCollection, Loading, actions::{Action, action_label}, wrappers::{Saved, GetUri}}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Queue {
@@ -15,8 +15,8 @@ impl From<(response::Queue, Vec<bool>, Vec<bool>)> for Queue {
         let mut saved_episodes = q.2.into_iter();
         Self {
             items: q.0.queue.into_iter().map(|i| match &i {
-                Item::Track(_) => Saved::new(saved_tracks.next().unwrap_or(false), i),
-                Item::Episode(_) => Saved::new(saved_episodes.next().unwrap_or(false), i),
+                Item::Track(_) => Saved::new(saved_tracks.next().unwrap_or_default(), i),
+                Item::Episode(_) => Saved::new(saved_episodes.next().unwrap_or_default(), i),
             }).collect(),
         }
     }
@@ -47,7 +47,7 @@ impl QueueState {
                 let mut actions = vec![
                     (key!(Enter), Action::Play(i.as_ref().get_uri()), action_label::PLAY)
                 ];
-                actions.extend(i.into_ui_actions(true, |saved| Ok(())));
+                actions.extend(i.into_actions(true, |saved| Ok(())));
                 actions
             })
         } else {

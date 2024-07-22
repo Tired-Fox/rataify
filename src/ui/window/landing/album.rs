@@ -2,22 +2,20 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Rect},
     style::{Style, Stylize},
-    text::{Line, Span},
+    text::Line,
     widgets::{
         Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget, Wrap
     },
 };
-use tupy::api::response::{Album, AlbumTracks, Paged, ReleaseDate};
+use tupy::api::response::{Album, AlbumTracks, ReleaseDate, SimplifiedTrack};
 
 use crate::{
     state::{
         window::{
-            landing::{Cover, LandingSection},
-            Pages,
-        },
-        Loading,
+            landing::{Cover, LandingSection}, MappedPages
+        }, wrappers::Saved, Loading
     },
-    ui::{components::OpenInSpotify, format_duration, PaginationProgress, COLORS},
+    ui::{format_duration, PaginationProgress, COLORS},
     Locked, Shared,
 };
 
@@ -28,7 +26,7 @@ pub fn render(
     area: Rect,
     buf: &mut Buffer,
     album: &Album,
-    pages: &Pages<AlbumTracks, AlbumTracks>,
+    pages: &MappedPages<Vec<Saved<SimplifiedTrack>>, AlbumTracks, AlbumTracks>,
     state: &TableState,
     section: &LandingSection,
     cover: &mut Shared<Locked<Loading<Cover>>>,
@@ -97,20 +95,23 @@ pub fn render(
                 .render(vert, buf);
         }
         Some(Loading::Some(data)) => {
-            let scrollable = data.limit() >= main.height as usize;
+            let page = pages.page.lock().unwrap();
+            let scrollable = page.limit >= main.height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
-            let table_tracks = data.items
+            let table_tracks = data
                 .iter()
                 .map(|track| {
                     Row::new(vec![
-                        Cell::from(format_duration(track.duration)).style(COLORS.duration),
-                        Cell::from(track.name.clone()).style(COLORS.track),
-                        Cell::from(track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")).style(COLORS.artists),
+                        Cell::from(if track.saved { "♥" } else { "" }).style(COLORS.like),
+                        Cell::from(format_duration(track.as_ref().duration)).style(COLORS.duration),
+                        Cell::from(track.as_ref().name.clone()).style(COLORS.track),
+                        Cell::from(track.as_ref().artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ")).style(COLORS.artists),
                     ])
                 })
                 .collect::<Table>()
                 .widths([
+                    Constraint::Length(2),
                     Constraint::Length(8),
                     Constraint::Fill(1),
                     Constraint::Fill(1),
@@ -121,14 +122,14 @@ pub fn render(
             StatefulWidget::render(table_tracks, main, buf, &mut state.clone());
 
             PaginationProgress {
-                current: data.page(),
-                total: data.max_page(),
+                current: page.page,
+                total: page.max_page,
             }
             .render(main, buf);
 
             if scrollable {
                 let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-                let mut scrollbar_state = ScrollbarState::new(data.items.len()).position(state.selected().unwrap_or(0));
+                let mut scrollbar_state = ScrollbarState::new(data.len()).position(state.selected().unwrap_or(0));
                 StatefulWidget::render(
                     scrollbar,
                     main.inner(Margin {

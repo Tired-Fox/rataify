@@ -140,8 +140,8 @@ pub fn render(
                 .render(vert, buf);
         }
         Some(Loading::Some(data)) => {
-            let (page, max_page, limit) = albums.pages.lock().unwrap().clone();
-            let scrollable = limit >= vert[1].height as usize;
+            let page = albums.page.lock().unwrap();
+            let scrollable = page.limit >= vert[1].height as usize;
             let block = Block::default().padding(Padding::new(0, if scrollable { 2 } else { 0 }, 0, 1));
 
             let table_albums = data
@@ -172,8 +172,8 @@ pub fn render(
                 .highlight_style(if landing_section.is_content() { COLORS.highlight } else { Style::default() });
 
             PaginationProgress {
-                current: page,
-                total: max_page,
+                current: page.page,
+                total: page.max_page,
             }
             .render(vert[1], buf);
 

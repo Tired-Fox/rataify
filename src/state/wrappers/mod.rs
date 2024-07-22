@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crossterm::event::KeyEvent;
-use tupy::api::{response::{Episode, Track, SimplifiedAlbum}, Uri};
+use tupy::api::{response::{Episode, PlaylistItemInfo, SimplifiedAlbum, SimplifiedEpisode, SimplifiedTrack, Track}, Uri};
 
 use crate::{key, state::actions::{Action, action_label, IntoActions}};
 
@@ -24,10 +24,25 @@ impl GetUri for SimplifiedAlbum {
         self.uri.clone()
     }
 }
+impl GetUri for PlaylistItemInfo {
+    fn get_uri(&self) -> Uri {
+        self.item.get_uri()
+    }
+}
+impl GetUri for SimplifiedTrack {
+    fn get_uri(&self) -> Uri {
+        self.uri.clone()
+    }
+}
+impl GetUri for SimplifiedEpisode {
+    fn get_uri(&self) -> Uri {
+        self.uri.clone()
+    }
+}
 
 pub struct Saved<T> {
     pub saved: bool,
-    inner: T
+    pub(crate) inner: T
 }
 
 impl<T: PartialEq> PartialEq for Saved<T> {
@@ -60,7 +75,7 @@ impl<T: Clone> Clone for Saved<T> {
 }
 
 impl<T: IntoActions + GetUri> Saved<T> {
-    pub fn into_ui_actions<F>(&self, context: bool, callback: F) -> Vec<(KeyEvent, Action, &'static str)>
+    pub fn into_actions<F>(&self, context: bool, callback: F) -> Vec<(KeyEvent, Action, &'static str)>
     where
         F: Fn(bool) -> color_eyre::Result<()> + Send + Sync + 'static
     {
@@ -71,7 +86,7 @@ impl<T: IntoActions + GetUri> Saved<T> {
                 (key!('f'), Action::save(self.inner.get_uri(), callback), action_label::SAVE)
             }
         ];
-        actions.extend(self.inner.into_ui_actions(context));
+        actions.extend(self.inner.into_actions(context));
         actions
     }
 }

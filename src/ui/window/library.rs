@@ -163,11 +163,11 @@ impl Widget for &LibraryState {
                 let items = results.as_ref().map(|a| a.as_ref());
                 if items.is_some() && items.as_ref().unwrap().is_some() {
                     let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
-                    let pages = self.playlists.pages.lock().unwrap();
-                    if pages.1 > 1 {
+                    let pages = self.playlists.page.lock().unwrap();
+                    if pages.max_page > 1 {
                         PaginationProgress {
-                            current: pages.0,
-                            total: pages.1,
+                            current: pages.page,
+                            total: pages.max_page,
                         }
                             .render(area, buf);
                     }
@@ -184,11 +184,11 @@ impl Widget for &LibraryState {
                 let items = results.as_ref().map(|a| a.as_ref());
                 if items.is_some() && items.as_ref().unwrap().is_some() {
                     let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
-                    let pages = self.artists.pages.lock().unwrap();
-                    if pages.1 > 1 {
+                    let pages = self.artists.page.lock().unwrap();
+                    if pages.max_page > 1 {
                         PaginationProgress {
-                            current: pages.0,
-                            total: pages.1,
+                            current: pages.page,
+                            total: pages.max_page,
                         }
                             .render(area, buf);
                     }
@@ -205,11 +205,11 @@ impl Widget for &LibraryState {
                 let items = results.as_ref().map(|a| a.as_ref());
                 if items.is_some() && items.as_ref().unwrap().is_some() {
                     let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
-                    let pages = self.albums.pages.lock().unwrap();
-                    if pages.1 > 1 {
+                    let pages = self.albums.page.lock().unwrap();
+                    if pages.max_page > 1 {
                         PaginationProgress {
-                            current: pages.0,
-                            total: pages.1,
+                            current: pages.page,
+                            total: pages.max_page,
                         }
                             .render(area, buf);
                     }
@@ -226,11 +226,11 @@ impl Widget for &LibraryState {
                 let items = results.as_ref().map(|a| a.as_ref());
                 if items.is_some() && items.as_ref().unwrap().is_some() {
                     let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
-                    let pages = self.shows.pages.lock().unwrap();
-                    if pages.1 > 1 {
+                    let pages = self.shows.page.lock().unwrap();
+                    if pages.max_page > 1 {
                         PaginationProgress {
-                            current: pages.0,
-                            total: pages.1,
+                            current: pages.page,
+                            total: pages.max_page,
                         }
                             .render(area, buf);
                     }
@@ -247,11 +247,11 @@ impl Widget for &LibraryState {
                 let items = results.as_ref().map(|a| a.as_ref());
                 if items.is_some() && items.as_ref().unwrap().is_some() {
                     let area = Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).split(layout[2])[1];
-                    let pages = self.audiobooks.pages.lock().unwrap();
-                    if pages.1 > 1 {
+                    let pages = self.audiobooks.page.lock().unwrap();
+                    if pages.max_page > 1 {
                         PaginationProgress {
-                            current: pages.0,
-                            total: pages.1,
+                            current: pages.page,
+                            total: pages.max_page,
                         }
                             .render(area, buf);
                     }

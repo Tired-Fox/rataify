@@ -4,7 +4,7 @@ use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, widgets::TableState};
 use ratatui_image::{picker::Picker, protocol::Protocol, Resize};
 use strum::EnumCount;
-use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, SimplifiedAlbum, Track}, PublicApi, Uri, UserApi};
+use tupy::api::{flow::Pkce, request::{IncludeGroup, Play}, response::{Album, AlbumTracks, Artist, ArtistAlbums, Audiobook, Chapters, Item, Playlist, PlaylistItemInfo, PlaylistItems, Show, ShowEpisodes, SimplifiedAlbum, SimplifiedEpisode, SimplifiedTrack, Track}, PublicApi, Uri, UserApi};
 
 use super::{MappedPages, Pages};
 use crate::{errors::LogError, key, state::{actions::{action_label, Action, IntoActions}, wrappers::{GetUri, Saved}, IterCollection, Loading}, Locked, Shared};
@@ -45,21 +45,21 @@ pub enum Landing {
     Playlist {
         cover: Shared<Locked<Loading<Cover>>>,
         playlist: Playlist,
-        pages: Pages<PlaylistItems, PlaylistItems>,
+        pages: MappedPages<Vec<Saved<PlaylistItemInfo>>, PlaylistItems, PlaylistItems>,
         state: TableState,
         section: LandingSection,
     },
     Album {
         cover: Shared<Locked<Loading<Cover>>>,
         album: Album,
-        pages: Pages<AlbumTracks, AlbumTracks>,
+        pages: MappedPages<Vec<Saved<SimplifiedTrack>>, AlbumTracks, AlbumTracks>,
         state: TableState,
         section: LandingSection,
     },
     Show {
         cover: Shared<Locked<Loading<Cover>>>,
         show: Show,
-        pages: Pages<ShowEpisodes, ShowEpisodes>,
+        pages: MappedPages<Vec<Saved<SimplifiedEpisode>>, ShowEpisodes, ShowEpisodes>,
         state: TableState,
         section: LandingSection,
     },
@@ -105,7 +105,35 @@ async fn get_cover(image: String) -> Option<Cover> {
 
 impl Landing {
     pub async fn playlist(api: &Pkce, playlist: Uri) -> Result<Self> {
-        let pages = Pages::new(api.playlist_items(playlist.id(), None)?);
+        let pages = MappedPages::new(
+            api.playlist_items(playlist.id(), None)?,
+            |data, api| Box::pin(async move {
+                Ok(match data {
+                    Some(data) => {
+                        // Saved tracks
+                        let mut tracks = api.check_saved_tracks(data.items.iter().filter_map(|v| match &v.item {
+                            Item::Track(t) => Some(t.id.clone()),
+                            _ => None
+                        })).await.log_error_or(vec![]).into_iter();
+
+                        // Saved episodes
+                        let mut episodes = api.check_saved_episodes(data.items.iter().filter_map(|v| match &v.item {
+                            Item::Episode(e) => Some(e.id.clone()),
+                            _ => None
+                        })).await.log_error_or(vec![]).into_iter();
+
+                        // Map to saved items popping from appropriate list
+                        let items = data.items.into_iter().map(|i| Saved::new(match i.item {
+                            Item::Track(_) => tracks.next().unwrap_or_default(),
+                            Item::Episode(_) => episodes.next().unwrap_or_default(),
+                        }, i)).collect();
+
+                        Some(items)
+                    },
+                    None => None
+                })
+            })
+        );
 
         let p = pages.clone();
         tokio::spawn(async move {
@@ -141,7 +169,18 @@ impl Landing {
     }
 
     pub async fn album(api: &Pkce, album: Uri) -> Result<Self> {
-        let pages = Pages::new(api.album_tracks(album.id(), None)?);
+        let pages = MappedPages::new(
+            api.album_tracks(album.id(), None)?,
+            |data, api| Box::pin(async move {
+                Ok(match data {
+                    Some(data) => {
+                        let tracks = api.check_saved_tracks(data.items.iter().map(|t| t.id.clone())).await.log_error_or(vec![false]);
+                        Some(data.items.into_iter().zip(tracks.into_iter()).map(|(i, s)| Saved::new(s, i)).collect())
+                    },
+                    None => None
+                })
+            })
+        );
 
         let p = pages.clone();
         tokio::spawn(async move {
@@ -174,7 +213,18 @@ impl Landing {
     }
 
     pub async fn show(api: &Pkce, show: Uri) -> Result<Self> {
-        let pages = Pages::new(api.show_episodes(show.id(), None)?);
+        let pages = MappedPages::new(
+            api.show_episodes(show.id(), None)?,
+            |data, api| Box::pin(async move {
+                Ok(match data {
+                    Some(data) => {
+                        let checked = api.check_saved_episodes(data.items.iter().map(|v| v.id.clone())).await?;
+                        Some(data.items.into_iter().zip(checked.into_iter()).map(|(d, s)| Saved::new(s, d)).collect())
+                    },
+                    None => None
+                })
+            })
+        );
 
         let p = pages.clone();
         tokio::spawn(async move {
@@ -294,13 +344,13 @@ impl Landing {
     pub fn down(&mut self) {
         match self {
             Landing::Playlist{pages, state, ..} => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.next_in_list(items.items.len());
+                state.next_in_list(items.len());
             },
             Landing::Album{pages, state, ..} => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.next_in_list(items.items.len());
+                state.next_in_list(items.len());
             },
             Landing::Show{pages, state, ..} => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.next_in_list(items.items.len());
+                state.next_in_list(items.len());
             },
             Landing::Audiobook{pages, state, ..} => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                 state.next_in_list(items.items.len());
@@ -326,13 +376,13 @@ impl Landing {
     pub fn up(&mut self) {
         match self {
             Landing::Playlist{ pages, state, .. } => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.prev_in_list(items.items.len());
+                state.prev_in_list(items.len());
             },
             Landing::Album{ pages, state, .. } => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.prev_in_list(items.items.len());
+                state.prev_in_list(items.len());
             },
             Landing::Show{ pages, state, .. } => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
-                state.prev_in_list(items.items.len());
+                state.prev_in_list(items.len());
             },
             Landing::Audiobook{ pages, state, .. } => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                 state.prev_in_list(items.items.len());
@@ -511,15 +561,20 @@ impl Landing {
     pub fn select(&self) -> Option<Vec<(KeyEvent, Action, &'static str)>> {
         match self {
             Landing::Playlist{ playlist, pages, state, section, .. } => {
+                let i = pages.items.clone();
                 return match section {
                     LandingSection::Content => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                         let index = state.selected().unwrap_or(0);
                         let mut actions = vec![
-                            (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
+                            (key!(Enter), Action::PlayContext(Play::playlist(playlist.id.clone(), Some(pages.page.lock().unwrap().offset + index), 0)), action_label::PLAY)
                         ];
-                        actions.extend(match items.items.get(index) {
-                            Some(PlaylistItemInfo { item: Item::Track(t), .. }) => t.into_ui_actions(false),
-                            Some(PlaylistItemInfo { item: Item::Episode(e), .. }) => e.into_ui_actions(false),
+                        actions.extend(match items.get(index) {
+                            Some(saved) => saved.into_actions(false, move |saved| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items[index].saved = saved;
+                                }
+                                Ok(())
+                            }),
                             None => return None
                         });
                         Some(actions)
@@ -532,15 +587,22 @@ impl Landing {
                 };
             },
             Landing::Album{ album, section, pages, state, .. } => {
+                let i = pages.items.clone();
                 return match section {
                     // Play context from offset instead of playing normally
                     LandingSection::Content => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
                         let index = state.selected().unwrap_or(0);
-                        items.items.get(index).map(|t| {
+                        let page = pages.page.lock().unwrap();
+                        items.get(index).map(|t| {
                             let mut actions = vec![
-                                (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
+                                (key!(Enter), Action::PlayContext(Play::album(album.id.clone(), Some(page.offset + index), 0)), action_label::PLAY)
                             ];
-                            actions.extend(t.into_ui_actions(false));
+                            actions.extend(t.into_actions(false, move |saved| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items[index].saved = saved;
+                                }
+                                Ok(())
+                            }));
                             actions
                         })
                     } else {
@@ -552,14 +614,21 @@ impl Landing {
                 };
             },
             Landing::Show{ show, section, pages, state, .. } => {
+                let i = pages.items.clone();
                 return match section {
                     LandingSection::Content => if let Some(Loading::Some(items)) = pages.items.lock().unwrap().as_ref() {
+                        let page = pages.page.lock().unwrap();
                         let index = state.selected().unwrap_or(0);
-                        items.items.get(index).map(|t| {
+                        items.get(index).map(|e| {
                             let mut actions = vec![
-                                (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
+                                (key!(Enter), Action::PlayContext(Play::show(show.id.clone(), Some(page.offset + index), 0)), action_label::PLAY)
                             ];
-                            actions.extend(t.into_ui_actions(false));
+                            actions.extend(e.into_actions(false, move |saved| {
+                                if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
+                                    items[index].saved = saved;
+                                }
+                                Ok(())
+                            }));
                             actions
                         })
                     } else {
@@ -578,7 +647,7 @@ impl Landing {
                             let mut actions = vec![
                                 (key!(Enter), Action::PlayContext(Play::show(audiobook.id.clone(), Some(items.offset + index), 0)), action_label::PLAY)
                             ];
-                            actions.extend(t.into_ui_actions(false));
+                            actions.extend(t.into_actions(false));
                             actions
                         })
                     } else {
@@ -600,7 +669,7 @@ impl Landing {
                                     let mut actions = vec![
                                         (key!(Enter), Action::PlayContext(Play::album(t.as_ref().id.clone(), None, 0)), action_label::PLAY)
                                     ];
-                                    actions.extend(t.into_ui_actions(false, move |saved| {
+                                    actions.extend(t.into_actions(false, move |saved| {
                                         if let Some(Loading::Some(items)) = i.lock().unwrap().as_mut().map(|v| v.as_mut()) {
                                             items[index].saved = saved;
                                         } 
@@ -619,7 +688,7 @@ impl Landing {
                                 let mut actions = vec![
                                     (key!(Enter), Action::Play(t.as_ref().uri.clone()), action_label::PLAY)
                                 ];
-                                actions.extend(t.into_ui_actions(false, move |saved| {
+                                actions.extend(t.into_actions(false, move |saved| {
                                     tt.lock().unwrap()[index].saved = saved;
                                     Ok(())
                                 }));

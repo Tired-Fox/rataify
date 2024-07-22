@@ -5,8 +5,7 @@ use crossterm::event::KeyEvent;
 use tupy::api::{
     request::Play,
     response::{
-        Context, Episode, Item, PlaybackItem, SimplifiedAlbum, SimplifiedChapter,
-        SimplifiedEpisode, SimplifiedTrack, Track,
+        Context, Episode, Item, PlaybackItem, PlaylistItemInfo, SimplifiedAlbum, SimplifiedChapter, SimplifiedEpisode, SimplifiedTrack, Track
     },
     Resource, Uri, UserResource,
 };
@@ -187,11 +186,20 @@ impl Display for Action {
 }
 
 pub trait IntoActions {
-    fn into_ui_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)>;
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)>;
+}
+
+impl IntoActions for PlaylistItemInfo {
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+        match &self.item {
+            Item::Track(track) => track.into_actions(context),
+            Item::Episode(episode) => episode.into_actions(context),
+        }
+    }
 }
 
 impl IntoActions for SimplifiedAlbum {
-    fn into_ui_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
             (
                 key!('C'),
@@ -218,7 +226,7 @@ impl IntoActions for SimplifiedAlbum {
 }
 
 impl IntoActions for Track {
-    fn into_ui_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
             (
                 key!('p'),
@@ -270,7 +278,7 @@ impl IntoActions for Track {
 }
 
 impl IntoActions for SimplifiedTrack {
-    fn into_ui_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let actions = vec![
             (
                 key!('p'),
@@ -307,7 +315,7 @@ impl IntoActions for SimplifiedTrack {
 }
 
 impl IntoActions for SimplifiedEpisode {
-    fn into_ui_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         vec![
             (
                 key!('p'),
@@ -324,7 +332,7 @@ impl IntoActions for SimplifiedEpisode {
 }
 
 impl IntoActions for Episode {
-    fn into_ui_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         let mut actions = vec![
             (
                 key!('p'),
@@ -360,7 +368,7 @@ impl IntoActions for Episode {
 }
 
 impl IntoActions for SimplifiedChapter {
-    fn into_ui_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, _: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         vec![
             (
                 key!('p'),
@@ -377,10 +385,10 @@ impl IntoActions for SimplifiedChapter {
 }
 
 impl IntoActions for Item {
-    fn into_ui_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         match self {
-            Item::Track(t) => t.into_ui_actions(context),
-            Item::Episode(e) => e.into_ui_actions(context),
+            Item::Track(t) => t.into_actions(context),
+            Item::Episode(e) => e.into_actions(context),
         }
     }
 }
@@ -395,7 +403,7 @@ impl GetUri for Item {
 }
 
 impl IntoActions for PlaybackState {
-    fn into_ui_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
+    fn into_actions(&self, context: bool) -> Vec<(KeyEvent, Action, &'static str)> {
         if let Some(pb) = self.playback.as_ref() {
             match &pb.item {
                 PlaybackItem::Track(t) => {

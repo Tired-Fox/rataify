@@ -231,7 +231,7 @@ impl App {
                                     .await
                                     .log_error_or(vec![false])[0],
                                 PlaybackItem::Episode(e) => api
-                                    .check_saved_tracks([e.uri.clone()])
+                                    .check_saved_episodes([e.uri.clone()])
                                     .await
                                     .log_error_or(vec![false])[0],
                                 _ => false,
@@ -482,7 +482,7 @@ impl App {
                                     Item::Episode(_) => None,
                                 }))
                                 .await
-                                .unwrap();
+                                .log_error_or(vec![]);
 
                             let se = api
                                 .check_saved_episodes(q.queue.iter().filter_map(|i| match i {
@@ -490,7 +490,7 @@ impl App {
                                     Item::Track(_) => None,
                                 }))
                                 .await
-                                .unwrap();
+                                .log_error_or(vec![]);
                             queue.lock().unwrap().queue = Some(Queue::from((q, st, se))).into();
                         }
                         None => {
@@ -550,21 +550,31 @@ impl App {
                 _ => {}
             },
             Event::Select => match &mut self.state.viewport {
-                Viewport::Modal(Modal::Devices) => {
-                    let device = self.state.modal_state.devices.lock().unwrap().select();
-                    let api = self.spotify.api.clone();
-                    tokio::spawn(async move {
-                        if api.token().is_expired() {
-                            api.refresh().await.log_error();
+                Viewport::Modal(modal) => match modal {
+                    Modal::Devices => {
+                        let device = self.state.modal_state.devices.lock().unwrap().select();
+                        let api = self.spotify.api.clone();
+                        tokio::spawn(async move {
+                            if api.token().is_expired() {
+                                api.refresh().await.log_error();
+                            }
+                            api.transfer_playback(device.id, true).await.log_error();
+                        });
+                        self.state.viewport = Viewport::Window;
+                    },
+                    Modal::Artists => {
+                        let artist = self.state.modal_state.artists.lock().unwrap().select();
+                        self.state.viewport = Viewport::Window;
+                        tx.send(Event::GoTo(GoTo::Artist(artist))).log_error();
+                    },
+                    Modal::AddToPlaylist => if let Some(state) = self.state.modal_state.add_to_playlist.lock().unwrap().as_ref() {
+                        let item = state.item.clone();
+                        if let Some(uri) = state.select() {
+                            self.spotify.api.add_items(uri, [item], None).await;
                         }
-                        api.transfer_playback(device.id, true).await.log_error();
-                    });
-                    self.state.viewport = Viewport::Window;
-                }
-                Viewport::Modal(Modal::Artists) => {
-                    let artist = self.state.modal_state.artists.lock().unwrap().select();
-                    self.state.viewport = Viewport::Window;
-                    tx.send(Event::GoTo(GoTo::Artist(artist))).log_error();
+                        self.state.viewport = Viewport::Window;
+                    },
+                    _ => {}
                 }
                 #[allow(clippy::single_match)]
                 Viewport::Window => match self.state.window {
@@ -595,11 +605,10 @@ impl App {
                             self.state.viewport = Viewport::Modal(Modal::Action);
                         }
                     }
-                },
-                _ => {}
+                }
             },
             Event::OpenAction => {
-                let actions = self.state.playback.lock().unwrap().into_ui_actions(true);
+                let actions = self.state.playback.lock().unwrap().into_actions(true);
                 if !actions.is_empty() {
                     *self.state.modal_state.actions.lock().unwrap() = ActionState::new(actions);
                     self.state.viewport = Viewport::Modal(Modal::Action);

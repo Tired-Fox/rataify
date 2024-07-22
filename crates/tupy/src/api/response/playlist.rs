@@ -38,7 +38,7 @@ pub struct PlaylistItemInfo {
     /// The Spotify user who added the track or episode. Note: some very old playlists may return null in this field.
     pub added_by: Option<Owner>,
     /// Whether this track or episode is a [local file](https://developer.spotify.com/documentation/web-api/concepts/playlists#local-files) or not.
-    pub  is_local: bool,
+    pub is_local: bool,
     #[serde(rename = "track")]
     pub item: Item,
 }

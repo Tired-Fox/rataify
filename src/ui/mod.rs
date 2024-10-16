@@ -1,111 +1,273 @@
-use ratatui::buffer::Buffer;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Style, Stylize};
-use ratatui::widgets::{Block, Borders, Tabs, Widget};
-use ratatui::Frame;
-use ratatui::prelude::StatefulWidget;
+use lazy_static::lazy_static;
+use ratatui::{layout::{Constraint, Direction, Layout, Rect}, symbols::DOT, text::{Line, Span}, widgets::{Cell, Row, StatefulWidget, Widget}, style::{Color, Style, Stylize}};
+use tupy::{api::response::{Episode, Track}, Duration};
 
-use crate::state::{MainWindow, ModalWindow, State, WindowState, TABS};
-use crate::ui::footer::Footer;
-use crate::ui::modal::DeviceSelect;
+pub mod modal;
+pub mod window;
+pub mod playback;
+pub mod components;
 
-use self::tabs::{Main, Queue};
+pub use playback::NoPlayback;
 
-mod footer;
-pub mod icon;
-mod modal;
-mod tabs;
-mod list_view;
+use crate::state::{Modal, State, Viewport, Window};
 
-pub fn player_ui(state: &mut State, frame: &mut Frame) {
-    macro_rules! render_state {
-        ($widget: ident, $area: expr) => {
-            frame.render_stateful_widget($widget, $area, state)
-        };
-    }
+use self::modal::goto::UiGoto;
 
-    let main = Layout::default()
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    // Cut the given rectangle into three vertical pieces
+    let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(1),
-            Constraint::Length(6),
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
         ])
-        .split(frame.size());
+        .split(r);
 
-    // HEADER
-    // frame.render_stateful_widget(Header, main[0], state);
-    let current_tab = TABS.iter().position(|t| t == &state.window.main);
-    let tabs = Tabs::new(
-        TABS.iter()
-            .map(|t| format!("{:?}", t))
-            .collect::<Vec<String>>(),
-    )
-    .highlight_style(if current_tab.is_some() {
-        Style::default().reversed()
-    } else {
-        Style::default()
-    })
-    .select(current_tab.unwrap_or(0));
-    frame.render_widget(tabs, main[0]);
-
-    // MAIN CONTENT
-
-    // Render border around main content
-    let block = Block::default().borders(Borders::ALL);
-    let inner = block.inner(main[1]);
-    block.render(main[1], frame.buffer_mut());
-
-    match state.window.main {
-        MainWindow::Cover => render_state!(Main, inner),
-        MainWindow::Queue => render_state!(Queue, inner),
-        _ => {}
-    }
-
-    if let WindowState::Modal = state.window_state {
-        match state.window.modal {
-            ModalWindow::DeviceSelect => render_state!(DeviceSelect, inner),
-            _ => {}
-        }
-    }
-
-    // FOOTER
-    render_state!(Footer, main[2]);
+    // Then cut the middle vertical piece into three width-wise pieces
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1] // Return the middle chunk
 }
 
+pub fn centered_rect_limited(percent_x: u16, percent_y: u16, w: u16, h: u16, r: Rect) -> Rect {
+    // Cut the given rectangle into three vertical pieces
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Min(w),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
 
-// TODO: Implement set pattern algorithms
-// TODO: Add color randomness potential
-pub struct Cover;
-impl StatefulWidget for Cover {
-    type State = State;
+    // Then cut the middle vertical piece into three width-wise pieces
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Min(h),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1] // Return the middle chunk
+}
 
-    fn render(self, rect: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let width = rect.width - 2;
-        let height = rect.height - 2;
-        let cover = &state.playback.cover;
+fn format_duration(duration: Duration) -> String {
+    if duration >= Duration::hours(1) {
+        format!(
+            "{:0>2}:{:0>2}:{:0>2}",
+            duration.num_hours(),
+            duration.num_minutes() % 60,
+            duration.num_seconds() % 60
+        )
+    } else {
+        format!(
+            "{:0>2}:{:0>2}",
+            duration.num_minutes() % 60,
+            duration.num_seconds() % 60
+        )
+    }
+}
 
-        let start_y = ((cover.len() - 1) - height as usize) / 2;
-        let start_x = ((cover.get(0).unwrap().len() - 1) - width as usize) / 2;
+/// Icon | Duration | Name | By | Context
+fn format_track<'l>(track: &Track) -> Row<'l> {
+    Row::new(vec![
+        Cell::from(Line::from(format_duration(track.duration)).right_aligned().style(COLORS.duration)),
+        Cell::default(),
+        Cell::from(track.name.clone()).cyan().style(COLORS.track),
+        Cell::from(
+            track
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
+        ).style(COLORS.artists),
+    ])
+}
 
-        for y in 0..height {
-            for x in 0..width {
-                buf.get_mut(rect.left() + x + 1, rect.top() + y + 1)
-                    .set_symbol(
-                        &cover
-                            .get(start_y + y as usize)
-                            .unwrap()
-                            .get(start_x + x as usize)
-                            .unwrap()
-                            .to_string(),
-                    );
+/// Icon | Duration | Name | By | Context
+fn format_episode<'l>(episode: &Episode) -> Row<'l> {
+    let mut cells = vec![
+        Cell::from(Line::from(format_duration(episode.duration)).right_aligned().style(COLORS.duration)),
+        if episode.resume_point.fully_played {
+            Cell::from("✓").style(COLORS.finished)
+        } else {
+            Cell::default()
+        },
+        Cell::from(episode.name.clone()).style(COLORS.episode)
+    ];
+
+    if let Some(show) = episode.show.as_ref() {
+        cells.push(Cell::from(show.name.clone()).style(COLORS.context));
+    } else {
+        cells.push(Cell::default());
+    }
+
+    Row::new(cells)
+}
+
+/// Icon | Duration | Name | By | Context
+fn format_track_saved<'l>(track: &Track, saved: bool) -> Row<'l> {
+    Row::new(vec![
+        Cell::from(if saved { "♥" } else { "" }).style(COLORS.like),
+        Cell::from(Line::from(format_duration(track.duration)).right_aligned().style(COLORS.duration)),
+        Cell::default(),
+        Cell::from(track.name.clone()).style(COLORS.track),
+        Cell::from(
+            track
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
+        ).style(COLORS.artists),
+    ])
+}
+
+/// Icon | Duration | Name | By | Context
+fn format_episode_saved<'l>(episode: &Episode, saved: bool) -> Row<'l> {
+    let mut cells = vec![
+        Cell::from(if saved { "♥" } else { "" }).style(COLORS.like),
+        Cell::from(Line::from(format_duration(episode.duration)).right_aligned().style(COLORS.duration)),
+        if episode.resume_point.fully_played {
+            Cell::from("✓").style(COLORS.finished)
+        } else {
+            Cell::default()
+        },
+        Cell::from(episode.name.clone()).style(COLORS.episode)
+    ];
+
+    if let Some(show) = episode.show.as_ref() {
+        cells.push(Cell::from(show.name.clone()).style(COLORS.context));
+    } else {
+        cells.push(Cell::default());
+    }
+
+    Row::new(cells)
+}
+
+impl Widget for State {
+    fn render(mut self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        let layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Fill(1), Constraint::Length(4)])
+            .split(area);
+
+        //let mut dimmed = if let Viewport::Modal(_) = &self.viewport {
+        //    Style::default().dim()
+        //} else {
+        //    Style::default()
+        //};
+        let mut dimmed = Style::default();
+
+        match &mut self.window {
+            Window::Queue => {
+                let qstate = &mut *self.window_state.queue.lock().unwrap();
+                StatefulWidget::render(qstate, layout[0], buf, &mut dimmed);
+            }
+            Window::Library => {
+                Widget::render(&*self.window_state.library.lock().unwrap(), layout[0], buf);
+            },
+            Window::Landing => {
+                Widget::render(&mut *self.window_state.landing.lock().unwrap(), layout[0], buf);
             }
         }
 
-        buf.get_mut(rect.left(), rect.top()).set_symbol("┌─");
-        buf.get_mut(rect.right() - 2, rect.top()).set_symbol("─┐");
-        buf.get_mut(rect.left(), rect.bottom() - 1).set_symbol("└─");
-        buf.get_mut(rect.right() - 2, rect.bottom() - 1)
-            .set_symbol("─┘");
+        // Viewport State Rendering
+        if let Viewport::Modal(modal) = &mut self.viewport {
+            match modal {
+                Modal::Devices => {
+                    let devices = &mut *self.modal_state.devices.lock().unwrap();
+                    Widget::render(devices, layout[0], buf);
+                }
+                Modal::GoTo => {
+                    let goto = &self.modal_state.go_to.lock().unwrap();
+                    Widget::render(UiGoto(&goto.mappings), layout[0], buf);
+                },
+                Modal::Action => {
+                    let actions = &*self.modal_state.actions.lock().unwrap();
+                    Widget::render(actions, layout[0], buf);
+                }
+                Modal::AddToPlaylist => {
+                    let add_to_playlist = &mut *self.modal_state.add_to_playlist.lock().unwrap();
+                    // TODO:
+                    // - Fetch playlists
+                    // - Render playlists in modal
+                    // - Use loading state
+                    if let Some(add_to_playlist) = add_to_playlist.as_mut() {
+                        Widget::render(add_to_playlist, layout[0], buf);
+                    }
+                }
+                Modal::Artists => {
+                    let artists = &mut *self.modal_state.artists.lock().unwrap();
+                    Widget::render(artists, layout[0], buf);
+                }
+            }
+        }
+
+        Widget::render(&*self.playback.lock().unwrap(), layout[1], buf);
+    }
+}
+
+pub struct Colors {
+    pub artists: Style,
+    pub track: Style,
+    pub episode: Style,
+    pub duration: Style,
+    pub context: Style,
+    pub like: Style,
+    pub finished: Style,
+    pub chapter_number: Style,
+    pub highlight: Style,
+}
+
+lazy_static! {
+    pub static ref COLORS: Colors = Colors {
+        artists: Style::default().gray(),
+        track: Style::default().cyan(),
+        episode: Style::default().light_green(),
+        duration: Style::default().bold(),
+        context: Style::default().white().bold(),
+        like: Style::default().fg(Color::Red),
+        finished: Style::default().green(),
+        chapter_number: Style::default().dim().gray(),
+        highlight: Style::default().fg(Color::Yellow),
+    };
+}
+
+pub struct PaginationProgress {
+    pub current: usize,
+    pub total: usize,
+}
+
+impl Widget for PaginationProgress {
+    fn render(self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        if self.total <= 1 {
+            return;
+        }
+
+        let mut cells = vec![];
+        for _ in 1..(self.current) {
+            cells.push(Span::from(DOT).dim().gray());
+        }
+        cells.push(Span::from(DOT).white().bold());
+        for _ in 0..(self.total.saturating_sub(self.current)) {
+            cells.push(Span::from(DOT).dim().gray());
+        }
+    
+        let vert = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1)
+        ]).split(area)[1];
+        Line::from(cells)
+            .centered()
+            .render(vert, buf);
     }
 }

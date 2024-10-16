@@ -1,38 +1,49 @@
-use color_eyre::Result;
-
-use rataify::action::Public;
-use rataify::app::App;
-use rataify::ui::player_ui;
-use rataify::{config::Config, keymaps};
+use std::collections::HashMap;
+use color_eyre::eyre::Result;
+use rataify::{app::{Event, App}, key};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    color_eyre::install()?;
+    App::new()
+        .await?
+        .run(HashMap::from([
+            // Menus
+            (key!('d'), Event::OpenSelectDevice),
+            (key!('g'), Event::OpenGoTo),
+            (key!(','), Event::OpenAction),
+            // TODO: Implement
+            (key!('?'), Event::OpenHelp),
+            // TODO: Implement
+            (key!('/'), Event::OpenSearch),
 
-    let config: Config = Config::load_with_fallback(["config.yml", "config.yaml"])?
-        .reserved_keys(keymaps! {
-            "ctrl+c" => Public::Exit,
-        })
-        .default_keys(keymaps! {
-            "q" => Public::Back,
-            "left" => Public::Left,
-            "right" => Public::Right,
-            "up" => Public::Up,
-            "down" => Public::Down,
-            "enter" => Public::Select,
-            "n" => Public::Next,
-            "p" => Public::Previous,
-            "d" => Public::SelectDevice,
-            "tab" => Public::NextTab,
-            "backtab" => Public::PreviousTab,
-            "s" => Public::ToggleShuffle,
-            "x" => Public::ToggleRepeat,
-            "?" => Public::Help,
-            "space" => Public::TogglePlayback,
-            "+" => Public::VolumeUp,
-            "-" => Public::VolumeDown,
-        })
-        .compile();
+            // Playback State
+            (key!(' '), Event::Toggle),
+            (key!('>' + SHIFT), Event::Next),
+            (key!('<' + SHIFT), Event::Previous),
+            (key!('r'), Event::ToggleRepeat),
+            (key!('s'), Event::ToggleShuffle),
+            (key!('+' + SHIFT), Event::VolumeUp),
+            (key!('-'), Event::VolumeDown),
 
-    App::new().await?.with_ui(player_ui).run(config).await
+            // Navigation
+            (key!(Enter), Event::Select),
+            (key!(Right), Event::Right),
+            (key!('l'), Event::Right),
+            (key!(Left), Event::Left),
+            (key!('h'), Event::Left),
+            (key!(Up), Event::Up),
+            (key!('k'), Event::Up),
+            (key!(Down), Event::Down),
+            (key!('j'), Event::Down),
+            (key!(Tab), Event::Tab),
+            (key!(BackTab + SHIFT), Event::Backtab),
+            (key!('r' + CONTROL), Event::Refresh),
+            (key!('R' + SHIFT + CONTROL), Event::Refresh),
+
+            // Quit / Close
+            (key!('q'), Event::Close),
+            (key!('c' + CONTROL), Event::Quit),
+            (key!('C' + SHIFT + CONTROL), Event::Quit),
+        ]))
+        .await
 }

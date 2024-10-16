@@ -1,22 +1,33 @@
-use std::path::PathBuf;
-use lazy_static::lazy_static;
-pub use keymap::KeyMap;
-pub(crate) mod logging;
-pub mod error;
-mod keymap;
-pub mod action;
-pub mod config;
-pub mod app;
-mod event;
-mod state;
-pub mod ui;
+use std::sync::{Arc, Mutex};
 
-lazy_static! {
-    #[cfg(windows)]
-    pub static ref CONFIG_PATH: PathBuf = {
-        #[cfg(windows)]
-        return home::home_dir().unwrap().join(".rataify");
-        #[cfg(not(windows))]
-        return home::home_dir().unwrap().join(".config/rataify");
+pub mod tui;
+pub mod errors;
+pub mod app;
+pub mod ui;
+pub mod spotify_util;
+pub mod state;
+
+pub type Shared<T> = Arc<T>;
+pub type Locked<T> = Mutex<T>;
+
+pub const PAGE_SIZE: usize = 30;
+
+#[macro_export]
+macro_rules! key {
+    ($([$($state: ident),*])? $key:ident $(+ $mod:ident)* ) => {
+        crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::$key,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE $($(| crossterm::event::KeyEventState::$state)*)?,
+            modifiers: crossterm::event::KeyModifiers::NONE $(| crossterm::event::KeyModifiers::$mod)*,
+        }
+    };
+    ($([$($state: ident),*])? $key:literal $(+ $mod:ident)* ) => {
+        crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char($key),
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE $($(| crossterm::event::KeyEventState::$state)*)?,
+            modifiers: crossterm::event::KeyModifiers::NONE $(| crossterm::event::KeyModifiers::$mod)*
+        }
     };
 }

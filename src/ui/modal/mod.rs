@@ -1,80 +1,136 @@
-use crate::state::State;
-use ratatui::buffer::Buffer;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style, Stylize};
-use ratatui::text::Span;
-use ratatui::widgets::{Block, BorderType, Borders, Clear, StatefulWidget, Widget};
-use std::cmp::max;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventState, KeyModifiers};
+use ratatui::{buffer::Buffer, layout::{Alignment, Constraint, Layout, Rect}, style::{Color, Style}, symbols::border, widgets::{block::Title, Block, Cell, Clear, Padding, Row, StatefulWidget, Table, TableState, Widget}};
 
-pub struct DeviceSelect;
-impl StatefulWidget for DeviceSelect {
-    type State = State;
+use super::COLORS;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        // NOTE: Area is the container where the modal can be rendered, not the area of the modal
-        let names = state
-            .device_select
-            .devices
-            .iter()
-            .map(|d| d.name.clone())
-            .collect::<Vec<_>>();
+pub mod devices;
+pub mod actions;
+pub mod goto;
+pub mod add_to_playlist;
+pub mod artists;
 
-        let max_width = names
-            .iter()
-            .map(|n| n.chars().count())
-            .max()
-            .unwrap_or(20)
-            .max(20);
+trait KeyToString {
+    fn key_to_string(&self) -> String;
+}
 
-        let block = Block::default()
-            .title("Devices")
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::White));
-
-        let mut modal_vert = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Fill(1),
-                Constraint::Percentage(80),
-                Constraint::Fill(1),
-            ])
-            .split(area)[1];
-
-        if block.inner(modal_vert).height as usize > names.len() {
-            modal_vert = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Fill(1),
-                    Constraint::Length((names.len() as u16 + 2).min(area.height)),
-                    Constraint::Fill(1),
-                ])
-                .split(area)[1];
+impl KeyToString for KeyEvent {
+    fn key_to_string(&self) -> String {
+        let mut buff = String::new();
+        if self.modifiers & KeyModifiers::CONTROL != KeyModifiers::NONE {
+            buff.push_str("ctrl+");
+        }
+        if self.modifiers & KeyModifiers::ALT != KeyModifiers::NONE {
+            buff.push_str("alt+");
         }
 
-        let modal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Fill(1),
-                Constraint::Length((max_width as u16 + 2).min(area.width)),
-                Constraint::Fill(1),
-            ])
-            .split(modal_vert)[1];
+        if self.modifiers & KeyModifiers::SHIFT != KeyModifiers::NONE {
+            match self.code {
+                KeyCode::Char(_) => {},
+                _ => buff.push_str("shift+"),
+            }
+        }
 
-        // Use this inner area to render the content
-        let inner = block.inner(modal);
-        block.render(modal, buf);
-        Clear.render(inner, buf);
+        buff.push_str(&match self.code {
+            KeyCode::Char(c) => c.to_string(),
+            KeyCode::F(f) => format!("F{}", f),
+            KeyCode::Media(media) => format!("{:?}", media),
+            KeyCode::Modifier(_) => String::new(),
+            other => format!("{:?}", other),
+        });
 
-        for y in 0..inner.height {
-            let mut line = Span::default().content(&names[y as usize]);
-            if y as usize == state.device_select.selection {
-                line = line.style(Style::default().reversed());
+        buff
+    }
+}
+
+pub fn render_modal<const N: usize, I: IntoIterator<Item=[String; N]>>(area: Rect, buf: &mut Buffer, title: &str, rows: I) {
+    let mut longest_parts: [usize; N] = [0; N];
+
+    // Rernder in bottom right corner
+    // [{key}] {title}
+    let mut count = 0;
+    let list = rows.into_iter().map(|parts| {
+        count += 1;
+        let cells = parts.into_iter().enumerate().map(|(i, part)| {
+            if part.len() > longest_parts[i] {
+                longest_parts[i] = part.len();
             }
 
-            buf.set_span(inner.left(), inner.top() + y, &line, line.width() as u16);
-        }
+            Cell::from(part)
+        });
 
-        // TODO: Render device list with selection
-    }
+        Row::new(cells)
+    })
+        .collect::<Table>()
+        .block(Block::bordered()
+            //.borders(Borders::TOP | Borders::LEFT)
+            .border_set(border::ROUNDED)
+            .padding(Padding::symmetric(1, 1))
+            .title(Title::from(title).alignment(Alignment::Center))
+        )
+        .widths(longest_parts.iter().map(|l| Constraint::Length(*l as u16)))
+        .column_spacing(2);
+
+    let hoz = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length((longest_parts.iter().sum::<usize>() as u16 + 6).max(title.len() as u16 + 2)),
+        Constraint::Length(1),
+    ])
+        .split(area);
+
+    let vert = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(((count + 4) as u16).min(area.height - 4)),
+        Constraint::Length(1),
+    ])
+        .split(hoz[1]);
+
+    Clear.render(vert[1], buf);
+    Widget::render(list, vert[1], buf);
+}
+
+pub fn render_modal_with_state<const N: usize, I: IntoIterator<Item=[String; N]>>(area: Rect, buf: &mut Buffer, title: &str, rows: I, state: &mut TableState) {
+    let mut longest_parts: [usize; N] = [0; N];
+
+    // Rernder in bottom right corner
+    // [{key}] {title}
+    let mut count = 0;
+    let list = rows.into_iter().map(|parts| {
+        count += 1;
+        let cells = parts.into_iter().enumerate().map(|(i, part)| {
+            if part.len() > longest_parts[i] {
+                longest_parts[i] = part.len();
+            }
+
+            Cell::from(part)
+        });
+
+        Row::new(cells)
+    })
+        .collect::<Table>()
+        .block(Block::bordered()
+            //.borders(Borders::TOP | Borders::LEFT)
+            .border_set(border::ROUNDED)
+            .padding(Padding::symmetric(1, 1))
+            .title(Title::from(title).alignment(Alignment::Center))
+        )
+        .highlight_style(COLORS.highlight)
+        .widths(longest_parts.iter().map(|l| Constraint::Length(*l as u16)))
+        .column_spacing(2);
+
+    let hoz = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length((longest_parts.iter().sum::<usize>() as u16 + 6).max(title.len() as u16 + 2)),
+        Constraint::Length(1),
+    ])
+        .split(area);
+
+    let vert = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(((count + 4) as u16).min(area.height - 4)),
+        Constraint::Length(1),
+    ])
+        .split(hoz[1]);
+
+    Clear.render(vert[1], buf);
+    StatefulWidget::render(list, vert[1], buf, state);
 }

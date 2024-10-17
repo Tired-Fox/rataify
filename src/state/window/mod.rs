@@ -12,7 +12,6 @@ use super::InnerState;
 pub enum Window {
     #[default]
     Library,
-    Modal(modal::Modal),
 }
 
 impl StatefulWidget for Window {
@@ -30,9 +29,9 @@ impl StatefulWidget for Window {
 
         Widget::render(&block, area, buf);
 
-        match state.window {
-            Window::Library => library::Library.render(block.inner(area), buf, state),
-            Window::Modal(modal) => modal.render(area, buf, state)
+        let win = *state.window.lock().unwrap();
+        match win {
+            Self::Library => library::Library.render(block.inner(area), buf, state),
         }
     }
 }

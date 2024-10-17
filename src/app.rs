@@ -1,6 +1,6 @@
 use std::{io::stderr, time::Duration};
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hashbrown::HashMap;
 use ratatui::{backend::CrosstermBackend, Frame};
 use tokio::sync::mpsc;
@@ -40,10 +40,14 @@ impl App {
         while let Ok(action) = self.reciever.try_recv() {
             match action {
                 Action::Quit => self.quit = true,
-                Action::Close => self.quit = true,
+                Action::Close => {
+                    self.quit = self.state.close_modal();
+                },
+                other => {
+                    self.state.handle_action(other, self.sender.clone())?
+                }
             }
         }
-
         Ok(())
     }
 
@@ -53,9 +57,17 @@ impl App {
 
     fn handle_event(&mut self, event: Event) -> Result<(), Error> {
         match event {
-            Event::Key(ke) => if let Some(action) = self.keymaps.get(&ke) {
-                self.sender.send(*action).unwrap();
-            }
+            Event::Key(ke) => {
+                match ke {
+                    KeyEvent { code: KeyCode::Char('c' | 'C'), modifiers: KeyModifiers::CONTROL, .. } => self.sender.send(Action::Quit)?,
+                    other => {
+                        match self.keymaps.get(&other) {
+                            Some(action) => self.sender.send(*action)?,
+                            None => self.sender.send(Action::Key(other))?
+                        }
+                    }
+                }
+            },
             Event::Mouse(_me) => {},
             Event::Focus(_focus) => {},
             Event::Resize(_w, _h) => {},
@@ -66,12 +78,15 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Error> {
-        let mut tui = Tui::new(CrosstermBackend::new(stderr()), 250, 33)?;
+        let mut tui = Tui::new(CrosstermBackend::new(stderr()), 250, 60)?;
         tui.init()?;
 
         while !self.quit {
             match tui.events.next().await? {
-                Event::Tick(dt) => self.tick(dt).await?,
+                Event::Tick(dt) => {
+                    self.tick(dt).await?;
+                    self.update()?;
+                },
                 Event::Render => {
                     tui.draw(|f| {
                         self.render(f)
@@ -79,8 +94,6 @@ impl App {
                 },
                 other => self.handle_event(other)?,
             }
-
-            self.update()?;
         }
 
         tui.exit()?;

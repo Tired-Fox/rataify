@@ -4,7 +4,7 @@ use crate::state::InnerState;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Modal {
-
+    Devices
 }
 
 impl StatefulWidget for Modal {

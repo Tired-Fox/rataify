@@ -1,24 +1,21 @@
-use rataify::{action::Action, App, Error};
-
-macro_rules! keyevent {
-    ($({ $($modifier: ident)* })? $key: literal) => {
-       crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char($key),
-            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
-       ) 
-    };
-    ($({ $($modifier: ident)* } $key: ident)?) => {
-       crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::$key,
-            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
-       ) 
-    };
-}
+use rataify::{action::Action, keyevent, App, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let mut app = App::new([
-        (keyevent!('q'), Action::Quit)
+        (keyevent!('q'), Action::Close),
+        (keyevent!(Tab), Action::Tab),
+        (keyevent!(BackTab), Action::BackTab),
+
+        (keyevent!('h'), Action::Left),
+        (keyevent!('j'), Action::Down),
+        (keyevent!('k'), Action::Up),
+        (keyevent!('l'), Action::Right),
+
+        (keyevent!(Up), Action::Up),
+        (keyevent!(Down), Action::Down),
+        (keyevent!(Left), Action::Left),
+        (keyevent!(Right), Action::Right),
     ]).await?;
 
     app.run().await

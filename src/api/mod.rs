@@ -29,34 +29,44 @@ pub async fn daily_mixes(spotify: &AuthCodePkceSpotify) -> Result<Vec<Simplified
     }
 }
 
-pub async fn release_discover(spotify: &AuthCodePkceSpotify) -> Result<(Option<SimplifiedPlaylist>, Option<SimplifiedPlaylist>), Error> {
+pub async fn release_radar(spotify: &AuthCodePkceSpotify) -> Result<Option<SimplifiedPlaylist>, Error> {
     match spotify
         .search(
-            "release radar discover weekly",
+            "release radar",
             SearchType::Playlist,
             None,
             None,
-            Some(4),
+            Some(2),
             None,
         )
         .await
     {
         Ok(SearchResult::Playlists(page)) => {
-            let mut rr = None;
-            let mut dw = None;
-
-            for item in page.items.into_iter().filter(|p| {
+            Ok(page.items.into_iter().filter(|p| {
                 p.owner.display_name.as_deref() == Some("Spotify")
-                && matches!(p.name.as_str(), "Release Radar" | "Discover Weekly")
-            }) {
-                match item.name.as_str() {
-                    "Release Radar" => { rr.replace(item); }
-                    "Discover Weekly" => { dw.replace(item); }
-                    _ => {}
-                }
-            }
+            }).find(|p| p.name.as_str() == "Release Radar" ))
+        },
+        Ok(_) => Err(Error::custom("expected playlists form spotify search api")),
+        Err(err) => Err(Error::from(err))
+    }
+}
 
-            Ok((rr, dw))
+pub async fn discover_weekly(spotify: &AuthCodePkceSpotify) -> Result<Option<SimplifiedPlaylist>, Error> {
+    match spotify
+        .search(
+            "discover weekly",
+            SearchType::Playlist,
+            None,
+            None,
+            Some(2),
+            None,
+        )
+        .await
+    {
+        Ok(SearchResult::Playlists(page)) => {
+            Ok(page.items.into_iter().filter(|p| {
+                p.owner.display_name.as_deref() == Some("Spotify")
+            }).find(|p| p.name.as_str() == "Discover Weekly" ))
         },
         Ok(_) => Err(Error::custom("expected playlists form spotify search api")),
         Err(err) => Err(Error::from(err))

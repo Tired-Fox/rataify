@@ -27,7 +27,7 @@ impl EventHandler {
     /// Constructs a new instance of [`EventHandler`].
     pub fn new(tick_rate: u64, render_rate: u64) -> Self {
         let tick_rate = Duration::from_millis(tick_rate);
-        let render_rate = Duration::from_millis(render_rate);
+        let render_rate = Duration::from_secs_f32(1.0 / render_rate as f32);
 
         let (sender, receiver) = mpsc::unbounded_channel();
         let _sender = sender.clone();
@@ -51,8 +51,9 @@ impl EventHandler {
                   _ = render_delay => {
                     _sender.send(Event::Render).unwrap();
                   }
-                  Some(Ok(evt)) = crossterm_event => {
-                    match evt {
+                  Some(evt) = crossterm_event => match evt {
+                    Err(e) => panic!("event stream error: {e}"),
+                    Ok(evt) => match evt {
                       CrosstermEvent::Key(mut key) => {
                         if key.kind == crossterm::event::KeyEventKind::Press {
                             key.modifiers.remove(KeyModifiers::SHIFT);
@@ -74,7 +75,7 @@ impl EventHandler {
                       CrosstermEvent::Paste(_) => {
                       },
                     }
-                  }
+                  },
                 };
             }
         });

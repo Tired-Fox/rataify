@@ -4,9 +4,16 @@ use tokio::sync::mpsc::error::TryRecvError;
 #[derive(Debug)]
 pub enum ErrorKind {
     Io(std::io::Error),
-    RecvError(tokio::sync::mpsc::error::TryRecvError),
+    Stream(StreamError),
     Spotify(ClientError),
     Custom(String),
+}
+
+#[derive(Debug)]
+pub enum StreamError {
+    Empty,
+    Closed,
+    Disconnected,
 }
 
 pub struct Error {
@@ -37,9 +44,10 @@ impl Error {
     pub fn message(&self) -> String {
         match &self.kind {
             ErrorKind::Io(io) => io.to_string(),
-            ErrorKind::RecvError(recv) => match recv {
-                TryRecvError::Empty => "failed to recieve event; stream is empty".to_string(),
-                TryRecvError::Disconnected => "failed to recieve event; stream is disconnected".to_string(),
+            ErrorKind::Stream(se) => match se {
+                StreamError::Empty => "failed to recieve event; stream is empty".to_string(),
+                StreamError::Disconnected => "failed to recieve event; stream disconnected".to_string(),
+                StreamError::Closed => "failed to send event; stream is closed".to_string(),
             }
             ErrorKind::Custom(message) => message.clone(),
             ErrorKind::Spotify(spotify) => spotify.to_string(),
@@ -66,7 +74,18 @@ impl From<std::io::Error> for Error {
 impl From<tokio::sync::mpsc::error::TryRecvError> for Error {
     fn from(value: tokio::sync::mpsc::error::TryRecvError) -> Self {
         Error {
-            kind: ErrorKind::RecvError(value)
+            kind: ErrorKind::Stream(match value {
+                TryRecvError::Empty => StreamError::Empty,
+                TryRecvError::Disconnected => StreamError::Disconnected,
+            })
+        }
+    }
+}
+
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
+    fn from(_value: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        Error {
+            kind: ErrorKind::Stream(StreamError::Closed)
         }
     }
 }

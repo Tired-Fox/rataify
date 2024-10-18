@@ -1,5 +1,7 @@
 use crossterm::event::KeyEvent;
-use rspotify::model::{Offset, PlayContextId, PlaylistId};
+use rspotify::model::{Offset, PlayContextId};
+
+use crate::state::window::modal::Modal;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -36,10 +38,26 @@ pub enum Action {
     /// Toggle to next repeat state
     Repeat,
 
+    /// Open a modal
+    Open(ModalOpen),
+    /// Set the currently used device
+    SetDevice(String, Option<bool>),
+
     /// Non mapped key
     Key(KeyEvent),
 
     Play(Play),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModalOpen {
+   Devices(Option<bool>)
+}
+
+impl ModalOpen {
+   pub fn devices(play: Option<bool>) -> Self {
+      Self::Devices(play)
+   }
 }
 
 #[derive(Debug, Clone, PartialEq)]

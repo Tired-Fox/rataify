@@ -14,17 +14,22 @@ use playback::Playback;
 use ratatui::{
     layout::{Constraint, Layout},
     text::Line,
-    widgets::{Paragraph, StatefulWidget, Widget},
+    widgets::{Clear, Paragraph, StatefulWidget, Widget},
 };
 use rspotify::{
-    clients::OAuthClient, model::AdditionalType, scopes, AuthCodePkceSpotify, Credentials, OAuth,
+    clients::OAuthClient,
+    model::{AdditionalType, Device},
+    scopes, AuthCodePkceSpotify, Credentials, OAuth,
 };
-use tokio::sync::mpsc::UnboundedSender;
-use window::{library::LibraryState, modal::Modal, Window};
+use window::{
+    library::LibraryState,
+    modal::{device::DeviceState, Modal},
+    Window,
+};
 
-use crate::{action::Action, api, Error};
+use crate::{action::Action, api, app::ContextSender, ConvertPage, Error};
 
-#[derive(Default)]
+#[derive(Default, strum::EnumIs)]
 pub enum Loadable<T> {
     #[default]
     None,
@@ -177,19 +182,28 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(inner: InnerState) -> Result<Self, Error> {
+    pub async fn new(inner: InnerState, ctx: ContextSender) -> Result<Self, Error> {
+        let cache_path = dirs::cache_dir().unwrap().join("rataify");
+
+        if !cache_path.exists() {
+            std::fs::create_dir_all(&cache_path)?;
+        }
+
         let mut spotify = AuthCodePkceSpotify::with_config(
             Credentials::from_env().ok_or(Error::custom(
                 "failed to parse spotify Credentials from environment variables",
             ))?,
-            OAuth::from_env(scopes!["user-read-playback-state"]).ok_or(Error::custom(
+            OAuth::from_env(scopes![
+                "user-read-playback-state",
+                "user-follow-read",
+                "playlist-read-private",
+                "user-library-read"
+            ])
+            .ok_or(Error::custom(
                 "failed to parse spotify OAuth from environment variables",
             ))?,
             rspotify::Config {
-                cache_path: dirs::cache_dir()
-                    .unwrap()
-                    .join("rataify")
-                    .join("token.json"),
+                cache_path: cache_path.join("token.json"),
                 token_cached: true,
                 token_refreshing: true,
                 ..Default::default()
@@ -199,7 +213,7 @@ impl State {
         let url = spotify.get_authorize_url(None)?;
         spotify.prompt_for_token(url.as_str()).await?;
 
-        inner.init(&spotify)?;
+        inner.init(&spotify, ctx)?;
 
         Ok(Self {
             playback_ping: Timer::new(
@@ -248,19 +262,30 @@ impl State {
             .unwrap_or_default();
     }
 
-    pub fn handle_action(
-        &mut self,
-        action: Action,
-        _sender: UnboundedSender<Action>,
-    ) -> Result<(), Error> {
+    pub fn handle_action(&mut self, action: Action, sender: ContextSender) -> Result<(), Error> {
         let win = *self.inner.window.lock().unwrap();
         let modal = *self.inner.modal.lock().unwrap();
 
         match modal {
             Some(modal) => match modal {
-                Modal::Devices => {
-                    panic!("device");
-                }
+                Modal::Devices => match action {
+                    Action::Up => {
+                        self.inner.devices.lock().unwrap().prev();
+                    }
+                    Action::Down => {
+                        self.inner.devices.lock().unwrap().next();
+                    }
+                    Action::Select => {
+                        sender.send_action(Action::Close)?;
+                        let devices = self.inner.devices.lock().unwrap();
+
+                        let should_play = devices.play;
+                        if let Some(Device { id: Some(id), .. }) = devices.select() {
+                            sender.send_action(Action::SetDevice(id, should_play))?
+                        }
+                    }
+                    _ => {}
+                },
             },
             None => match win {
                 // _ => {}
@@ -269,7 +294,7 @@ impl State {
                         .library
                         .lock()
                         .unwrap()
-                        .handle_action(action, _sender.clone())?;
+                        .handle_action(action, &self.spotify, &self.inner, sender.clone())?;
                 }
             },
         }
@@ -295,31 +320,42 @@ pub struct InnerState {
     pub playback: Arc<Mutex<Option<Playback>>>,
 
     pub library: Arc<Mutex<LibraryState>>,
+
+    pub devices: Arc<Mutex<DeviceState>>,
 }
 
 impl InnerState {
-    pub fn init(&self, spotify: &AuthCodePkceSpotify) -> Result<(), Error> {
-        self.fetch_playback(spotify);
-        self.fetch_featured(spotify);
-        self.fetch_library(spotify);
+    pub fn init(&self, spotify: &AuthCodePkceSpotify, ctx: ContextSender) -> Result<(), Error> {
+        self.fetch_playback(spotify, &ctx);
+        self.fetch_featured(spotify, &ctx);
+        self.fetch_library(spotify, &ctx);
 
         Ok(())
     }
 
-    pub fn fetch_library(&self, spotify: &AuthCodePkceSpotify) {
+    pub fn fetch_library(&self, spotify: &AuthCodePkceSpotify, ctx: &ContextSender) {
         let spotify = spotify.clone();
         let library = self.library.clone();
+        let c = ctx.clone();
         tokio::spawn(async move {
             library.lock().unwrap().playlists.load();
             match spotify.current_user_playlists_manual(Some(20), None).await {
-                Ok(playlists) => library.lock().unwrap().playlists.replace(playlists),
-                Err(_) => library.lock().unwrap().playlists.take(),
+                Ok(playlists) => {
+                    library.lock().unwrap().playlists.replace(playlists.convert_page())
+                },
+                Err(err) => {
+                    c.send_error(err.into()).unwrap();
+                    library.lock().unwrap().playlists.take()
+                }
             };
 
             library.lock().unwrap().artists.load();
             match spotify.current_user_followed_artists(None, Some(20)).await {
-                Ok(artists) => library.lock().unwrap().artists.replace(artists),
-                Err(_) => library.lock().unwrap().artists.take(),
+                Ok(artists) => library.lock().unwrap().artists.replace(artists.convert_page()),
+                Err(err) => {
+                    c.send_error(err.into()).unwrap();
+                    library.lock().unwrap().artists.take()
+                }
             };
 
             library.lock().unwrap().albums.load();
@@ -327,24 +363,33 @@ impl InnerState {
                 .current_user_saved_albums_manual(None, Some(20), None)
                 .await
             {
-                Ok(albums) => library.lock().unwrap().albums.replace(albums),
-                Err(_) => library.lock().unwrap().albums.take(),
+                Ok(albums) => library.lock().unwrap().albums.replace(albums.convert_page()),
+                Err(err) => {
+                    c.send_error(err.into()).unwrap();
+                    library.lock().unwrap().albums.take()
+                }
             };
 
             library.lock().unwrap().shows.load();
             match spotify.get_saved_show_manual(Some(20), None).await {
-                Ok(shows) => library.lock().unwrap().shows.replace(shows),
-                Err(_) => library.lock().unwrap().shows.take(),
+                Ok(shows) => library.lock().unwrap().shows.replace(shows.convert_page()),
+                Err(err) => {
+                    c.send_error(err.into()).unwrap();
+                    library.lock().unwrap().shows.take()
+                }
             };
         });
     }
 
-    pub fn fetch_playback(&self, spotify: &AuthCodePkceSpotify) {
+    pub fn fetch_playback(&self, spotify: &AuthCodePkceSpotify, ctx: &ContextSender) {
         let spot = spotify.clone();
         let playback = self.playback.clone();
         tokio::spawn(async move {
             let ctx = spot
-                .current_playback(None, None::<Vec<_>>)
+                .current_playback(
+                    None,
+                    Some(vec![&AdditionalType::Track, &AdditionalType::Episode]),
+                )
                 .await
                 .unwrap()
                 .map(Playback::from);
@@ -352,20 +397,20 @@ impl InnerState {
         });
     }
 
-    pub fn fetch_featured(&self, spotify: &AuthCodePkceSpotify) {
+    pub fn fetch_featured(&self, spotify: &AuthCodePkceSpotify, ctx: &ContextSender) {
         let spot = spotify.clone();
         let lib = self.library.clone();
         tokio::spawn(async move {
             if let Ok(Some(release_radar)) = api::release_radar(&spot).await {
-                lib.lock().unwrap().featured.push(release_radar);
+                lib.lock().unwrap().featured.push(release_radar.into());
             }
 
             if let Ok(Some(discover_weekly)) = api::discover_weekly(&spot).await {
-                lib.lock().unwrap().featured.push(discover_weekly);
+                lib.lock().unwrap().featured.push(discover_weekly.into());
             }
 
             if let Ok(dm) = api::daily_mixes(&spot).await {
-                lib.lock().unwrap().featured.extend(dm);
+                lib.lock().unwrap().featured.extend(dm.into_iter().map(|v| v.into()));
             }
         });
     }
@@ -376,10 +421,17 @@ impl Widget for &mut InnerState {
     where
         Self: Sized,
     {
+
         let main = Layout::vertical([Constraint::Fill(1), Constraint::Length(3)]).split(area);
 
         let win = *self.window.lock().unwrap();
+        Clear.render(main[0], buf);
         StatefulWidget::render(win, main[0], buf, self);
+
+        let modal = *self.modal.lock().unwrap();
+        if let Some(modal) = modal {
+            StatefulWidget::render(modal, main[0], buf, self);
+        }
 
         match self.playback.lock().unwrap().as_ref() {
             Some(ctx) => ctx.render(main[1], buf),

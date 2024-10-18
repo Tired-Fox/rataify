@@ -1,4 +1,4 @@
-use rataify::{action::Action, keyevent, App, Error};
+use rataify::{action::{Action, ModalOpen}, keyevent, App, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -18,12 +18,16 @@ async fn main() -> Result<(), Error> {
         (keyevent!(Right), Action::Right),
 
         (keyevent!(Enter), Action::Select),
+        (keyevent!('<'), Action::PreviousPage),
+        (keyevent!('>'), Action::NextPage),
 
         (keyevent!(' '), Action::Toggle),
         (keyevent!('n'), Action::Next),
         (keyevent!('p'), Action::Previous),
         (keyevent!('s'), Action::Shuffle),
         (keyevent!('r'), Action::Repeat),
+
+        (keyevent!('d'), Action::Open(ModalOpen::devices(None))),
     ]).await?;
 
     app.run().await

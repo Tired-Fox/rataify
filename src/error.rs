@@ -7,6 +7,7 @@ pub enum ErrorKind {
     Stream(StreamError),
     Spotify(ClientError),
     Custom(String),
+    Group(Vec<Error>)
 }
 
 #[derive(Debug)]
@@ -17,7 +18,7 @@ pub enum StreamError {
 }
 
 pub struct Error {
-    kind: ErrorKind,
+    pub kind: ErrorKind,
 }
 
 impl std::fmt::Debug for Error {
@@ -51,6 +52,7 @@ impl Error {
             }
             ErrorKind::Custom(message) => message.clone(),
             ErrorKind::Spotify(spotify) => spotify.to_string(),
+            ErrorKind::Group(group) => group.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join("\n")
         }
     }
 }

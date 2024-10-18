@@ -8,16 +8,13 @@ use ratatui::{
     },
 };
 
-use rspotify::model::{
+use rspotify::{clients::OAuthClient, model::{
     ArtistId, CursorBasedPage, FullArtist, Page, SavedAlbum, Show, SimplifiedPlaylist,
-};
+}, AuthCodePkceSpotify};
 use strum::{EnumCount, IntoEnumIterator};
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    action::{Action, Play},
-    state::{InnerState, Loadable},
-    Error,
+    action::{Action, Play}, app::ContextSender, state::{InnerState, Loadable}, Error
 };
 
 #[derive(
@@ -79,7 +76,7 @@ pub struct LibraryState {
     pub featured: Vec<SimplifiedPlaylist>,
 
     pub artists: Loadable<CursorBasedPage<FullArtist>>,
-    pub prev_artist: Vec<ArtistId<'static>>,
+    pub prev_artist: Vec<Option<ArtistId<'static>>>,
 
     pub playlists: Loadable<Page<SimplifiedPlaylist>>,
     pub albums: Loadable<Page<SavedAlbum>>,
@@ -89,7 +86,7 @@ pub struct LibraryState {
 }
 
 impl LibraryState {
-    pub fn handle_action(&mut self, action: Action, sender: UnboundedSender<Action>) -> Result<(), Error> {
+    pub fn handle_action(&mut self, action: Action, spotify: &AuthCodePkceSpotify, state: &InnerState, sender: ContextSender) -> Result<(), Error> {
         match action {
             Action::Up => {
                 self.item = self.item.saturating_sub(1);
@@ -140,28 +137,171 @@ impl LibraryState {
                 match self.category {
                     Category::MadeForYou => {
                         let playlist = self.featured.get(self.item).ok_or(Error::custom("failed to select item from list 'Made For You'"))?;
-                        sender.send(Action::Play(Play::Context(playlist.id.clone().into(), None, None)))?
+                        sender.send_action(Action::Play(Play::Context(playlist.id.clone().into(), None, None)))?
                     },
                     Category::Playlists => if let Loadable::Some(playlists) = self.playlists.as_ref() {
                         let playlist = playlists.items.get(self.item).ok_or(Error::custom("failed to select item from list 'Playlists'"))?;
-                        sender.send(Action::Play(Play::Context(playlist.id.clone().into(), None, None)))?
+                        sender.send_action(Action::Play(Play::Context(playlist.id.clone().into(), None, None)))?
                     },
                     Category::Artists => if let Loadable::Some(artists) = self.artists.as_ref() {
                         let artist = artists.items.get(self.item).ok_or(Error::custom("failed to select item from list 'artists'"))?;
-                        sender.send(Action::Play(Play::Context(artist.id.clone().into(), None, None)))?
+                        sender.send_action(Action::Play(Play::Context(artist.id.clone().into(), None, None)))?
                     },
                     Category::Albums => if let Loadable::Some(albums) = self.albums.as_ref() {
                         let album = albums.items.get(self.item).ok_or(Error::custom("failed to select item from list 'albums'"))?;
-                        sender.send(Action::Play(Play::Context(album.album.id.clone().into(), None, None)))?
+                        sender.send_action(Action::Play(Play::Context(album.album.id.clone().into(), None, None)))?
                     },
                     Category::Shows => if let Loadable::Some(shows) = self.shows.as_ref() {
                         let show = shows.items.get(self.item).ok_or(Error::custom("failed to select item from list 'shows'"))?;
-                        sender.send(Action::Play(Play::Context(show.show.id.clone().into(), None, None)))?
+                        sender.send_action(Action::Play(Play::Context(show.show.id.clone().into(), None, None)))?
                     },
                 } 
             }
-            Action::NextPage => {}
-            Action::PreviousPage => {}
+            Action::NextPage => {
+                let spot = spotify.clone();
+                let lib = state.library.clone();
+                let c = sender.clone();
+                match self.category {
+                    Category::MadeForYou => {},
+                    Category::Playlists => if let Loadable::Some(playlists) = self.playlists.clone() {
+                        let offset = playlists.offset + playlists.limit;
+                        if playlists.next.is_some() && offset < playlists.total {
+                            self.playlists.load();
+                            tokio::spawn(async move {
+                                match spot.current_user_playlists_manual(Some(20), Some(offset)).await {
+                                    Ok(playlists) => lib.lock().unwrap().playlists.replace(playlists),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().playlists.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Artists => if let Loadable::Some(artists) = self.artists.as_ref() {
+                        if let Some(next) = artists.next.clone() {
+                            if self.prev_artist.is_empty() {
+                                self.prev_artist.push(None);
+                            } else {
+                                self.prev_artist.push(Some(artists.items.last().unwrap().id.clone()));
+                            }
+                            self.artists.load();
+                            tokio::spawn(async move {
+                                match spot.current_user_followed_artists(Some(next.as_ref()), Some(20)).await {
+                                    Ok(artists) => lib.lock().unwrap().artists.replace(artists),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().artists.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Albums => if let Loadable::Some(albums) = self.albums.as_ref() {
+                        let offset = albums.offset + albums.limit;
+                        if albums.next.is_some() && offset < albums.total {
+                            self.albums.load();
+                            tokio::spawn(async move {
+                                match spot
+                                    .current_user_saved_albums_manual(None, Some(20), Some(offset))
+                                    .await
+                                {
+                                    Ok(albums) => lib.lock().unwrap().albums.replace(albums),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().albums.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Shows => if let Loadable::Some(shows) = self.shows.as_ref() {
+                        let offset = shows.offset + shows.limit;
+                        if shows.next.is_some() && offset < shows.total {
+                            self.shows.load();
+                            tokio::spawn(async move {
+                                match spot.get_saved_show_manual(Some(20), Some(offset)).await {
+                                    Ok(shows) => lib.lock().unwrap().shows.replace(shows),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().shows.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                } 
+            }
+            Action::PreviousPage => {
+                let spot = spotify.clone();
+                let lib = state.library.clone();
+                let c = sender.clone();
+                match self.category {
+                    Category::MadeForYou => {},
+                    Category::Playlists => if let Loadable::Some(playlists) = self.playlists.clone() {
+                        let offset = playlists.offset.saturating_sub(playlists.limit);
+                        if playlists.previous.is_some() && offset < playlists.offset {
+                            self.playlists.load();
+                            tokio::spawn(async move {
+                                match spot.current_user_playlists_manual(Some(20), Some(offset)).await {
+                                    Ok(playlists) => lib.lock().unwrap().playlists.replace(playlists),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().playlists.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Artists => if self.artists.is_some() {
+                        if let Some(after) = self.prev_artist.pop().map(|v| v.map(|v| v.to_string())) {
+                            self.artists.load();
+                            tokio::spawn(async move {
+                                match spot.current_user_followed_artists(if let Some(after) = after.as_deref() { Some(after) } else { None }, Some(20)).await {
+                                    Ok(artists) => lib.lock().unwrap().artists.replace(artists),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().artists.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Albums => if let Loadable::Some(albums) = self.albums.as_ref() {
+                        let offset = albums.offset.saturating_sub(albums.limit);
+                        if albums.previous.is_some() && offset < albums.offset {
+                            self.albums.load();
+                            tokio::spawn(async move {
+                                match spot
+                                    .current_user_saved_albums_manual(None, Some(20), Some(offset))
+                                    .await
+                                {
+                                    Ok(albums) => lib.lock().unwrap().albums.replace(albums),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().albums.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                    Category::Shows => if let Loadable::Some(shows) = self.shows.as_ref() {
+                        let offset = shows.offset.saturating_sub(shows.limit);
+                        if shows.previous.is_some() && offset < shows.offset {
+                            self.shows.load();
+                            tokio::spawn(async move {
+                                match spot.get_saved_show_manual(Some(20), Some(offset)).await {
+                                    Ok(shows) => lib.lock().unwrap().shows.replace(shows),
+                                    Err(err) => {
+                                        c.send_error(err.into()).unwrap();
+                                        lib.lock().unwrap().shows.take()
+                                    }
+                                };
+                            });
+                        }
+                    },
+                } 
+            }
             _ => {}
         }
 
@@ -324,9 +464,9 @@ impl Library {
         if let Some(page) = Self::unwrap_page(&lib.playlists, area, buf) {
             let pages = (page.total as f32 / page.limit as f32).ceil() as u32;
             let current = if page.offset == 0 {
-                1
+                0
             } else {
-                page.offset / page.limit
+                (page.offset as f32 / page.limit as f32).ceil() as u32
             }
             .max(1);
 
@@ -374,6 +514,7 @@ impl Library {
             if pages > 1 {
                 let page_block = Block::new().padding(Padding::top(1));
                 Line::from(vec![
+                    Span::from((0..current.saturating_sub(1)).map(|_| '•').collect::<String>()).dark_gray(),
                     Span::from((0..current).map(|_| '•').collect::<String>()).green(),
                     Span::from((0..pages - current).map(|_| '•').collect::<String>()).dark_gray(),
                 ])

@@ -9,7 +9,6 @@ use crate::Error;
 #[derive(Debug, Clone)]
 pub enum Event {
     Tick(Duration),
-    Render,
     Focus(bool),
     Key(KeyEvent),
     Mouse(MouseEvent),
@@ -25,20 +24,17 @@ pub struct EventHandler {
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`].
-    pub fn new(tick_rate: u64, render_rate: u64) -> Self {
-        let tick_rate = Duration::from_millis(tick_rate);
-        let render_rate = Duration::from_secs_f32(1.0 / render_rate as f32);
+    pub fn new(tick_rate: u64) -> Self {
+        let tick_rate = Duration::from_secs_f32(1.0 / tick_rate as f32);
 
         let (sender, receiver) = mpsc::unbounded_channel();
         let _sender = sender.clone();
         let handler = tokio::spawn(async move {
             let mut tick = tokio::time::interval(tick_rate);
-            let mut render = tokio::time::interval(render_rate);
 
             let mut reader = crossterm::event::EventStream::new();
             loop {
                 let tick_delay = tick.tick();
-                let render_delay = render.tick();
 
                 let crossterm_event = reader.next().fuse();
                 tokio::select! {
@@ -47,9 +43,6 @@ impl EventHandler {
                   }
                   _ = tick_delay => {
                     _sender.send(Event::Tick(tick_rate)).unwrap();
-                  }
-                  _ = render_delay => {
-                    _sender.send(Event::Render).unwrap();
                   }
                   Some(evt) = crossterm_event => match evt {
                     Err(e) => panic!("event stream error: {e}"),

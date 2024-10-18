@@ -37,10 +37,10 @@ impl<B> Tui<B>
 where
     B: Backend,
 {
-    pub fn new(backend: B, tick_rate: u64, render_rate: u64) -> Result<Self, Error> {
+    pub fn new(backend: B, tick_rate: u64) -> Result<Self, Error> {
         Ok(Self {
             terminal: Terminal::new(backend)?,
-            events: EventHandler::new(tick_rate, render_rate),
+            events: EventHandler::new(tick_rate),
         })
     }
 

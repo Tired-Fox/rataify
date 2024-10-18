@@ -1,6 +1,13 @@
 use chrono::{DateTime, Duration, Local};
-use ratatui::{layout::{Constraint, Layout}, style::{Style, Stylize}, text::{Line, Span}, widgets::{Block, Padding, Paragraph, Widget}};
-use rspotify::model::{Context, CurrentPlaybackContext, CurrentlyPlayingType, Device, PlayableItem, RepeatState};
+use ratatui::{
+    layout::{Constraint, Layout},
+    style::{Style, Stylize},
+    text::{Line, Span},
+    widgets::{Block, Padding, Paragraph, Widget},
+};
+use rspotify::model::{
+    Context, CurrentPlaybackContext, CurrentlyPlayingType, Device, PlayableItem, RepeatState,
+};
 
 #[derive(Debug, Clone)]
 pub struct Playback {
@@ -13,7 +20,7 @@ pub struct Playback {
     pub progress: Option<Duration>,
     pub is_playing: bool,
     pub item: Option<PlayableItem>,
-    pub currently_playing_type: CurrentlyPlayingType
+    pub currently_playing_type: CurrentlyPlayingType,
 }
 
 impl From<CurrentPlaybackContext> for Playback {
@@ -28,66 +35,68 @@ impl From<CurrentPlaybackContext> for Playback {
             progress: value.progress,
             is_playing: value.is_playing,
             item: value.item,
-            currently_playing_type: value.currently_playing_type
+            currently_playing_type: value.currently_playing_type,
         }
     }
 }
 
 impl Widget for &Playback {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
-        where
-            Self: Sized {
-
-        let block = Block::default()
-            .padding(Padding::horizontal(1));
-        let lines = Layout::vertical([Constraint::Length(1);3]).split(block.inner(area));
+    where
+        Self: Sized,
+    {
+        let block = Block::default().padding(Padding::horizontal(1));
+        let lines = Layout::vertical([Constraint::Length(1); 3]).split(block.inner(area));
 
         let (title, by, duration) = match self.item.as_ref() {
             Some(PlayableItem::Track(track)) => (
                 track.name.clone(),
-                track.artists.iter().map(|v| v.name.as_str()).collect::<Vec<_>>().join(", "),
-                track.duration
+                track
+                    .artists
+                    .iter()
+                    .map(|v| v.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                track.duration,
             ),
             Some(PlayableItem::Episode(episode)) => (
                 episode.name.clone(),
                 episode.show.publisher.clone(),
-                episode.duration
+                episode.duration,
             ),
-            None => match self.currently_playing_type {
-                CurrentlyPlayingType::Advertisement => (
-                    "<Advertisement>".to_string(),
-                    String::new(),
-                    Duration::default(),
-                ),
-                CurrentlyPlayingType::Unknown => (
-                    "<Unknown>".to_string(),
-                    String::new(),
-                    Duration::default(),
-                ),
-                _ => (String::new(), String::new(), Duration::default())
-            },
+            None => (
+                format!("<{:?}>", self.currently_playing_type),
+                String::new(),
+                Duration::default(),
+            ),
         };
 
-        let title_line = Layout::horizontal([Constraint::Ratio(3,1), Constraint::Ratio(1,3)]).split(lines[0]);
-        Line::from(title)
-            .bold()
-            .render(title_line[0], buf);
+        let title_line =
+            Layout::horizontal([Constraint::Ratio(3, 1), Constraint::Ratio(1, 3)]).split(lines[0]);
+        Line::from(title).bold().render(title_line[0], buf);
         Line::from(by)
             .magenta()
             .italic()
             .right_aligned()
             .render(title_line[1], buf);
 
-        let device_line = Layout::horizontal([Constraint::Ratio(3,1), Constraint::Ratio(1,3)]).split(lines[1]);
+        let device_line =
+            Layout::horizontal([Constraint::Ratio(3, 1), Constraint::Ratio(1, 3)]).split(lines[1]);
         Line::from(self.device.name.as_str())
             .dark_gray()
             .render(device_line[0], buf);
 
-        Line::from(self.device.volume_percent.as_ref().map(|v| format!("{v} %")).unwrap_or_default())
-            .dark_gray()
-            .right_aligned()
-            .render(device_line[1], buf);
-        
+        Line::from(
+            self.device
+                .volume_percent
+                .as_ref()
+                .map(|v| format!("{v} %"))
+                .unwrap_or_default(),
+        )
+        .dark_gray()
+        .right_aligned()
+        .render(device_line[1], buf);
+
         let progress = if self.is_playing {
             (self.progress.unwrap_or_default() + (Local::now() - self.timestamp)).min(duration)
         } else {
@@ -96,13 +105,31 @@ impl Widget for &Playback {
 
         let (dtag, ptag) = if duration >= Duration::hours(1) {
             (
-                format!("{:02}:{:02}:{:02}", duration.num_hours() % 24, duration.num_minutes() % 60, duration.num_seconds() % 60),
-                format!("{:02}:{:02}:{:02}", progress.num_hours() % 24, progress.num_minutes() % 60, progress.num_seconds() % 60),
+                format!(
+                    "{:02}:{:02}:{:02}",
+                    duration.num_hours() % 24,
+                    duration.num_minutes() % 60,
+                    duration.num_seconds() % 60
+                ),
+                format!(
+                    "{:02}:{:02}:{:02}",
+                    progress.num_hours() % 24,
+                    progress.num_minutes() % 60,
+                    progress.num_seconds() % 60
+                ),
             )
         } else {
             (
-                format!("{:02}:{:02}", duration.num_minutes() % 60, duration.num_seconds() % 60),
-                format!("{:02}:{:02}", progress.num_minutes() % 60, progress.num_seconds() % 60),
+                format!(
+                    "{:02}:{:02}",
+                    duration.num_minutes() % 60,
+                    duration.num_seconds() % 60
+                ),
+                format!(
+                    "{:02}:{:02}",
+                    progress.num_minutes() % 60,
+                    progress.num_seconds() % 60
+                ),
             )
         };
 
@@ -128,6 +155,6 @@ impl Widget for &Playback {
             Span::from((0..bar_width - filled).map(|_| '─').collect::<String>()).dark_gray(),
             Span::from(format!(" {dtag}")).style(time_style),
         ])
-            .render(lines[2], buf);
+        .render(lines[2], buf);
     }
 }

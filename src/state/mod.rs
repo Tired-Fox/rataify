@@ -17,8 +17,7 @@ use ratatui::{
     widgets::{Paragraph, StatefulWidget, Widget},
 };
 use rspotify::{
-    clients::OAuthClient, model::SimplifiedPlaylist, scopes, AuthCodePkceSpotify, Credentials,
-    OAuth,
+    clients::OAuthClient, model::AdditionalType, scopes, AuthCodePkceSpotify, Credentials, OAuth,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use window::{library::LibraryState, modal::Modal, Window};
@@ -173,8 +172,8 @@ impl std::fmt::Debug for Timer {
 #[derive(Debug, Clone)]
 pub struct State {
     playback_ping: Timer,
-    spotify: AuthCodePkceSpotify,
-    inner: InnerState,
+    pub spotify: AuthCodePkceSpotify,
+    pub inner: InnerState,
 }
 
 impl State {
@@ -209,7 +208,10 @@ impl State {
                     let playback = inner.playback.clone();
                     tokio::spawn(async move {
                         let ctx = spotify
-                            .current_playback(None, None::<Vec<_>>)
+                            .current_playback(
+                                None,
+                                Some(vec![&AdditionalType::Track, &AdditionalType::Episode]),
+                            )
                             .await
                             .unwrap()
                             .map(Playback::from);
@@ -232,7 +234,18 @@ impl State {
     }
 
     pub fn close_modal(&self) -> bool {
-        return self.inner.modal.lock().unwrap().take().is_none()
+        return self.inner.modal.lock().unwrap().take().is_none();
+    }
+
+    pub fn playing(&self) -> bool {
+        return self
+            .inner
+            .playback
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|p| p.is_playing)
+            .unwrap_or_default();
     }
 
     pub fn handle_action(
@@ -252,14 +265,12 @@ impl State {
             None => match win {
                 // _ => {}
                 Window::Library => {
-                    let featured = self.inner.featured.lock().unwrap().len();
-                    self
-                        .inner
+                    self.inner
                         .library
                         .lock()
                         .unwrap()
-                        .handle_action(action, featured)?;
-                },
+                        .handle_action(action, _sender.clone())?;
+                }
             },
         }
 
@@ -278,13 +289,12 @@ impl Widget for &mut State {
 
 #[derive(Default, Debug, Clone)]
 pub struct InnerState {
-    window: Arc<Mutex<Window>>,
-    modal: Arc<Mutex<Option<Modal>>>,
+    pub window: Arc<Mutex<Window>>,
+    pub modal: Arc<Mutex<Option<Modal>>>,
 
-    playback: Arc<Mutex<Option<Playback>>>,
+    pub playback: Arc<Mutex<Option<Playback>>>,
 
-    library: Arc<Mutex<LibraryState>>,
-    featured: Arc<Mutex<Vec<SimplifiedPlaylist>>>,
+    pub library: Arc<Mutex<LibraryState>>,
 }
 
 impl InnerState {
@@ -344,18 +354,18 @@ impl InnerState {
 
     pub fn fetch_featured(&self, spotify: &AuthCodePkceSpotify) {
         let spot = spotify.clone();
-        let featured = self.featured.clone();
+        let lib = self.library.clone();
         tokio::spawn(async move {
             if let Ok(Some(release_radar)) = api::release_radar(&spot).await {
-                featured.lock().unwrap().push(release_radar);
+                lib.lock().unwrap().featured.push(release_radar);
             }
 
             if let Ok(Some(discover_weekly)) = api::discover_weekly(&spot).await {
-                featured.lock().unwrap().push(discover_weekly);
+                lib.lock().unwrap().featured.push(discover_weekly);
             }
 
             if let Ok(dm) = api::daily_mixes(&spot).await {
-                featured.lock().unwrap().extend(dm);
+                lib.lock().unwrap().featured.extend(dm);
             }
         });
     }

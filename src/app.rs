@@ -1,11 +1,13 @@
 use std::{io::stderr, time::Duration};
 
+use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hashbrown::HashMap;
 use ratatui::{backend::CrosstermBackend, Frame};
+use rspotify::{clients::OAuthClient, model::PlayContextId};
 use tokio::sync::mpsc;
 
-use crate::{action::Action, event::Event, state::{InnerState, State}, Error, Tui};
+use crate::{action::{Action, Play}, event::Event, state::{InnerState, State}, Error, Tui};
 
 pub struct App {
     quit: bool,
@@ -43,6 +45,45 @@ impl App {
                 Action::Close => {
                     self.quit = self.state.close_modal();
                 },
+                Action::Next => {
+                    let spotify = self.state.spotify.clone();
+                    tokio::spawn(async move {
+                        spotify.next_track(None).await.unwrap();
+                    });
+                }
+                Action::Previous => {
+                    let spotify = self.state.spotify.clone();
+                    tokio::spawn(async move {
+                        spotify.previous_track(None).await.unwrap();
+                    });
+                }
+                Action::Toggle => {
+                    let spotify = self.state.spotify.clone();
+                    let playback = self.state.inner.playback.clone();
+                    tokio::spawn(async move {
+                        let playing = playback.lock().unwrap().as_ref().map(|p| p.is_playing).unwrap_or_default();
+                        if playing {
+                            spotify.pause_playback(None).await.unwrap();
+                            if let Some(playback) = playback.lock().unwrap().as_mut() {
+                                playback.is_playing = false;
+                                playback.timestamp = Local::now();
+                            }
+                        } else {
+                            spotify.resume_playback(None, None).await.unwrap();
+                            if let Some(playback) = playback.lock().unwrap().as_mut() {
+                                playback.is_playing = true;
+                            }
+                        }
+                    });
+                }
+                Action::Play(play) => match play {
+                    Play::Context(id, offset, position) => {
+                        let spotify = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            spotify.start_context_playback(id, None, offset, position).await.unwrap();
+                        });
+                    }
+                }
                 other => {
                     self.state.handle_action(other, self.sender.clone())?
                 }
@@ -62,7 +103,7 @@ impl App {
                     KeyEvent { code: KeyCode::Char('c' | 'C'), modifiers: KeyModifiers::CONTROL, .. } => self.sender.send(Action::Quit)?,
                     other => {
                         match self.keymaps.get(&other) {
-                            Some(action) => self.sender.send(*action)?,
+                            Some(action) => self.sender.send(action.clone())?,
                             None => self.sender.send(Action::Key(other))?
                         }
                     }
@@ -78,7 +119,7 @@ impl App {
     }
 
     pub async fn run(&mut self) -> Result<(), Error> {
-        let mut tui = Tui::new(CrosstermBackend::new(stderr()), 250, 60)?;
+        let mut tui = Tui::new(CrosstermBackend::new(stderr()), 60)?;
         tui.init()?;
 
         while !self.quit {
@@ -86,8 +127,7 @@ impl App {
                 Event::Tick(dt) => {
                     self.tick(dt).await?;
                     self.update()?;
-                },
-                Event::Render => {
+
                     tui.draw(|f| {
                         self.render(f)
                     })?;

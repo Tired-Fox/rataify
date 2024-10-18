@@ -16,6 +16,14 @@ async fn main() -> Result<(), Error> {
         (keyevent!(Down), Action::Down),
         (keyevent!(Left), Action::Left),
         (keyevent!(Right), Action::Right),
+
+        (keyevent!(Enter), Action::Select),
+
+        (keyevent!(' '), Action::Toggle),
+        (keyevent!('n'), Action::Next),
+        (keyevent!('p'), Action::Previous),
+        (keyevent!('s'), Action::Shuffle),
+        (keyevent!('r'), Action::Repeat),
     ]).await?;
 
     app.run().await

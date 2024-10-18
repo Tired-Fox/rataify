@@ -1,6 +1,7 @@
 use crossterm::event::KeyEvent;
+use rspotify::model::{Offset, PlayContextId, PlaylistId};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     /// Quit application
     Quit,
@@ -36,5 +37,12 @@ pub enum Action {
     Repeat,
 
     /// Non mapped key
-    Key(KeyEvent)
+    Key(KeyEvent),
+
+    Play(Play),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Play {
+   Context(PlayContextId<'static>, Option<Offset>, Option<chrono::Duration>) 
 }

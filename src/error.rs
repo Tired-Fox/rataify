@@ -1,11 +1,17 @@
-use rspotify::ClientError;
+use rspotify::{model::IdError, ClientError};
 use tokio::sync::mpsc::error::TryRecvError;
+
+#[derive(Debug)]
+pub enum SpotifyErrorKind {
+    ClientError(ClientError),
+    IdError(IdError)
+}
 
 #[derive(Debug)]
 pub enum ErrorKind {
     Io(std::io::Error),
     Stream(StreamError),
-    Spotify(ClientError),
+    Spotify(SpotifyErrorKind),
     Custom(String),
     Group(Vec<Error>)
 }
@@ -51,7 +57,10 @@ impl Error {
                 StreamError::Closed => "failed to send event; stream is closed".to_string(),
             }
             ErrorKind::Custom(message) => message.clone(),
-            ErrorKind::Spotify(spotify) => spotify.to_string(),
+            ErrorKind::Spotify(spotify) => match spotify {
+                SpotifyErrorKind::ClientError(client) => client.to_string(),
+                SpotifyErrorKind::IdError(id) => id.to_string(),
+            },
             ErrorKind::Group(group) => group.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join("\n")
         }
     }
@@ -60,7 +69,15 @@ impl Error {
 impl From<ClientError> for Error {
     fn from(value: ClientError) -> Self {
         Self {
-            kind: ErrorKind::Spotify(value)
+            kind: ErrorKind::Spotify(SpotifyErrorKind::ClientError(value))
+        }
+    }
+}
+
+impl From<IdError> for Error {
+    fn from(value: IdError) -> Self {
+        Self {
+            kind: ErrorKind::Spotify(SpotifyErrorKind::IdError(value))
         }
     }
 }

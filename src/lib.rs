@@ -1,11 +1,13 @@
 mod tui;
 mod app;
 mod error;
+pub mod config;
 pub mod api;
 pub mod action;
 pub mod state;
 pub mod event;
 
+use crossterm::event::KeyCode;
 use rspotify::model::{CursorBasedPage, Page};
 pub use tui::Tui;
 pub use app::App;
@@ -18,6 +20,12 @@ macro_rules! keyevent {
             crossterm::event::KeyCode::Char($key),
             crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
        ) 
+    };
+    ($({ $($modifier: ident)* })? F ($F: literal)) => {
+        crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::F($F),
+            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
+        ) 
     };
     ($({ $($modifier: ident)* })? $key: ident) => {
         crossterm::event::KeyEvent::new(

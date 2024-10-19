@@ -44,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // }
     
-    println!("{:#?}", rataify::api::release_discover(&spotify).await);
+    println!("{:#?}", rataify::api::release_radar(&spotify).await);
+    println!("{:#?}", rataify::api::discover_weekly(&spotify).await);
     println!("{:#?}", rataify::api::daily_mixes(&spotify).await);
 
 

@@ -159,8 +159,8 @@ impl LibraryState {
                         ))?;
                         sender.send_action(Action::Play(Play::playlist(
                             playlist.id.clone(),
-                            None::<()>,
-                            None::<()>,
+                            None,
+                            None,
                         )))?
                     }
                     Category::Playlists => {
@@ -170,8 +170,8 @@ impl LibraryState {
                             ))?;
                             sender.send_action(Action::Play(Play::playlist(
                                 playlist.id.clone(),
-                                None::<()>,
-                                None::<()>,
+                                None,
+                                None,
                             )))?
                         }
                     }
@@ -182,8 +182,8 @@ impl LibraryState {
                             ))?;
                             sender.send_action(Action::Play(Play::artist(
                                 artist.id.clone(),
-                                None::<()>,
-                                None::<()>,
+                                None,
+                                None,
                             )))?
                         }
                     }
@@ -195,8 +195,8 @@ impl LibraryState {
                                 .ok_or(Error::custom("failed to select item from list 'albums'"))?;
                             sender.send_action(Action::Play(Play::album(
                                 album.id.clone(),
-                                None::<()>,
-                                None::<()>,
+                                None,
+                                None,
                             )))?
                         }
                     }
@@ -208,8 +208,8 @@ impl LibraryState {
                                 .ok_or(Error::custom("failed to select item from list 'shows'"))?;
                             sender.send_action(Action::Play(Play::show(
                                 show.id.clone(),
-                                None::<()>,
-                                None::<()>,
+                                None,
+                                None,
                             )))?
                         }
                     }

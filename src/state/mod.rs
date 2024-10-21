@@ -279,9 +279,9 @@ impl State {
                         sender.send_action(Action::Close)?;
                         let devices = self.inner.devices.lock().unwrap();
 
-                        let should_play = devices.play;
+                        let play = devices.play;
                         if let Some(Device { id: Some(id), .. }) = devices.select() {
-                            sender.send_action(Action::SetDevice(id, should_play))?
+                            sender.send_action(Action::SetDevice { id, play })?
                         }
                     }
                     _ => {}

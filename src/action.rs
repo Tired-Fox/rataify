@@ -1,12 +1,12 @@
-use chrono::Duration;
 use crossterm::event::KeyEvent;
 
-use rspotify::model::{Id, Offset, Type};
+use rspotify::model::{Id, Type};
 use serde::{Deserialize, Serialize};
 
-use crate::{uri::Uri, IntoSpotifyParam};
+use crate::uri::Uri;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Action {
     /// Quit application
     Quit,
@@ -42,9 +42,13 @@ pub enum Action {
     Repeat,
 
     /// Open a modal
-    Open(ModalOpen),
+    Open(Open),
     /// Set the currently used device
-    SetDevice(String, Option<bool>),
+    SetDevice {
+        id: String,
+        #[serde(default, skip_serializing_if="Option::is_none")]
+        play: Option<bool>
+    },
 
     /// Non mapped key
     Key(KeyEvent),
@@ -54,67 +58,64 @@ pub enum Action {
 
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub enum ModalOpen {
-    Devices(Option<bool>),
+#[serde(rename_all = "snake_case")]
+pub enum Open {
+    Devices {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        play: Option<bool>
+    },
 }
 
-impl ModalOpen {
+impl Open {
     pub fn devices(play: Option<bool>) -> Self {
-        Self::Devices(play)
+        Self::Devices { play }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Play {
-    Context(Uri, Option<Offset>, Option<Duration>),
+    Context {
+        uri: Uri,
+        #[serde(default, skip_serializing_if="Option::is_none")]
+        offset: Option<String>,
+        #[serde(default, skip_serializing_if="Option::is_none")]
+        position: Option<usize>,
+    }
 }
 
 impl Play {
-    pub fn playlist<O, P, A, B>(id: impl Id, offset: O, position: P) -> Self
-    where
-        O: IntoSpotifyParam<Option<Offset>, A>,
-        P: IntoSpotifyParam<Option<Duration>, B>
-    {
-        Self::Context(
-            Uri::new(Type::Playlist, id.id()),
-            offset.into_spotify_param(),
-            position.into_spotify_param(),
-        )
+    pub fn playlist(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self {
+        Self::Context {
+            uri: Uri::new(Type::Playlist, id.id()),
+            offset,
+            position,
+        }
     }
 
-    pub fn artist<O, P, A, B>(id: impl Id, offset: O, position: P) -> Self 
-    where
-        O: IntoSpotifyParam<Option<Offset>, A>,
-        P: IntoSpotifyParam<Option<Duration>, B>
-    {
-        Self::Context(
-            Uri::new(Type::Artist, id.id()),
-            offset.into_spotify_param(),
-            position.into_spotify_param(),
-        )
+    pub fn artist(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self {
+        Self::Context {
+            uri: Uri::new(Type::Artist, id.id()),
+            offset,
+            position,
+        }
     }
 
-    pub fn show<O, P, A, B>(id: impl Id, offset: O, position: P) -> Self
-    where
-        O: IntoSpotifyParam<Option<Offset>, A>,
-        P: IntoSpotifyParam<Option<Duration>, B>
+    pub fn show(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self
     {
-        Self::Context(
-            Uri::new(Type::Show, id.id()),
-            offset.into_spotify_param(),
-            position.into_spotify_param(),
-        )
+        Self::Context {
+            uri: Uri::new(Type::Show, id.id()),
+            offset,
+            position,
+        }
     }
 
-    pub fn album<O, P, A, B>(id: impl Id, offset: O, position: P) -> Self
-    where
-        O: IntoSpotifyParam<Option<Offset>, A>,
-        P: IntoSpotifyParam<Option<Duration>, B>
+    pub fn album(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self
     {
-        Self::Context(
-            Uri::new(Type::Album, id.id()),
-            offset.into_spotify_param(),
-            position.into_spotify_param(),
-        )
+        Self::Context {
+            uri: Uri::new(Type::Album, id.id()),
+            offset,
+            position,
+        }
     }
 }

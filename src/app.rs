@@ -8,10 +8,7 @@ use rspotify::clients::OAuthClient;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
-    action::{Action, ModalOpen, Play},
-    event::Event,
-    state::{window::modal::Modal, InnerState, State},
-    Error, ErrorKind, Tui,
+    action::{Action, Open, Play}, config::Config, event::Event, state::{window::modal::Modal, InnerState, State}, Error, ErrorKind, IntoSpotifyParam, Tui
 };
 
 #[derive(Clone)]
@@ -84,7 +81,7 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(keymaps: impl Into<HashMap<KeyEvent, Action>>) -> Result<Self, Error> {
+    pub async fn new(config: Config) -> Result<Self, Error> {
         let (action_sender, action_receiver) = mpsc::unbounded_channel();
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
 
@@ -92,7 +89,7 @@ impl App {
         let context_receiver = ContextReceiver::new(action_receiver, error_receiver);
         Ok(Self {
             quit: false,
-            keymaps: keymaps.into(),
+            keymaps: HashMap::from_iter(config.keymaps()),
 
             state: State::new(InnerState::default(), context_sender.clone()).await?,
 
@@ -134,7 +131,7 @@ impl App {
                     let ctx = self.context_sender.clone();
                     tokio::spawn(async move {
                         if spotify.next_track(None).await.is_err() {
-                            ctx.send_action(Action::Open(ModalOpen::devices(Some(true))))
+                            ctx.send_action(Action::Open(Open::devices(Some(true))))
                                 .unwrap();
                         }
                     });
@@ -144,7 +141,7 @@ impl App {
                     let ctx = self.context_sender.clone();
                     tokio::spawn(async move {
                         if spotify.previous_track(None).await.is_err() {
-                            ctx.send_action(Action::Open(ModalOpen::devices(Some(true))))
+                            ctx.send_action(Action::Open(Open::devices(Some(true))))
                                 .unwrap();
                         }
                     });
@@ -162,7 +159,7 @@ impl App {
                             .unwrap_or_default();
                         if playing {
                             if spotify.pause_playback(None).await.is_err() {
-                                ctx.send_action(Action::Open(ModalOpen::devices(Some(false))))
+                                ctx.send_action(Action::Open(Open::devices(Some(false))))
                                     .unwrap();
                                 return;
                             }
@@ -173,7 +170,7 @@ impl App {
                             }
                         } else {
                             if spotify.resume_playback(None, None).await.is_err() {
-                                ctx.send_action(Action::Open(ModalOpen::devices(Some(true))))
+                                ctx.send_action(Action::Open(Open::devices(Some(true))))
                                     .unwrap();
                                 return;
                             }
@@ -185,25 +182,25 @@ impl App {
                     });
                 }
                 Action::Play(play) => match play {
-                    Play::Context(id, offset, position) => {
+                    Play::Context { uri: id, offset, position } => {
                         let spotify = self.state.spotify.clone();
                         let ctx = self.context_sender.clone();
                         tokio::spawn(async move {
                             if spotify
-                                .start_context_playback(id.play_context_id().unwrap(), None, offset, position)
+                                .start_context_playback(id.play_context_id().unwrap(), None, offset.into_spotify_param(), position.into_spotify_param())
                                 .await
                                 .is_err()
                             {
-                                ctx.send_action(Action::Open(ModalOpen::devices(Some(true))))
+                                ctx.send_action(Action::Open(Open::devices(Some(true))))
                                     .unwrap();
                             }
                         });
                     }
                 },
                 Action::Open(modal) => match modal {
-                    ModalOpen::Devices(play) => self.open_device_modal(play).await?,
+                    Open::Devices { play } => self.open_device_modal(play).await?,
                 },
-                Action::SetDevice(id, play) => {
+                Action::SetDevice { id, play } => {
                     self.state
                         .spotify
                         .transfer_playback(id.as_str(), play)

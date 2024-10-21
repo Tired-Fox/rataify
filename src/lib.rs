@@ -37,6 +37,28 @@ macro_rules! keyevent {
     };
 }
 
+#[macro_export]
+macro_rules! key {
+    ($({ $($modifier: ident)* })? $key: literal) => {
+       $crate::key::Key::new(
+            crossterm::event::KeyCode::Char($key),
+            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
+       ) 
+    };
+    ($({ $($modifier: ident)* })? F ($F: literal)) => {
+        $crate::key::Key::new(
+            crossterm::event::KeyCode::F($F),
+            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
+        ) 
+    };
+    ($({ $($modifier: ident)* })? $key: ident) => {
+        $crate::key::Key::new(
+            crossterm::event::KeyCode::$key,
+            crossterm::event::KeyModifiers::empty() $($(| crossterm::event::KeyModifiers::$modifier)*)?
+        ) 
+    };
+}
+
 pub trait ConvertPage<T> {
     fn convert_page(self) -> Page<T>;
 }

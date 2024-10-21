@@ -12,6 +12,7 @@ pub enum ErrorKind {
     Io(std::io::Error),
     Stream(StreamError),
     Spotify(SpotifyErrorKind),
+    Json(serde_json::Error),
     Custom(String),
     Group(Vec<Error>)
 }
@@ -61,7 +62,8 @@ impl Error {
                 SpotifyErrorKind::ClientError(client) => client.to_string(),
                 SpotifyErrorKind::IdError(id) => id.to_string(),
             },
-            ErrorKind::Group(group) => group.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join("\n")
+            ErrorKind::Group(group) => group.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join("\n"),
+            ErrorKind::Json(json) => json.to_string(),
         }
     }
 }
@@ -86,6 +88,14 @@ impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Error {
             kind: ErrorKind::Io(value)
+        }
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(value: serde_json::Error) -> Self {
+        Error {
+            kind: ErrorKind::Json(value)
         }
     }
 }

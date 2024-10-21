@@ -1,10 +1,27 @@
-use crossterm::event::{KeyCode, KeyModifiers, MediaKeyCode};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers, MediaKeyCode};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Key {
-    modifiers: KeyModifiers,
-    key: KeyCode,
+    pub modifiers: KeyModifiers,
+    pub key: KeyCode,
+}
+
+impl Key {
+   pub fn new(key: KeyCode, modifiers: KeyModifiers) -> Self {
+      Self { key, modifiers }
+   }
+}
+
+impl From<Key> for KeyEvent {
+   fn from(value: Key) -> Self {
+       KeyEvent {
+         code: value.key,
+         modifiers: value.modifiers,
+         kind: KeyEventKind::Press,
+         state: KeyEventState::empty(),
+       }
+   }
 }
 
 impl Serialize for Key {
@@ -49,7 +66,7 @@ impl<'de> Deserialize<'de> for Key {
       }
 
       if (first == 'F' || first == 'f') && last[1..].chars().all(|c| c.is_ascii_digit()) {
-        return Ok(Key { key: KeyCode::F((&last[1..]).parse::<u8>().map_err(serde::de::Error::custom)?), modifiers })
+        return Ok(Key { key: KeyCode::F(last[1..].parse::<u8>().map_err(serde::de::Error::custom)?), modifiers })
       }
 
       let keycode = match last.to_ascii_lowercase().as_str() {

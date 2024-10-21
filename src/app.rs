@@ -4,7 +4,7 @@ use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hashbrown::HashMap;
 use ratatui::{backend::CrosstermBackend, Frame};
-use rspotify::{clients::OAuthClient, model::{parse_uri, Id, PlayContextId}};
+use rspotify::clients::OAuthClient;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
@@ -190,7 +190,7 @@ impl App {
                         let ctx = self.context_sender.clone();
                         tokio::spawn(async move {
                             if spotify
-                                .start_context_playback(id.play_context_id().unwrap(), None, offset.map(|v| v.into()), position.map(|v| chrono::Duration::milliseconds(v as i64)))
+                                .start_context_playback(id.play_context_id().unwrap(), None, offset, position)
                                 .await
                                 .is_err()
                             {

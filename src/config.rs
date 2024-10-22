@@ -15,6 +15,7 @@ impl Default for Config {
         Self {
             keymaps: HashMap::from([
                 (key!('q'), Action::Close),
+                (key!('g'), Action::Open(Open::GoTo)),
                 (key!(Tab), Action::Tab),
                 (key!(BackTab), Action::BackTab),
                 (key!('h'), Action::Left),

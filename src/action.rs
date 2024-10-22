@@ -5,7 +5,7 @@ use crossterm::event::KeyEvent;
 use rspotify::model::{AlbumId, ArtistId, Id, PlaylistId, ShowId, Type};
 use serde::{Deserialize, Serialize};
 
-use crate::{input::Key, state::model::{Album, Artist, Playlist, Show}, uri::Uri, Error};
+use crate::{get_sized_image_url, input::Key, state::model::{Album, Artist, Playlist, Show}, uri::Uri, Error};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -88,6 +88,7 @@ pub enum Open {
     Actions {
         mappings: HashMap<Key, Action>
     },
+    GoTo,
 
     Library,
     Search,
@@ -120,35 +121,35 @@ impl Open {
     }
 
     pub fn actions(mappings: impl IntoIterator<Item=(Key, Action)>) -> Self {
-        Self::Actions { mappings: HashMap::from_iter(mappings.into_iter()) }
+        Self::Actions { mappings: HashMap::from_iter(mappings) }
     }
 
     pub fn playlist(playlist: &Playlist) -> Self {
         Self::Playlist{
             id: playlist.id.clone(),
             name: playlist.name.clone(),
-            image: playlist.images.first().map(|i| i.url.clone())
+            image: get_sized_image_url(&playlist.images, 200, true)
         }
     }
     pub fn album(album: &Album) -> Self {
         Self::Album{
             id: album.id.clone(),
             name: album.name.clone(),
-            image: album.images.first().map(|i| i.url.clone())
+            image: get_sized_image_url(&album.images, 200, true)
         }
     }
     pub fn artist(artist: &Artist) -> Self {
         Self::Artist{
             id: artist.id.clone(),
             name: artist.name.clone(),
-            image: artist.images.first().map(|i| i.url.clone())
+            image: get_sized_image_url(&artist.images, 200, true)
         }
     }
     pub fn show(show: &Show) -> Self {
         Self::Show{
             id: show.id.clone(),
             name: show.name.clone(),
-            image: show.images.first().map(|i| i.url.clone())
+            image: get_sized_image_url(&show.images, 200, true)
         }
     }
 

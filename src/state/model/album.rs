@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::{
     layout::Constraint,
-    style::Style,
+    style::Style, widgets::Cell,
 };
 use rspotify::model::{AlbumId, AlbumType, FullAlbum, Image, SavedAlbum, SimplifiedAlbum};
 
@@ -63,15 +63,18 @@ impl From<FullAlbum> for Album {
 }
 
 impl PageRow for Album {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
         vec![
-            (self.name.clone(), Style::default()),
-            (self.artists.join(", "), Style::default()),
+            (self.name.clone(), None),
+            (self.artists.join(", "), None),
         ]
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Fill(1),
+            Constraint::Length(widths.get(1).copied().unwrap_or_default() as u16)
+        ]
     }
 }
 

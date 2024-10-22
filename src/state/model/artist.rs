@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ratatui::{layout::Constraint, style::Style};
+use ratatui::{layout::Constraint, style::Style, widgets::Cell};
 use rspotify::model::{ArtistId, FullArtist, Image};
 
 use crate::{action::{Action, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
@@ -30,15 +30,18 @@ impl From<FullArtist> for Artist {
 }
 
 impl PageRow for Artist {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
         vec![
-            (self.name.clone(), Style::default()),
-            (self.genres.join(", "), Style::default()),
+            (self.name.clone(), None),
+            (self.genres.join(", "), None),
         ]
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Fill(1),
+            Constraint::Length(widths.get(1).copied().unwrap_or_default() as u16),
+        ]
     }
 }
 

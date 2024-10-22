@@ -7,7 +7,7 @@ use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 use rspotify::{
     clients::BaseClient,
     model::{
-        AlbumId, ArtistId, PlaylistId, ShowId
+        AdditionalType, AlbumId, ArtistId, PlaylistId, ShowId
     },
     AuthCodePkceSpotify,
 };
@@ -44,8 +44,7 @@ pub struct Landing;
 impl StatefulWidget for Landing {
     type State = InnerState;
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
-        let block = Block::default()
-            .padding(Padding::symmetric(1, 1));
+        let block = Block::default();
 
         if let Some(landing) = state.landing.lock().unwrap().render_unwrap_mut(block.inner(area), buf) {
             match landing {
@@ -74,7 +73,7 @@ impl LandingState {
             image,
             name,
             items: spotify
-                .playlist_items_manual(playlist.clone(), None, None, Some(10), Some(0))
+                .playlist_items_manual(playlist.clone(), None, None, Some(10), Some(0), Some(&[AdditionalType::Track, AdditionalType::Episode]))
                 .await?
                 .convert_page(),
         }))
@@ -137,7 +136,7 @@ impl LandingState {
             image,
             name,
             albums: spotify
-                .artist_albums_manual(artist.clone(), [], None, Some(10), Some(0))
+                .artist_albums_manual(artist.clone(), [], None, Some(20), Some(0))
                 .await?
                 .convert_page(),
             top_tracks: spotify.artist_top_tracks(artist.clone(), None).await?.into_iter().map(Track::from).collect(),

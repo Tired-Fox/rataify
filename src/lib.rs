@@ -9,7 +9,7 @@ pub mod action;
 pub mod state;
 pub mod event;
 
-use rspotify::model::{CursorBasedPage, Offset, Page};
+use rspotify::model::{CursorBasedPage, Image, Offset, Page};
 pub use tui::Tui;
 pub use app::App;
 pub use error::{Error, ErrorKind};
@@ -143,4 +143,14 @@ impl IntoSpotifyParam<chrono::Duration> for usize {
     fn into_spotify_param(self) -> chrono::Duration {
         chrono::Duration::milliseconds(self as i64)
     }
+}
+
+pub fn get_sized_image_url(images: &[Image], min: u32, default: bool) -> Option<String> {
+    let first_sized = images.iter().find(|i| i.width.unwrap_or_default() >= min).map(|i| i.url.clone());
+
+    if first_sized.is_none() && default {
+        return images.first().map(|i| i.url.clone());
+    }
+
+    first_sized
 }

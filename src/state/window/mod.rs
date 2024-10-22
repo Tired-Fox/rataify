@@ -16,7 +16,7 @@ use rspotify::model::{CursorBasedPage, Page};
 
 use super::InnerState;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub enum Window {
     #[default]
     Library,
@@ -47,7 +47,7 @@ impl StatefulWidget for Window {
 }
 
 pub trait PageRow {
-    fn page_row(&self) -> Vec<(String, Style)>;
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)>;
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint>;
 }
 
@@ -74,13 +74,18 @@ impl<T: PageRow> Paginatable for Page<T> {
                     .enumerate()
                     .map(|(i, (col, style))| {
                         match widths.get(i).copied() {
-                            Some(index) => if col.len() > index {
-                                unsafe { *widths.get_unchecked_mut(i) = col.len() }
+                            Some(len) => if col.len() > len {
+                                if let Some(len) = widths.get_mut(i) {
+                                    *len = col.len();
+                                }
                             } 
                             None => widths.push(i)
                         }
 
-                        Cell::new(col).style(style)
+                        match style {
+                            Some(s) => s(col),
+                            None => Cell::from(col)
+                        }
                     })
             ))
         }
@@ -116,13 +121,18 @@ impl<T: PageRow> Paginatable for CursorBasedPage<T> {
                     .enumerate()
                     .map(|(i, (col, style))| {
                         match widths.get(i).copied() {
-                            Some(index) => if col.len() > index {
-                                unsafe { *widths.get_unchecked_mut(i) = col.len() }
+                            Some(len) => if col.len() > len {
+                                if let Some(len) = widths.get_mut(i) {
+                                    *len = col.len();
+                                }
                             } 
                             None => widths.push(i)
                         }
 
-                        Cell::new(col).style(style)
+                        match style {
+                            Some(s) => s(col),
+                            None => Cell::from(col)
+                        }
                     })
             ))
         }
@@ -211,10 +221,7 @@ impl<T: StatefulWidget> StatefulWidget for Paginated<T> {
             let mut scrollbar_state = ScrollbarState::new(self.length).position(self.index);
             StatefulWidget::render(
                 scrollbar,
-                layout.inner(Margin {
-                    vertical: 0,
-                    horizontal: 1,
-                }),
+                layout,
                 buf,
                 &mut scrollbar_state,
             );

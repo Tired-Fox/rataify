@@ -17,7 +17,7 @@ use rspotify::{
     scopes, AuthCodePkceSpotify, Credentials, OAuth,
 };
 use window::{
-    landing::LandingState, library::LibraryState, modal::{actions::ActionsState, device::DeviceState, Modal}, Window
+    landing::LandingState, library::LibraryState, modal::{actions::ActionsState, device::DeviceState, goto::GoTo, Modal}, Window
 };
 
 use crate::{action::Action, api, app::ContextSender, input::Key, ConvertPage, Error};
@@ -382,6 +382,7 @@ impl State {
                     _ => {}
                 },
                 Modal::Actions => self.inner.actions.lock().unwrap().handle(action, sender)?,
+                Modal::GoTo => GoTo::handle_action(action, sender)?
             },
             None => match win {
                 // _ => {}
@@ -558,8 +559,8 @@ pub trait ActionList {
 
 pub fn format_duration(duration: chrono::Duration) -> String {
     if duration.num_hours() >= 1 {
-        format!("{}:{}:{}", duration.num_hours() % 24, duration.num_minutes() % 60, duration.num_seconds() % 60)
+        format!("{:0>2}:{:0>2}:{:0>2}", duration.num_hours() % 24, duration.num_minutes() % 60, duration.num_seconds() % 60)
     } else {
-        format!("{}:{}", duration.num_minutes() % 60, duration.num_seconds() % 60)
+        format!("{:0>2}:{:0>2}", duration.num_minutes() % 60, duration.num_seconds() % 60)
     }
 }

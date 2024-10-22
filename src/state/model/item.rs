@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Constraint,
-    style::Style,
+    style::Style, widgets::Cell,
 };
 use rspotify::model::{PlayableItem, PlaylistItem};
 
@@ -30,7 +30,7 @@ impl From<PlayableItem> for Item {
 }
 
 impl PageRow for Item {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
         match self {
             Self::Track(track) => track.page_row(),
             Self::Episode(ep) => ep.page_row(),
@@ -38,6 +38,11 @@ impl PageRow for Item {
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+            Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
+        ]
     }
 }

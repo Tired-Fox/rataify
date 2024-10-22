@@ -1,8 +1,10 @@
 pub mod device;
 pub mod actions;
+pub mod goto;
 
 use actions::Actions;
 use device::Device;
+use goto::GoTo;
 use ratatui::{layout::{Constraint, Layout}, widgets::StatefulWidget};
 
 use crate::state::InnerState;
@@ -11,6 +13,7 @@ use crate::state::InnerState;
 pub enum Modal {
     Devices,
     Actions,
+    GoTo,
 }
 
 impl StatefulWidget for Modal {
@@ -23,6 +26,9 @@ impl StatefulWidget for Modal {
             },
             Self::Actions => {
                 Actions.render(area, buf, state)
+            }
+            Self::GoTo => {
+                GoTo.render(area, buf, state)
             }
         }
     }

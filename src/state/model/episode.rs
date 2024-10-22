@@ -2,6 +2,8 @@ use chrono::Duration;
 use ratatui::{
     layout::Constraint,
     style::{Style, Stylize},
+    text::Line,
+    widgets::Cell,
 };
 use rspotify::model::{EpisodeId, FullEpisode, Image, ResumePoint, SimplifiedEpisode};
 
@@ -14,7 +16,6 @@ pub struct Episode {
     pub explicit: bool,
     pub id: EpisodeId<'static>,
     pub images: Vec<Image>,
-    pub is_playable: bool,
     pub name: String,
     pub resume_point: Option<ResumePoint>,
     pub publisher: Option<String>,
@@ -28,7 +29,6 @@ impl From<FullEpisode> for Episode {
             explicit: value.explicit,
             id: value.id,
             images: value.images,
-            is_playable: value.is_playable,
             name: value.name,
             resume_point: value.resume_point,
             publisher: Some(value.show.publisher),
@@ -44,7 +44,6 @@ impl From<SimplifiedEpisode> for Episode {
             explicit: value.explicit,
             id: value.id,
             images: value.images,
-            is_playable: value.is_playable,
             name: value.name,
             resume_point: value.resume_point,
             publisher: None,
@@ -53,16 +52,44 @@ impl From<SimplifiedEpisode> for Episode {
 }
 
 impl PageRow for Episode {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
+        let finished = self
+            .resume_point
+            .as_ref()
+            .map(|rp| rp.fully_played)
+            .unwrap_or_default();
         vec![
-            (format_duration(self.duration), Style::default()),
-            (self.name.clone(), Style::default()),
-            (if self.explicit { "explicit" } else { "" }.to_string(), Style::default().red()),
-            (self.publisher.clone().unwrap_or_default(), Style::default()),
+            (
+                format_duration(self.duration),
+                Some(Box::new(move |data| {
+                    Cell::from(data).style(if finished {
+                        Style::default().green()
+                    } else {
+                        Style::default().dark_gray()
+                    })
+                })),
+            ),
+            (
+                if self.explicit { "E" } else { "" }.to_string(),
+                Some(Box::new(|data| Cell::from(data).red())),
+            ),
+            (self.name.clone(), None),
+            (
+                self.publisher.clone().unwrap_or_default(),
+                Some(Box::new(|data| {
+                    Cell::from(Line::from(data).right_aligned())
+                        .magenta()
+                })),
+            ),
         ]
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+            Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
+        ]
     }
 }

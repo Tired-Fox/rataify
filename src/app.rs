@@ -197,23 +197,60 @@ impl App {
                         });
                     }
                 },
-                Action::Open(modal) => match modal {
-                    Open::Devices { play } => self.open_device_modal(play).await?,
-                    Open::Actions { mappings } => self.state.open_actions(mappings),
-                    Open::Playlist{ id, name, image } => {
-                        self.state.inner.landing.lock().unwrap().load();
-                        *self.state.inner.window.lock().unwrap() = Window::Landing;
-                        let landing = self.state.inner.landing.clone();
-                        let spot = self.state.spotify.clone();
-                        tokio::spawn(async move {
-                            let result = LandingState::get_playlist(id, name, image, spot).await.unwrap();
-                            landing.lock().unwrap().replace(result);
-                        });
+                Action::Open(modal) => {
+                    match modal {
+                        Open::Devices { play } => self.open_device_modal(play).await?,
+                        Open::Actions { mappings } => self.state.open_actions(mappings),
+                        Open::GoTo => { self.state.inner.modal.lock().unwrap().replace(Modal::GoTo); },
+                        Open::Library => {
+                            self.state.inner.modal.lock().unwrap().take();
+                            *self.state.inner.window.lock().unwrap() = Window::Library;
+                        }
+                        Open::Playlist{ id, name, image } => {
+                            self.state.inner.landing.lock().unwrap().load();
+                            *self.state.inner.window.lock().unwrap() = Window::Landing;
+                            let landing = self.state.inner.landing.clone();
+                            let spot = self.state.spotify.clone();
+                            tokio::spawn(async move {
+                                let result = LandingState::get_playlist(id, name, image, spot).await.unwrap();
+                                landing.lock().unwrap().replace(result);
+                            });
+                        },
+                        Open::Artist{ id, name, image } => {
+                            self.state.inner.landing.lock().unwrap().load();
+                            *self.state.inner.window.lock().unwrap() = Window::Landing;
+                            let landing = self.state.inner.landing.clone();
+                            let spot = self.state.spotify.clone();
+                            tokio::spawn(async move {
+                                let result = LandingState::get_artist(id, name, image, spot).await.unwrap();
+                                landing.lock().unwrap().replace(result);
+                            });
+                        }
+                        Open::Album{ id, name, image } => {
+                            self.state.inner.landing.lock().unwrap().load();
+                            *self.state.inner.window.lock().unwrap() = Window::Landing;
+                            let landing = self.state.inner.landing.clone();
+                            let spot = self.state.spotify.clone();
+                            tokio::spawn(async move {
+                                let result = LandingState::get_album(id, name, image, spot).await.unwrap();
+                                landing.lock().unwrap().replace(result);
+                            });
+                        }
+                        Open::Show{ id, name, image } => {
+                            self.state.inner.landing.lock().unwrap().load();
+                            *self.state.inner.window.lock().unwrap() = Window::Landing;
+                            let landing = self.state.inner.landing.clone();
+                            let spot = self.state.spotify.clone();
+                            tokio::spawn(async move {
+                                let result = LandingState::get_show(id, name, image, spot).await.unwrap();
+                                landing.lock().unwrap().replace(result);
+                            });
+                        }
+                        other => {
+                            unimplemented!("cannot open {other:?}")
+                        },
                     }
-                    other => {
-                        unimplemented!("cannot open {other:?}")
-                    },
-                },
+                }
                 Action::SetDevice { id, play } => {
                     self.state
                         .spotify

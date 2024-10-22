@@ -1,10 +1,13 @@
 use chrono::Duration;
-use ratatui::{layout::Constraint, style::{Style, Stylize}};
+use ratatui::{
+    layout::Constraint,
+    style::{Style, Stylize},
+    text::Line,
+    widgets::Cell,
+};
 use rspotify::model::{FullTrack, Image, SimplifiedTrack, TrackId};
 
 use crate::state::{format_duration, window::PageRow};
-
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
@@ -14,7 +17,6 @@ pub struct Track {
     pub duration: Duration,
     pub explicit: bool,
     pub id: Option<TrackId<'static>>,
-    pub is_playable: Option<bool>,
     pub name: String,
     pub track_number: u32,
 }
@@ -28,10 +30,9 @@ impl From<FullTrack> for Track {
             duration: value.duration,
             explicit: value.explicit,
             id: value.id,
-            is_playable: value.is_playable,
             name: value.name,
             track_number: value.track_number,
-        } 
+        }
     }
 }
 
@@ -44,24 +45,40 @@ impl From<SimplifiedTrack> for Track {
             duration: value.duration,
             explicit: value.explicit,
             id: value.id,
-            is_playable: value.is_playable,
             name: value.name,
             track_number: value.track_number,
-        } 
+        }
     }
 }
 
 impl PageRow for Track {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
         vec![
-            (format_duration(self.duration), Style::default()),
-            (self.name.clone(), Style::default()),
-            (if self.explicit { "explicit" } else { "" }.to_string(), Style::default().red()),
-            (self.artists.join(", "), Style::default()),
+            (
+                format_duration(self.duration),
+                Some(Box::new(|data| Cell::from(data).dark_gray())),
+            ),
+            (
+                if self.explicit { "E" } else { "" }.to_string(),
+                Some(Box::new(|data| Cell::from(data).red())),
+            ),
+            (self.name.clone(), None),
+            (
+                self.artists.join(", "),
+                Some(Box::new(|data| {
+                    Cell::from(Line::from(data).right_aligned())
+                        .magenta()
+                })),
+            ),
         ]
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+            Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
+        ]
     }
 }

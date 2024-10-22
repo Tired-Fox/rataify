@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::{
     layout::Constraint,
-    style::Style,
+    style::{Style, Stylize}, widgets::Cell,
 };
 use rspotify::model::{Image, Show as SpotifyShow, ShowId, SimplifiedShow};
 
@@ -48,16 +48,21 @@ impl From<SimplifiedShow> for Show {
 }
 
 impl PageRow for Show {
-    fn page_row(&self) -> Vec<(String, Style)> {
+    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
+        let explicit = self.explicit;
         vec![
-            (self.name.clone(), Style::default()),
-            (if self.explicit { "explicit" } else { "" }.to_string(), Style::default()),
-            (self.publisher.clone(), Style::default()),
+            (self.name.clone(), None),
+            (if explicit { "E" } else { "" }.to_string(), Some(Box::new(move |data| Cell::from(data).red()))),
+            (self.publisher.clone(), None),
         ]
     }
 
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
-        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+        vec![
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(widths.get(2).copied().unwrap_or_default() as u16),
+        ]
     }
 }
 

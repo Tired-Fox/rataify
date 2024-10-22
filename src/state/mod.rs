@@ -2,11 +2,7 @@ mod playback;
 pub mod window;
 
 use std::{
-    any::type_name,
-    pin::Pin,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    time::Duration,
+    any::type_name, collections::HashMap, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
 };
 
 use futures::Future;
@@ -23,11 +19,11 @@ use rspotify::{
 };
 use window::{
     library::LibraryState,
-    modal::{device::DeviceState, Modal},
+    modal::{actions::ActionsState, device::DeviceState, Modal},
     Window,
 };
 
-use crate::{action::Action, api, app::ContextSender, ConvertPage, Error};
+use crate::{action::Action, api, app::ContextSender, key::Key, ConvertPage, Error};
 
 #[derive(Default, strum::EnumIs)]
 pub enum Loadable<T> {
@@ -286,6 +282,8 @@ impl State {
                     }
                     _ => {}
                 },
+                Modal::Actions => self.inner.actions.lock().unwrap().handle(action, sender)?,
+                _ => {}
             },
             None => match win {
                 // _ => {}
@@ -300,6 +298,11 @@ impl State {
         }
 
         Ok(())
+    }
+
+    pub fn open_actions(&mut self, actions: HashMap<Key, Action>) {
+        self.inner.actions.lock().unwrap().set_actions(actions);
+        self.inner.modal.lock().unwrap().replace(Modal::Actions);
     }
 }
 
@@ -322,6 +325,7 @@ pub struct InnerState {
     pub library: Arc<Mutex<LibraryState>>,
 
     pub devices: Arc<Mutex<DeviceState>>,
+    pub actions: Arc<Mutex<ActionsState>>,
 }
 
 impl InnerState {

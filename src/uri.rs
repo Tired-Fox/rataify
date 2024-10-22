@@ -5,8 +5,8 @@ use crate::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Uri {
-    ty: Type,
-    id: String,
+    pub ty: Type,
+    pub id: String,
 }
 
 impl<I: Id> From<I> for Uri {

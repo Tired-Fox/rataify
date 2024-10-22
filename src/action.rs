@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use crossterm::event::KeyEvent;
 
 use rspotify::model::{Id, Type};
 use serde::{Deserialize, Serialize};
 
-use crate::uri::Uri;
+use crate::{key::Key, uri::Uri, Error};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,6 +58,25 @@ pub enum Action {
     Play(Play),
 }
 
+impl Action {
+    pub fn label(&self) -> Result<String, Error> {
+        Ok(match self {
+            Action::Close => "close".to_string(),
+            Action::Select => "Select".to_string(),
+            Action::NextPage => "Next page".to_string(),
+            Action::PreviousPage => "Previous page".to_string(),
+            Action::Next => "Next".to_string(),
+            Action::Previous => "Previous".to_string(),
+            Action::Toggle => "Toggle".to_string(),
+            Action::Shuffle => "Shuffle".to_string(),
+            Action::Repeat => "Repeat".to_string(),
+            Action::Open(open) => format!("Open {}", open.label()?),
+            Action::Play(play) => format!("Play {}", play.label()?),
+            _ => return Err(Error::custom("action is not supported in the action menu"))
+        })
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -64,11 +85,38 @@ pub enum Open {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         play: Option<bool>
     },
+    Actions {
+        mappings: HashMap<Key, Action>
+    },
+
+    Library,
+    Search,
+
+    Playlist,
+    Album,
+    Artist,
+    Show,
 }
 
 impl Open {
     pub fn devices(play: Option<bool>) -> Self {
         Self::Devices { play }
+    }
+
+    pub fn actions(mappings: impl IntoIterator<Item=(Key, Action)>) -> Self {
+        Self::Actions { mappings: HashMap::from_iter(mappings.into_iter()) }
+    }
+
+    pub fn label(&self) -> Result<String, Error> {
+        Ok(match self {
+            Open::Library => "library".to_string(),
+            Open::Search => "search".to_string(),
+            Open::Playlist => "playlist".to_string(),
+            Open::Album => "album".to_string(),
+            Open::Artist => "artist".to_string(),
+            Open::Show => "show".to_string(),
+            other => return Err(Error::custom(format!("cannot open {other:?} from a context menu")))
+        })
     }
 }
 
@@ -85,6 +133,12 @@ pub enum Play {
 }
 
 impl Play {
+    pub fn label(&self) -> Result<String, Error> {
+        Ok(match self {
+            Self::Context { uri, .. } => format!("{}", uri.ty)
+        })
+    }
+
     pub fn playlist(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self {
         Self::Context {
             uri: Uri::new(Type::Playlist, id.id()),

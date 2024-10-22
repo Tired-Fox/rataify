@@ -1,5 +1,7 @@
 pub mod device;
+pub mod actions;
 
+use actions::Actions;
 use device::Device;
 use ratatui::{layout::{Constraint, Layout}, widgets::StatefulWidget};
 
@@ -7,7 +9,8 @@ use crate::state::InnerState;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Modal {
-    Devices
+    Devices,
+    Actions,
 }
 
 impl StatefulWidget for Modal {
@@ -17,6 +20,9 @@ impl StatefulWidget for Modal {
         match self {
             Self::Devices => {
                 Device.render(area, buf, state)
+            },
+            Self::Actions => {
+                Actions.render(area, buf, state)
             }
         }
     }

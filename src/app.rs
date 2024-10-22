@@ -199,6 +199,10 @@ impl App {
                 },
                 Action::Open(modal) => match modal {
                     Open::Devices { play } => self.open_device_modal(play).await?,
+                    Open::Actions { mappings } => self.state.open_actions(mappings),
+                    other => {
+                        unimplemented!("cannot open {other:?}")
+                    },
                 },
                 Action::SetDevice { id, play } => {
                     self.state

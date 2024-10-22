@@ -23,10 +23,7 @@ use rspotify::{
 use strum::{EnumCount, IntoEnumIterator};
 
 use crate::{
-    action::{Action, Play},
-    app::ContextSender,
-    state::{InnerState, Loadable},
-    ConvertPage, Error,
+    action::{Action, Open, Play}, app::ContextSender, key, state::{InnerState, Loadable}, ConvertPage, Error
 };
 
 use super::Paginatable;
@@ -157,22 +154,32 @@ impl LibraryState {
                         let playlist = self.featured.get(self.item).ok_or(Error::custom(
                             "failed to select item from list 'Made For You'",
                         ))?;
-                        sender.send_action(Action::Play(Play::playlist(
-                            playlist.id.clone(),
-                            None,
-                            None,
-                        )))?
+                        sender.send_action(Action::Open(Open::actions([
+                            (
+                                key!(Enter),
+                                Action::Play(Play::playlist(
+                                    playlist.id.clone(),
+                                    None,
+                                    None,
+                                ))
+                            )
+                        ])))?
                     }
                     Category::Playlists => {
                         if let Loadable::Some(playlists) = self.playlists.as_ref() {
                             let playlist = playlists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'Playlists'",
                             ))?;
-                            sender.send_action(Action::Play(Play::playlist(
-                                playlist.id.clone(),
-                                None,
-                                None,
-                            )))?
+                            sender.send_action(Action::Open(Open::actions([
+                                (
+                                    key!(Enter),
+                                    Action::Play(Play::playlist(
+                                        playlist.id.clone(),
+                                        None,
+                                        None,
+                                    ))
+                                )
+                            ])))?
                         }
                     }
                     Category::Artists => {
@@ -180,11 +187,16 @@ impl LibraryState {
                             let artist = artists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'artists'",
                             ))?;
-                            sender.send_action(Action::Play(Play::artist(
-                                artist.id.clone(),
-                                None,
-                                None,
-                            )))?
+                            sender.send_action(Action::Open(Open::actions([
+                                (
+                                    key!(Enter),
+                                    Action::Play(Play::artist(
+                                        artist.id.clone(),
+                                        None,
+                                        None,
+                                    ))
+                                )
+                            ])))?
                         }
                     }
                     Category::Albums => {
@@ -193,11 +205,16 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'albums'"))?;
-                            sender.send_action(Action::Play(Play::album(
-                                album.id.clone(),
-                                None,
-                                None,
-                            )))?
+                            sender.send_action(Action::Open(Open::actions([
+                                (
+                                    key!(Enter),
+                                    Action::Play(Play::album(
+                                        album.id.clone(),
+                                        None,
+                                        None,
+                                    ))
+                                )
+                            ])))?
                         }
                     }
                     Category::Shows => {
@@ -206,11 +223,16 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'shows'"))?;
-                            sender.send_action(Action::Play(Play::show(
-                                show.id.clone(),
-                                None,
-                                None,
-                            )))?
+                            sender.send_action(Action::Open(Open::actions([
+                                (
+                                    key!(Enter),
+                                    Action::Play(Play::show(
+                                        show.id.clone(),
+                                        None,
+                                        None,
+                                    ))
+                                )
+                            ])))?
                         }
                     }
                 }

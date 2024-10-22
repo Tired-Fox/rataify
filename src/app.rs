@@ -8,7 +8,7 @@ use rspotify::clients::OAuthClient;
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
-    action::{Action, Open, Play}, config::Config, event::Event, state::{window::modal::Modal, InnerState, State}, Error, ErrorKind, IntoSpotifyParam, Tui
+    action::{Action, Open, Play}, config::Config, event::Event, state::{window::{landing::LandingState, modal::Modal, Window}, InnerState, State}, Error, ErrorKind, IntoSpotifyParam, Tui
 };
 
 #[derive(Clone)]
@@ -200,6 +200,16 @@ impl App {
                 Action::Open(modal) => match modal {
                     Open::Devices { play } => self.open_device_modal(play).await?,
                     Open::Actions { mappings } => self.state.open_actions(mappings),
+                    Open::Playlist{ id, name, image } => {
+                        self.state.inner.landing.lock().unwrap().load();
+                        *self.state.inner.window.lock().unwrap() = Window::Landing;
+                        let landing = self.state.inner.landing.clone();
+                        let spot = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            let result = LandingState::get_playlist(id, name, image, spot).await.unwrap();
+                            landing.lock().unwrap().replace(result);
+                        });
+                    }
                     other => {
                         unimplemented!("cannot open {other:?}")
                     },

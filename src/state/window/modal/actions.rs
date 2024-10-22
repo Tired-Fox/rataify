@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ratatui::{layout::Constraint, widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, StatefulWidget, Table, TableState, Widget}};
 
-use crate::{action::Action, app::ContextSender, key::Key, state::InnerState, Error, key};
+use crate::{action::Action, app::ContextSender, input::Key, state::InnerState, Error, key};
 
 use super::{modal_layout, ModalPosition};
 
@@ -20,12 +20,14 @@ impl ActionsState {
         match action {
             Action::Select => {
                 if let Some(action) = self.mappings.get(&key!(Enter)) {
-                    sender.send_action(action.clone())?
+                    sender.send_action(action.clone())?;
+                    sender.send_action(Action::Close)?;
                 }
             },
             Action::Key(key) => {
                 if let Some(action) = self.mappings.get(&Key::from(key)) {
-                    sender.send_action(action.clone())?
+                    sender.send_action(action.clone())?;
+                    sender.send_action(Action::Close)?;
                 }
             },
             _ => {}
@@ -65,7 +67,7 @@ impl StatefulWidget for Actions {
         }).collect::<Vec<_>>();
 
 
-        let layout = modal_layout(area, Constraint::Length((lv + lk + 6) as u16), Constraint::Length(lines.len() as u16 + 2), ModalPosition::Center);
+        let layout = modal_layout(area, Constraint::Length((lv + lk + 6) as u16), Constraint::Length(lines.len() as u16 + 2), ModalPosition::BottomRight);
 
         Clear.render(layout, buf);
 

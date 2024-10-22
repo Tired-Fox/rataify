@@ -1,11 +1,12 @@
+use std::collections::HashMap;
+
 use ratatui::{
     layout::Constraint,
-    style::{Style, Stylize},
-    widgets::{Cell, Row, StatefulWidget, Table, TableState},
+    style::Style,
 };
 use rspotify::model::{Image, Show as SpotifyShow, ShowId, SimplifiedShow};
 
-use crate::state::window::PageRow;
+use crate::{action::{Action, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Show {
@@ -47,38 +48,26 @@ impl From<SimplifiedShow> for Show {
 }
 
 impl PageRow for Show {
-    type Container = Table<'static>;
-    type Row = Row<'static>;
-
-    fn page_row(&self) -> Self::Row {
-        Row::new(vec![
-            Cell::from(self.name.clone()),
-            Cell::from(if self.explicit { "explicit" } else { "" }),
-            Cell::from(self.publisher.clone()),
-        ])
-    }
-
-    fn page_state(index: usize) -> <Self::Container as StatefulWidget>::State {
-        TableState::default().with_selected(index)
-    }
-
-    fn page_widths<'a>(items: impl Iterator<Item = &'a Self>) -> Vec<Constraint>
-    where
-        Self: 'a,
-    {
+    fn page_row(&self) -> Vec<(String, Style)> {
         vec![
-            Constraint::Fill(1),
-            Constraint::Length(9),
-            Constraint::Length(
-                items
-                    .map(|s| s.publisher.len())
-                    .max()
-                    .unwrap_or_default() as u16,
-            ),
+            (self.name.clone(), Style::default()),
+            (if self.explicit { "explicit" } else { "" }.to_string(), Style::default()),
+            (self.publisher.clone(), Style::default()),
         ]
     }
 
-    fn page_container(items: Vec<Self::Row>, widths: Vec<Constraint>) -> Self::Container {
-        Table::new(items, widths).highlight_style(Style::default().yellow())
+    fn page_widths(widths: Vec<usize>) -> Vec<Constraint> {
+        widths.into_iter().map(|v| Constraint::Length(v as u16)).collect()
+    }
+}
+
+impl ActionList for Show {
+    fn action_list(&self) -> HashMap<Key, Action> {
+        HashMap::from([
+            (key!(Enter), Action::Play(Play::show(self.id.clone(), None, None))),
+            (key!('o'), Action::Open(Open::show(self))),
+            // TODO: Favorite/Unfavorite
+            // TODO: Open context
+        ])
     }
 }

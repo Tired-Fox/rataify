@@ -1,13 +1,15 @@
 pub mod library;
 pub mod modal;
 
+pub mod landing;
+
+use landing::Landing;
 use ratatui::{
     layout::{Constraint, Layout, Margin},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Padding, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget,
-        Widget,
+        Block, Borders, Cell, Padding, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget
     },
 };
 use rspotify::model::{CursorBasedPage, Page};
@@ -18,6 +20,7 @@ use super::InnerState;
 pub enum Window {
     #[default]
     Library,
+    Landing,
 }
 
 impl StatefulWidget for Window {
@@ -38,20 +41,14 @@ impl StatefulWidget for Window {
         let win = *state.window.lock().unwrap();
         match win {
             Self::Library => library::Library.render(block.inner(area), buf, state),
+            Self::Landing => Landing.render(block.inner(area), buf, state),
         }
     }
 }
 
 pub trait PageRow {
-    type Row;
-    type Container: StatefulWidget;
-
-    fn page_row(&self) -> Self::Row;
-    fn page_state(index: usize) -> <Self::Container as StatefulWidget>::State;
-    fn page_widths<'a>(items: impl Iterator<Item = &'a Self>) -> Vec<Constraint>
-    where
-        Self: 'a;
-    fn page_container(items: Vec<Self::Row>, width: Vec<Constraint>) -> Self::Container;
+    fn page_row(&self) -> Vec<(String, Style)>;
+    fn page_widths(widths: Vec<usize>) -> Vec<Constraint>;
 }
 
 pub trait Paginatable {
@@ -60,18 +57,38 @@ pub trait Paginatable {
 
     fn paginated(&self, offset: Option<u32>, index: usize) -> Paginated<Self::Container>;
     fn page_state(index: usize) -> <Self::Container as StatefulWidget>::State;
-    fn page_rows(&self) -> Vec<Self::Row>;
 }
 
 impl<T: PageRow> Paginatable for Page<T> {
-    type Container = T::Container;
-    type Row = T::Row;
+    type Container = Table<'static>;
+    type Row = Row<'static>;
 
     fn paginated(&self, _offset: Option<u32>, index: usize) -> Paginated<Self::Container> {
+        let mut widths: Vec<usize> = Vec::new();
+        let mut rows = Vec::new();
+
+        for item in self.items.iter() {
+            rows.push(Row::new(
+                item.page_row()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (col, style))| {
+                        match widths.get(i).copied() {
+                            Some(index) => if col.len() > index {
+                                unsafe { *widths.get_unchecked_mut(i) = col.len() }
+                            } 
+                            None => widths.push(i)
+                        }
+
+                        Cell::new(col).style(style)
+                    })
+            ))
+        }
+
         Paginated {
             length: self.items.len(),
-            container: T::page_container(self.page_rows(), T::page_widths(self.items.iter())),
             state: Self::page_state(index),
+            container: Table::new(rows, T::page_widths(widths)).highlight_style(Style::default().yellow()),
             index,
             total: self.total,
             offset: self.offset,
@@ -79,23 +96,40 @@ impl<T: PageRow> Paginatable for Page<T> {
         }
     }
 
-    fn page_rows(&self) -> Vec<Self::Row> {
-        self.items.iter().map(|v| v.page_row()).collect()
-    }
-
     fn page_state(index: usize) -> <Self::Container as StatefulWidget>::State {
-        T::page_state(index)
+        TableState::default().with_selected(Some(index))
     }
 }
 
 impl<T: PageRow> Paginatable for CursorBasedPage<T> {
-    type Container = T::Container;
-    type Row = T::Row;
+    type Container = Table<'static>;
+    type Row = Row<'static>;
 
     fn paginated(&self, offset: Option<u32>, index: usize) -> Paginated<Self::Container> {
+        let mut widths: Vec<usize> = Vec::new();
+        let mut rows = Vec::new();
+
+        for item in self.items.iter() {
+            rows.push(Row::new(
+                item.page_row()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (col, style))| {
+                        match widths.get(i).copied() {
+                            Some(index) => if col.len() > index {
+                                unsafe { *widths.get_unchecked_mut(i) = col.len() }
+                            } 
+                            None => widths.push(i)
+                        }
+
+                        Cell::new(col).style(style)
+                    })
+            ))
+        }
+
         Paginated {
             length: self.items.len(),
-            container: T::page_container(self.page_rows(), T::page_widths(self.items.iter())),
+            container: Table::new(rows, T::page_widths(widths)).highlight_style(Style::default().yellow()),
             state: Self::page_state(index),
             index,
             total: self.total.unwrap_or_default(),
@@ -104,12 +138,8 @@ impl<T: PageRow> Paginatable for CursorBasedPage<T> {
         }
     }
 
-    fn page_rows(&self) -> Vec<Self::Row> {
-        self.items.iter().map(|v| v.page_row()).collect()
-    }
-
     fn page_state(index: usize) -> <Self::Container as StatefulWidget>::State {
-        T::page_state(index)
+        TableState::default().with_selected(Some(index))
     }
 }
 

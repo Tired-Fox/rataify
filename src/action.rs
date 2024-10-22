@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 
-use rspotify::model::{Id, Type};
+use rspotify::model::{AlbumId, ArtistId, Id, PlaylistId, ShowId, Type};
 use serde::{Deserialize, Serialize};
 
-use crate::{key::Key, uri::Uri, Error};
+use crate::{input::Key, state::model::{Album, Artist, Playlist, Show}, uri::Uri, Error};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -92,10 +92,26 @@ pub enum Open {
     Library,
     Search,
 
-    Playlist,
-    Album,
-    Artist,
-    Show,
+    Playlist {
+        id: PlaylistId<'static>,
+        name: String,
+        image: Option<String>
+    },
+    Album {
+        id: AlbumId<'static>,
+        name: String,
+        image: Option<String>
+    },
+    Artist {
+        id: ArtistId<'static>,
+        name: String,
+        image: Option<String>
+    },
+    Show {
+        id: ShowId<'static>,
+        name: String,
+        image: Option<String>
+    },
 }
 
 impl Open {
@@ -107,14 +123,43 @@ impl Open {
         Self::Actions { mappings: HashMap::from_iter(mappings.into_iter()) }
     }
 
+    pub fn playlist(playlist: &Playlist) -> Self {
+        Self::Playlist{
+            id: playlist.id.clone(),
+            name: playlist.name.clone(),
+            image: playlist.images.first().map(|i| i.url.clone())
+        }
+    }
+    pub fn album(album: &Album) -> Self {
+        Self::Album{
+            id: album.id.clone(),
+            name: album.name.clone(),
+            image: album.images.first().map(|i| i.url.clone())
+        }
+    }
+    pub fn artist(artist: &Artist) -> Self {
+        Self::Artist{
+            id: artist.id.clone(),
+            name: artist.name.clone(),
+            image: artist.images.first().map(|i| i.url.clone())
+        }
+    }
+    pub fn show(show: &Show) -> Self {
+        Self::Show{
+            id: show.id.clone(),
+            name: show.name.clone(),
+            image: show.images.first().map(|i| i.url.clone())
+        }
+    }
+
     pub fn label(&self) -> Result<String, Error> {
         Ok(match self {
             Open::Library => "library".to_string(),
             Open::Search => "search".to_string(),
-            Open::Playlist => "playlist".to_string(),
-            Open::Album => "album".to_string(),
-            Open::Artist => "artist".to_string(),
-            Open::Show => "show".to_string(),
+            Open::Playlist{ .. } => "playlist".to_string(),
+            Open::Album{ .. } => "album".to_string(),
+            Open::Artist{ .. } => "artist".to_string(),
+            Open::Show{ .. } => "show".to_string(),
             other => return Err(Error::custom(format!("cannot open {other:?} from a context menu")))
         })
     }

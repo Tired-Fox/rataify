@@ -1,5 +1,6 @@
 mod playback;
 pub mod window;
+pub mod model;
 
 use std::{
     any::type_name, collections::HashMap, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
@@ -8,9 +9,7 @@ use std::{
 use futures::Future;
 use playback::Playback;
 use ratatui::{
-    layout::{Constraint, Layout},
-    text::Line,
-    widgets::{Clear, Paragraph, StatefulWidget, Widget},
+    layout::{Constraint, Layout}, style::Stylize, text::Line, widgets::{Block, Borders, Clear, Padding, Paragraph, StatefulWidget, Widget}
 };
 use rspotify::{
     clients::OAuthClient,
@@ -18,12 +17,10 @@ use rspotify::{
     scopes, AuthCodePkceSpotify, Credentials, OAuth,
 };
 use window::{
-    library::LibraryState,
-    modal::{actions::ActionsState, device::DeviceState, Modal},
-    Window,
+    landing::LandingState, library::LibraryState, modal::{actions::ActionsState, device::DeviceState, Modal}, Window
 };
 
-use crate::{action::Action, api, app::ContextSender, key::Key, ConvertPage, Error};
+use crate::{action::Action, api, app::ContextSender, input::Key, ConvertPage, Error};
 
 #[derive(Default, strum::EnumIs)]
 pub enum Loadable<T> {
@@ -31,6 +28,108 @@ pub enum Loadable<T> {
     None,
     Loading,
     Some(T),
+}
+
+impl<T> Loadable<T> {
+    fn render_unwrap(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) -> Option<&T>
+        where
+            Self: Sized {
+
+        match self.as_ref() {
+            Loadable::None => {
+                let vert = Layout::vertical([
+                    Constraint::Fill(1),
+                    Constraint::Length(3),
+                    Constraint::Fill(1),
+                ])
+                .split(area);
+                let layout = Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Length(14),
+                    Constraint::Fill(1),
+                ])
+                .split(vert[1])[1];
+
+                let block = Block::new()
+                    .padding(Padding::horizontal(1))
+                    .borders(Borders::all());
+                (&block).render(layout, buf);
+
+                Line::from("No Results").render(block.inner(layout), buf);
+            }
+            Loadable::Loading => {
+                let vert = Layout::vertical([
+                    Constraint::Fill(1),
+                    Constraint::Length(3),
+                    Constraint::Fill(1),
+                ])
+                .split(area);
+                let layout = Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Length(14),
+                    Constraint::Fill(1),
+                ])
+                .split(vert[1])[1];
+
+                Line::from("Loading...")
+                    .cyan()
+                    .centered()
+                    .render(layout, buf);
+            }
+            Loadable::Some(v) => return Some(v),
+        }
+        None
+    }
+
+    fn render_unwrap_mut(&mut self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) -> Option<&mut T>
+        where
+            Self: Sized {
+
+        match self.as_mut() {
+            Loadable::None => {
+                let vert = Layout::vertical([
+                    Constraint::Fill(1),
+                    Constraint::Length(3),
+                    Constraint::Fill(1),
+                ])
+                .split(area);
+                let layout = Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Length(14),
+                    Constraint::Fill(1),
+                ])
+                .split(vert[1])[1];
+
+                let block = Block::new()
+                    .padding(Padding::horizontal(1))
+                    .borders(Borders::all());
+                (&block).render(layout, buf);
+
+                Line::from("No Results").render(block.inner(layout), buf);
+            }
+            Loadable::Loading => {
+                let vert = Layout::vertical([
+                    Constraint::Fill(1),
+                    Constraint::Length(3),
+                    Constraint::Fill(1),
+                ])
+                .split(area);
+                let layout = Layout::horizontal([
+                    Constraint::Fill(1),
+                    Constraint::Length(14),
+                    Constraint::Fill(1),
+                ])
+                .split(vert[1])[1];
+
+                Line::from("Loading...")
+                    .cyan()
+                    .centered()
+                    .render(layout, buf);
+            }
+            Loadable::Some(v) => return Some(v),
+        }
+        None
+    }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for Loadable<T> {
@@ -283,7 +382,6 @@ impl State {
                     _ => {}
                 },
                 Modal::Actions => self.inner.actions.lock().unwrap().handle(action, sender)?,
-                _ => {}
             },
             None => match win {
                 // _ => {}
@@ -293,6 +391,9 @@ impl State {
                         .lock()
                         .unwrap()
                         .handle_action(action, &self.spotify, &self.inner, sender.clone())?;
+                },
+                Window::Landing => if let Loadable::Some(landing) = self.inner.landing.lock().unwrap().as_mut() {
+                    landing.handle_action(action, &self.spotify, &self.inner, sender.clone())?;
                 }
             },
         }
@@ -326,6 +427,7 @@ pub struct InnerState {
 
     pub devices: Arc<Mutex<DeviceState>>,
     pub actions: Arc<Mutex<ActionsState>>,
+    pub landing: Arc<Mutex<Loadable<LandingState>>>
 }
 
 impl InnerState {
@@ -447,5 +549,17 @@ impl Widget for &mut InnerState {
                 .render(main[1], buf);
             }
         }
+    }
+}
+
+pub trait ActionList {
+    fn action_list(&self) -> HashMap<Key, Action>;
+}
+
+pub fn format_duration(duration: chrono::Duration) -> String {
+    if duration.num_hours() >= 1 {
+        format!("{}:{}:{}", duration.num_hours() % 24, duration.num_minutes() % 60, duration.num_seconds() % 60)
+    } else {
+        format!("{}:{}", duration.num_minutes() % 60, duration.num_seconds() % 60)
     }
 }

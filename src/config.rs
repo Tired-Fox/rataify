@@ -3,7 +3,7 @@ use std::{collections::{hash_map::Iter, HashMap}, iter::Map};
 use crossterm::event::KeyEvent;
 use serde::{Deserialize, Serialize};
 
-use crate::{action::{Action, Open}, key::Key, Error, key};
+use crate::{action::{Action, Open}, input::Key, Error, key};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -79,7 +79,7 @@ mod test {
     use crate::{
         action::{Action, Play},
         config::Config,
-        key,
+        input,
     };
 
     #[test]

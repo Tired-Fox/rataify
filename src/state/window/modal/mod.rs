@@ -50,18 +50,18 @@ pub fn modal_layout(area: ratatui::prelude::Rect, width: Constraint, height: Con
         },
         ModalPosition::TopRight => {
             let vert = Layout::vertical([Constraint::Fill(1), height]).split(area);
-            let horz = Layout::horizontal([width, Constraint::Fill(1)]).split(vert[0]);
+            let horz = Layout::horizontal([width, Constraint::Fill(1)]).split(vert[1]);
             horz[0]
         },
         ModalPosition::BottomLeft => {
             let vert = Layout::vertical([height, Constraint::Fill(1)]).split(area);
             let horz = Layout::horizontal([Constraint::Fill(1), width]).split(vert[0]);
-            horz[0]
+            horz[1]
         },
         ModalPosition::BottomRight => {
             let vert = Layout::vertical([Constraint::Fill(1), height]).split(area);
-            let horz = Layout::horizontal([Constraint::Fill(1), width]).split(vert[0]);
-            horz[0]
+            let horz = Layout::horizontal([Constraint::Fill(1), width]).split(vert[1]);
+            horz[1]
         },
         ModalPosition::Center => {
             let vert = Layout::vertical([Constraint::Fill(1), height, Constraint::Fill(1)]).split(area);

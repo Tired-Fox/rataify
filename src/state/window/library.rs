@@ -1,13 +1,3 @@
-mod album;
-mod artist;
-mod playlist;
-mod show;
-
-pub use album::Album;
-pub use artist::Artist;
-pub use playlist::Playlist;
-pub use show::Show;
-
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
@@ -23,7 +13,7 @@ use rspotify::{
 use strum::{EnumCount, IntoEnumIterator};
 
 use crate::{
-    action::{Action, Open, Play}, app::ContextSender, key, state::{InnerState, Loadable}, ConvertPage, Error
+    action::{Action, Open, Play}, app::ContextSender, key, state::{model::{Album, Artist, Playlist, Show}, ActionList, InnerState, Loadable}, ConvertPage, Error
 };
 
 use super::Paginatable;
@@ -154,32 +144,14 @@ impl LibraryState {
                         let playlist = self.featured.get(self.item).ok_or(Error::custom(
                             "failed to select item from list 'Made For You'",
                         ))?;
-                        sender.send_action(Action::Open(Open::actions([
-                            (
-                                key!(Enter),
-                                Action::Play(Play::playlist(
-                                    playlist.id.clone(),
-                                    None,
-                                    None,
-                                ))
-                            )
-                        ])))?
+                        sender.send_action(Action::Open(Open::actions(playlist.action_list())))?
                     }
                     Category::Playlists => {
                         if let Loadable::Some(playlists) = self.playlists.as_ref() {
                             let playlist = playlists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'Playlists'",
                             ))?;
-                            sender.send_action(Action::Open(Open::actions([
-                                (
-                                    key!(Enter),
-                                    Action::Play(Play::playlist(
-                                        playlist.id.clone(),
-                                        None,
-                                        None,
-                                    ))
-                                )
-                            ])))?
+                            sender.send_action(Action::Open(Open::actions(playlist.action_list())))?
                         }
                     }
                     Category::Artists => {
@@ -187,16 +159,7 @@ impl LibraryState {
                             let artist = artists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'artists'",
                             ))?;
-                            sender.send_action(Action::Open(Open::actions([
-                                (
-                                    key!(Enter),
-                                    Action::Play(Play::artist(
-                                        artist.id.clone(),
-                                        None,
-                                        None,
-                                    ))
-                                )
-                            ])))?
+                            sender.send_action(Action::Open(Open::actions(artist.action_list())))?
                         }
                     }
                     Category::Albums => {
@@ -205,16 +168,7 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'albums'"))?;
-                            sender.send_action(Action::Open(Open::actions([
-                                (
-                                    key!(Enter),
-                                    Action::Play(Play::album(
-                                        album.id.clone(),
-                                        None,
-                                        None,
-                                    ))
-                                )
-                            ])))?
+                            sender.send_action(Action::Open(Open::actions(album.action_list())))?
                         }
                     }
                     Category::Shows => {
@@ -223,16 +177,7 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'shows'"))?;
-                            sender.send_action(Action::Open(Open::actions([
-                                (
-                                    key!(Enter),
-                                    Action::Play(Play::show(
-                                        show.id.clone(),
-                                        None,
-                                        None,
-                                    ))
-                                )
-                            ])))?
+                            sender.send_action(Action::Open(Open::actions(show.action_list())))?
                         }
                     }
                 }
@@ -607,7 +552,7 @@ impl Library {
         buf: &mut ratatui::prelude::Buffer,
     ) {
         let lib = state.library.lock().unwrap();
-        if let Some(page) = Self::unwrap_page(&lib.playlists, area, buf) {
+        if let Some(page) = lib.playlists.render_unwrap(area, buf) {
             let mut state = TableState::default().with_selected(lib.item);
             page.paginated(None, lib.item).render(area, buf, &mut state);
         }
@@ -619,7 +564,7 @@ impl Library {
         buf: &mut ratatui::prelude::Buffer,
     ) {
         let lib = state.library.lock().unwrap();
-        if let Some(page) = Self::unwrap_page(&lib.artists, area, buf) {
+        if let Some(page) = lib.artists.render_unwrap(area, buf) {
             let mut state = TableState::default().with_selected(lib.item);
             page.paginated(Some(lib.prev_artist.len() as u32 * page.limit), lib.item)
                 .render(area, buf, &mut state);
@@ -632,7 +577,7 @@ impl Library {
         buf: &mut ratatui::prelude::Buffer,
     ) {
         let lib = state.library.lock().unwrap();
-        if let Some(page) = Self::unwrap_page(&lib.albums, area, buf) {
+        if let Some(page) = lib.albums.render_unwrap(area, buf) {
             let mut state = TableState::default().with_selected(lib.item);
             page.paginated(None, lib.item).render(area, buf, &mut state);
         }
@@ -644,7 +589,7 @@ impl Library {
         buf: &mut ratatui::prelude::Buffer,
     ) {
         let lib = state.library.lock().unwrap();
-        if let Some(page) = Self::unwrap_page(&lib.shows, area, buf) {
+        if let Some(page) = lib.shows.render_unwrap(area, buf) {
             let mut state = TableState::default().with_selected(lib.item);
             page.paginated(None, lib.item).render(area, buf, &mut state);
         }

@@ -210,7 +210,7 @@ impl<T: StatefulWidget> StatefulWidget for Paginated<T> {
                         .join(" "),
                 )
                 .dark_gray(),
-                Span::from(format!(" {current} ")).green(),
+                Span::from(format!(" {current} ")).yellow(),
                 Span::from((current+1..=max).map(|i| i.to_string()).collect::<Vec<_>>().join(" ")).dark_gray(),
                 Span::from(if (pages-current) > 5 { " …" } else { "" }).dark_gray(),
             ])

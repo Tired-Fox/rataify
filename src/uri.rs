@@ -63,7 +63,7 @@ impl Uri {
         }
     }
 
-    pub fn play_context_id<'a>(&'a self) -> Result<PlayContextId<'a>, Error> {
+    pub fn play_context_id(&self) -> Result<PlayContextId<'_>, Error> {
         Ok(match self.ty {
             Type::Album => PlayContextId::from(AlbumId::from_id(self.id.as_str())?),
             Type::Playlist => PlayContextId::from(PlaylistId::from_id(self.id.as_str())?),

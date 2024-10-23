@@ -17,9 +17,9 @@ pub enum Event {
 
 #[derive(Debug)]
 pub struct EventHandler {
-    sender: mpsc::UnboundedSender<Event>,
+    _sender: mpsc::UnboundedSender<Event>,
     receiver: mpsc::UnboundedReceiver<Event>,
-    handler: tokio::task::JoinHandle<()>,
+    _handler: tokio::task::JoinHandle<()>,
 }
 
 impl EventHandler {
@@ -73,9 +73,9 @@ impl EventHandler {
             }
         });
         Self {
-            sender,
+            _sender: sender,
             receiver,
-            handler,
+            _handler: handler,
         }
     }
 

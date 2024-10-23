@@ -2,7 +2,7 @@ use album::AlbumDetails;
 use artist::ArtistDetails;
 use image::ImageFormat;
 use playlist::PlaylistDetails;
-use ratatui::widgets::{Block, Padding, StatefulWidget, Widget};
+use ratatui::widgets::{Block, StatefulWidget, Widget};
 use ratatui_image::{picker::Picker, protocol::StatefulProtocol};
 use rspotify::{
     clients::BaseClient,
@@ -31,10 +31,10 @@ pub enum LandingState {
 impl LandingState {
     pub fn handle_action(
         &mut self,
-        action: Action,
-        spotify: &AuthCodePkceSpotify,
-        state: &InnerState,
-        sender: ContextSender,
+        _action: Action,
+        _spotify: &AuthCodePkceSpotify,
+        _state: &InnerState,
+        _sender: ContextSender,
     ) -> Result<(), Error> {
         Ok(())
     }

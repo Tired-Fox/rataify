@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Padding, Paragraph, Widget},
+    widgets::{Block, Padding, Widget},
 };
 use rspotify::model::{
     Context, CurrentPlaybackContext, CurrentlyPlayingType, Device, PlayableItem, RepeatState,

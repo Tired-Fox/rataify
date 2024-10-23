@@ -1,4 +1,4 @@
-use std::{collections::{hash_map::Iter, HashMap}, iter::Map};
+use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 use serde::{Deserialize, Serialize};
@@ -73,15 +73,7 @@ impl Config {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
-    use rspotify::model::PlaylistId;
-
-    use crate::{
-        action::{Action, Play},
-        config::Config,
-        input,
-    };
+    use crate::config::Config;
 
     #[test]
     fn serialize() {

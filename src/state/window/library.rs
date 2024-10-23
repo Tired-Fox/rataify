@@ -13,7 +13,7 @@ use rspotify::{
 use strum::{EnumCount, IntoEnumIterator};
 
 use crate::{
-    action::{Action, Open, Play}, app::ContextSender, key, state::{model::{Album, Artist, Playlist, Show}, ActionList, InnerState, Loadable}, ConvertPage, Error
+    action::{Action, Open}, app::ContextSender, state::{model::{Album, Artist, Playlist, Show}, ActionList, InnerState, Loadable}, ConvertPage, Error
 };
 
 use super::Paginatable;

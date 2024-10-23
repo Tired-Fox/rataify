@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crossterm::event::KeyEvent;
 
 use rspotify::model::{AlbumId, ArtistId, Id, PlaylistId, ShowId, Type};
@@ -86,7 +84,7 @@ pub enum Open {
         play: Option<bool>
     },
     Actions {
-        mappings: HashMap<Key, Action>
+        mappings: Vec<(Key, Action)>
     },
     GoTo,
 
@@ -121,7 +119,7 @@ impl Open {
     }
 
     pub fn actions(mappings: impl IntoIterator<Item=(Key, Action)>) -> Self {
-        Self::Actions { mappings: HashMap::from_iter(mappings) }
+        Self::Actions { mappings: mappings.into_iter().collect() }
     }
 
     pub fn playlist(playlist: &Playlist) -> Self {

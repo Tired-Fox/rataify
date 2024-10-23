@@ -3,7 +3,7 @@ pub mod window;
 pub mod model;
 
 use std::{
-    any::type_name, collections::HashMap, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
+    any::type_name, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
 };
 
 use futures::Future;
@@ -402,7 +402,7 @@ impl State {
         Ok(())
     }
 
-    pub fn open_actions(&mut self, actions: HashMap<Key, Action>) {
+    pub fn open_actions(&mut self, actions: Vec<(Key, Action)>) {
         self.inner.actions.lock().unwrap().set_actions(actions);
         self.inner.modal.lock().unwrap().replace(Modal::Actions);
     }
@@ -446,6 +446,10 @@ impl InnerState {
         let c = ctx.clone();
         tokio::spawn(async move {
             library.lock().unwrap().playlists.load();
+            library.lock().unwrap().artists.load();
+            library.lock().unwrap().albums.load();
+            library.lock().unwrap().shows.load();
+
             match spotify.current_user_playlists_manual(Some(20), None).await {
                 Ok(playlists) => {
                     library.lock().unwrap().playlists.replace(playlists.convert_page())
@@ -456,7 +460,6 @@ impl InnerState {
                 }
             };
 
-            library.lock().unwrap().artists.load();
             match spotify.current_user_followed_artists(None, Some(20)).await {
                 Ok(artists) => library.lock().unwrap().artists.replace(artists.convert_page()),
                 Err(err) => {
@@ -465,7 +468,6 @@ impl InnerState {
                 }
             };
 
-            library.lock().unwrap().albums.load();
             match spotify
                 .current_user_saved_albums_manual(None, Some(20), None)
                 .await
@@ -477,7 +479,6 @@ impl InnerState {
                 }
             };
 
-            library.lock().unwrap().shows.load();
             match spotify.get_saved_show_manual(Some(20), None).await {
                 Ok(shows) => library.lock().unwrap().shows.replace(shows.convert_page()),
                 Err(err) => {
@@ -488,7 +489,7 @@ impl InnerState {
         });
     }
 
-    pub fn fetch_playback(&self, spotify: &AuthCodePkceSpotify, ctx: &ContextSender) {
+    pub fn fetch_playback(&self, spotify: &AuthCodePkceSpotify, _ctx: &ContextSender) {
         let spot = spotify.clone();
         let playback = self.playback.clone();
         tokio::spawn(async move {
@@ -504,7 +505,7 @@ impl InnerState {
         });
     }
 
-    pub fn fetch_featured(&self, spotify: &AuthCodePkceSpotify, ctx: &ContextSender) {
+    pub fn fetch_featured(&self, spotify: &AuthCodePkceSpotify, _ctx: &ContextSender) {
         let spot = spotify.clone();
         let lib = self.library.clone();
         tokio::spawn(async move {
@@ -554,7 +555,7 @@ impl Widget for &mut InnerState {
 }
 
 pub trait ActionList {
-    fn action_list(&self) -> HashMap<Key, Action>;
+    fn action_list(&self) -> Vec<(Key, Action)>;
 }
 
 pub fn format_duration(duration: chrono::Duration) -> String {

@@ -8,10 +8,10 @@ use super::{modal_layout, ModalPosition};
 pub struct GoTo;
 impl GoTo {
     pub fn handle_action(action: Action, context: ContextSender) -> Result<(), Error> {
+        #[allow(clippy::single_match)]
         match action {
-            Action::Key(key) => match key {
-                KeyEvent { code: KeyCode::Char('L'), .. } => context.send_action(Action::Open(Open::Library))?,
-                _ => {}
+            Action::Key(KeyEvent { code: KeyCode::Char('L'), .. }) => {
+                context.send_action(Action::Open(Open::Library))?
             }
             _ => {}
         }

@@ -1,7 +1,7 @@
 use chrono::Duration;
 use ratatui::{
     layout::Constraint,
-    style::{Style, Stylize},
+    style::Stylize,
     text::Line,
     widgets::Cell,
 };

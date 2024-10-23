@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use ratatui::{
     layout::Constraint,
-    style::Style, widgets::Cell,
+    widgets::Cell,
 };
 use rspotify::model::{Image, PlaylistId, PublicUser, SimplifiedPlaylist};
 
@@ -56,8 +54,8 @@ impl PageRow for Playlist {
 }
 
 impl ActionList for Playlist {
-    fn action_list(&self) -> HashMap<Key, Action> {
-        HashMap::from([
+    fn action_list(&self) -> Vec<(Key, Action)> {
+        Vec::from([
             (key!(Enter), Action::Play(Play::playlist(self.id.clone(), None, None))),
             (key!('o'), Action::Open(Open::playlist(self))),
             // TODO: Favorite/Unfavorite

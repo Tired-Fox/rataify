@@ -1,5 +1,5 @@
-use ratatui::{layout::{Constraint, Layout, Margin}, style::{Style, Stylize}, text::{Line, Span}, widgets::{Cell, Paragraph, Row, StatefulWidget, Table, TableState, Widget}};
-use ratatui_image::{protocol::StatefulProtocol, CropOptions, Resize, StatefulImage};
+use ratatui::{layout::{Constraint, Layout, Margin}, style::{Style, Stylize}, text::Span, widgets::{Cell, Paragraph, Row, StatefulWidget, Table, TableState, Widget}};
+use ratatui_image::{protocol::StatefulProtocol, Resize, StatefulImage};
 use rspotify::model::Page;
 
 use crate::state::{model::{Album, Track}, window::{PageRow, Paginatable}};

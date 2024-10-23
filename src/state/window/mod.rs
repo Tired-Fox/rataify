@@ -5,7 +5,7 @@ pub mod landing;
 
 use landing::Landing;
 use ratatui::{
-    layout::{Constraint, Layout, Margin},
+    layout::{Constraint, Layout},
     style::{Style, Stylize},
     text::{Line, Span},
     widgets::{
@@ -46,8 +46,9 @@ impl StatefulWidget for Window {
     }
 }
 
+pub type CellBuilder = Box<dyn Fn(String) -> Cell<'static>>;
 pub trait PageRow {
-    fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)>;
+    fn page_row(&self) -> Vec<(String, Option<CellBuilder>)>;
     fn page_widths(widths: Vec<usize>) -> Vec<Constraint>;
 }
 
@@ -196,16 +197,22 @@ impl<T: StatefulWidget> StatefulWidget for Paginated<T> {
         let layout = if pagination {
             let vert = Layout::vertical([Constraint::Fill(1), Constraint::Length(2)]).split(area);
 
+            let min = current.saturating_sub(5).max(1);
+            let max = current.saturating_add(5).min(pages);
+
             let page_block = Block::new().padding(Padding::top(1));
             Line::from(vec![
+                Span::from(if current > 5 { "… " } else { "" }).dark_gray(),
                 Span::from(
-                    (0..current.saturating_sub(1))
-                        .map(|_| '•')
-                        .collect::<String>(),
+                    (min..current)
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" "),
                 )
                 .dark_gray(),
-                Span::from("•").green(),
-                Span::from((0..pages - current).map(|_| '•').collect::<String>()).dark_gray(),
+                Span::from(format!(" {current} ")).green(),
+                Span::from((current+1..=max).map(|i| i.to_string()).collect::<Vec<_>>().join(" ")).dark_gray(),
+                Span::from(if (pages-current) > 5 { " …" } else { "" }).dark_gray(),
             ])
             .centered()
             .render(page_block.inner(vert[1]), buf);
@@ -216,7 +223,6 @@ impl<T: StatefulWidget> StatefulWidget for Paginated<T> {
         };
 
         let block = if scrollable {
-            // TODO: Display scrollbar
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
             let mut scrollbar_state = ScrollbarState::new(self.length).position(self.index);
             StatefulWidget::render(

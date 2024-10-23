@@ -1,4 +1,4 @@
-use ratatui::{layout::{Constraint, Layout, Margin}, style::Stylize, text::Line, widgets::{Paragraph, StatefulWidget, TableState, Widget}};
+use ratatui::{layout::{Constraint, Layout, Margin}, style::Stylize, widgets::{Paragraph, StatefulWidget, TableState, Widget}};
 use ratatui_image::{protocol::StatefulProtocol, Resize, StatefulImage};
 use rspotify::model::Page;
 

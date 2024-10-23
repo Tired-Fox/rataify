@@ -1,6 +1,5 @@
 use std::io::stdout;
 
-use crossterm::{event::{DisableMouseCapture, EnableMouseCapture}, terminal::{self, EnterAlternateScreen, LeaveAlternateScreen}};
 use rataify::Error;
 use ratatui::{backend::CrosstermBackend, layout::{Constraint, Layout}, Terminal};
 use ratatui_image::{picker::Picker, Resize, StatefulImage};

@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Constraint,
-    style::Style, widgets::Cell,
+    widgets::Cell,
 };
 use rspotify::model::{PlayableItem, PlaylistItem};
 

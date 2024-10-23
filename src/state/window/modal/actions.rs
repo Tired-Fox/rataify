@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ratatui::{layout::Constraint, widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, StatefulWidget, Table, TableState, Widget}};
 
 use crate::{action::Action, app::ContextSender, input::Key, state::InnerState, Error, key};
@@ -8,24 +6,24 @@ use super::{modal_layout, ModalPosition};
 
 #[derive(Default, Debug, Clone)]
 pub struct ActionsState {
-    pub mappings: HashMap<Key, Action>,
+    pub mappings: Vec<(Key, Action)>,
 }
 
 impl ActionsState {
-    pub fn set_actions(&mut self, actions: HashMap<Key, Action>) {
+    pub fn set_actions(&mut self, actions: Vec<(Key, Action)>) {
         self.mappings = actions;
     }
 
     pub fn handle(&mut self, action: Action, sender: ContextSender) -> Result<(), Error> {
         match action {
             Action::Select => {
-                if let Some(action) = self.mappings.get(&key!(Enter)) {
+                if let Some((_, action)) = self.mappings.iter().find(|(k, _)| k == &key!(Enter)) {
                     sender.send_action(action.clone())?;
                     sender.send_action(Action::Close)?;
                 }
             },
             Action::Key(key) => {
-                if let Some(action) = self.mappings.get(&Key::from(key)) {
+                if let Some((_, action)) = self.mappings.iter().find(|(k, _)| k == &Key::from(key)) {
                     sender.send_action(action.clone())?;
                     sender.send_action(Action::Close)?;
                 }

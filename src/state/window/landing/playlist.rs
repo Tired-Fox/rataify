@@ -37,7 +37,7 @@ impl Widget for &mut PlaylistDetails {
         let mut state = TableState::default().with_selected(Some(self.index));
         let block = Block::default()
             .padding(Padding::left(2));
-        self.items.paginated(None, 0)
+        self.items.paginated(None, self.index)
             .render(block.inner(hoz[2]), buf, &mut state);
     }
 }

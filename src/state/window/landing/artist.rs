@@ -1,4 +1,4 @@
-use ratatui::{layout::{Constraint, Layout}, style::{Style, Stylize}, text::Span, widgets::{Block, Cell, Padding, Paragraph, Row, StatefulWidget, Table, TableState, Widget}};
+use ratatui::{layout::{Constraint, Layout}, style::{Style, Stylize}, text::Span, widgets::{Block, Cell, Padding, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, StatefulWidget, Table, TableState, Widget}};
 use ratatui_image::{protocol::StatefulProtocol, Resize, StatefulImage};
 use rspotify::model::Page;
 
@@ -66,10 +66,22 @@ impl Widget for &mut ArtistDetails {
         let mut state = TableState::default().with_selected(if self.index > 9 { None } else { Some(self.index) });
         let top_tracks = Table::new(lines, Track::page_widths(widths))
             .highlight_style(Style::default().yellow());
-        StatefulWidget::render(top_tracks, list_layout[0], buf, &mut state);
+
+        if area.height < 25 {
+            let block = Block::default()
+                .padding(Padding::right(1));
+            StatefulWidget::render(top_tracks, block.inner(list_layout[0]), buf, &mut state);
+
+            let scroll = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+            let mut state = ScrollbarState::new(10).position(self.index);
+            StatefulWidget::render(scroll, list_layout[0], buf, &mut state);
+        } else {
+            StatefulWidget::render(top_tracks, list_layout[0], buf, &mut state);
+        }
+
 
         let mut state = TableState::default().with_selected(if self.index > 9 { Some(self.index.saturating_sub(10)) } else { None });
-        self.albums.paginated(None, 0)
+        self.albums.paginated(None, self.index.saturating_sub(10))
             .render(list_layout[2], buf, &mut state);
     }
 }

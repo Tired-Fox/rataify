@@ -38,7 +38,7 @@ impl Widget for &mut AlbumDetails {
         let mut state = TableState::default().with_selected(Some(self.index));
         let block = Block::default()
             .padding(Padding::left(2));
-        self.tracks.paginated(None, 0)
+        self.tracks.paginated(None, self.index)
             .render(block.inner(hoz[2]), buf, &mut state);
     }
 }

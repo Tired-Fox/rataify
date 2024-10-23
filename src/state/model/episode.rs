@@ -88,8 +88,8 @@ impl PageRow for Episode {
         vec![
             Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
             Constraint::Length(1),
-            Constraint::Ratio(4, 5),
-            Constraint::Ratio(1, 5),
+            Constraint::Ratio(3, 4),
+            Constraint::Ratio(1, 4),
         ]
     }
 }

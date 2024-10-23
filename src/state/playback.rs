@@ -1,12 +1,12 @@
 use chrono::{DateTime, Duration, Local};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Padding, Widget},
 };
 use rspotify::model::{
-    Context, CurrentPlaybackContext, CurrentlyPlayingType, Device, PlayableItem, RepeatState,
+    Context, CurrentPlaybackContext, CurrentlyPlayingType, Device, PlayableItem, RepeatState
 };
 
 #[derive(Debug, Clone)]
@@ -80,22 +80,33 @@ impl Widget for &Playback {
             .right_aligned()
             .render(title_line[1], buf);
 
-        let device_line =
-            Layout::horizontal([Constraint::Ratio(3, 1), Constraint::Ratio(1, 3)]).split(lines[1]);
-        Line::from(self.device.name.as_str())
-            .dark_gray()
-            .render(device_line[0], buf);
+        let info_line =
+            Layout::horizontal([Constraint::Ratio(3, 1), Constraint::Ratio(1, 3)]).split(lines[2]);
+        Line::from(vec![
+            Span::from("Shuffle ").dark_gray(),
+            Span::from(self.shuffle_state.to_string()).fg(if self.shuffle_state { Color::Green } else { Color::Red }),
+            Span::from(" Repeat ").dark_gray(),
+            Span::from(format!("{:?}", self.repeat_state)).fg(match self.repeat_state {
+                RepeatState::Off => Color::Red,
+                RepeatState::Context => Color::Magenta,
+                RepeatState::Track => Color::Cyan,
+            }),
+        ])
+            .render(info_line[0], buf);
 
         Line::from(
-            self.device
+            format!("{} {}",
+                self.device.name,
+                self.device
                 .volume_percent
                 .as_ref()
                 .map(|v| format!("{v} %"))
                 .unwrap_or_default(),
+            )
         )
         .dark_gray()
         .right_aligned()
-        .render(device_line[1], buf);
+        .render(info_line[1], buf);
 
         let progress = if self.is_playing {
             (self.progress.unwrap_or_default() + (Local::now() - self.timestamp)).min(duration)
@@ -155,6 +166,6 @@ impl Widget for &Playback {
             Span::from((0..bar_width - filled).map(|_| '─').collect::<String>()).dark_gray(),
             Span::from(format!(" {dtag}")).style(time_style),
         ])
-        .render(lines[2], buf);
+        .render(lines[1], buf);
     }
 }

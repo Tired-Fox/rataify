@@ -3,7 +3,7 @@ use crossterm::event::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Hash)]
 pub struct Key {
     pub modifiers: KeyModifiers,
     pub key: KeyCode,

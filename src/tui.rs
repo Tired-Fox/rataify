@@ -1,4 +1,4 @@
-use std::{io::stdout, ops::{Deref, DerefMut}};
+use std::{io::{stdout, Write}, ops::{Deref, DerefMut}};
 
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -48,10 +48,21 @@ where
         terminal::enable_raw_mode()?;
         crossterm::execute!(stdout(), EnterAlternateScreen, EnableMouseCapture,)?;
 
-        let panic_hook = std::panic::take_hook();
+        // let panic_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panic| {
             Self::reset().expect("failed to reset the terminal");
-            panic_hook(panic);
+            let dir = dirs::cache_dir().unwrap().join("rataify");
+            if !dir.exists() {
+                std::fs::create_dir_all(&dir).expect(format!("failed to create dir at {dir:?}").as_str());
+            }
+            let mut error_logs = std::fs::OpenOptions::new()
+                .truncate(true)
+                .open(dir.join("errors.txt"))
+                .expect("failed to open errors.txt for logging");
+
+            writeln!(error_logs, "{}", panic).expect("failed to write errors to errors.txt");
+            println!("Rataify ran into unexpected errors. You can view them at {}", dir.join("errors.txt").display());
+            // panic_hook(panic);
         }));
 
         self.terminal.hide_cursor()?;

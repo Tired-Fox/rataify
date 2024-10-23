@@ -7,7 +7,7 @@ use ratatui::{
 };
 use rspotify::model::{EpisodeId, FullEpisode, Image, ResumePoint, SimplifiedEpisode};
 
-use crate::state::{format_duration, window::PageRow};
+use crate::{action::{Action, Play}, state::{format_duration, window::PageRow, ActionList}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Episode {
@@ -62,7 +62,7 @@ impl PageRow for Episode {
             (
                 format_duration(self.duration),
                 Some(Box::new(move |data| {
-                    Cell::from(data).style(if finished {
+                    Cell::from(Line::from(data).right_aligned()).style(if finished {
                         Style::default().green()
                     } else {
                         Style::default().dark_gray()
@@ -91,5 +91,22 @@ impl PageRow for Episode {
             Constraint::Fill(1),
             Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
         ]
+    }
+}
+
+impl Episode {
+    pub fn play(&self) -> Action {
+        Action::Play(Play::single(self.id.clone().into(), None, None))
+    }
+}
+
+impl ActionList for Episode {
+    fn action_list(&self, goto: bool) -> Vec<(crate::input::Key, crate::action::Action)> {
+        self.action_list_with([], goto)
+    }
+
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(crate::input::Key, Action)>, _goto: bool) -> Vec<(crate::input::Key, Action)> {
+        initial.into_iter()
+            .collect()
     }
 }

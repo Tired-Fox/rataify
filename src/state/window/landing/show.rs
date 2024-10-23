@@ -1,20 +1,21 @@
-use ratatui::{layout::{Constraint, Layout, Margin}, style::Stylize, widgets::{Paragraph, StatefulWidget, TableState, Widget}};
+use ratatui::{layout::{Constraint, Layout}, style::Stylize, widgets::{Block, Padding, Paragraph, StatefulWidget, TableState, Widget}};
 use ratatui_image::{protocol::StatefulProtocol, Resize, StatefulImage};
 use rspotify::model::Page;
 
-use crate::state::{model::Episode, window::Paginatable};
+use crate::state::{model::{Episode, Show}, window::Paginatable};
 
 #[derive(Clone)]
 pub struct ShowDetails {
     pub image: Option<Box<dyn StatefulProtocol>>,
-    pub name: String,
+    pub show: Show,
     pub episodes: Page<Episode>,
+    pub index: usize,
 }
 
 impl std::fmt::Debug for ShowDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PlaylistDetails")
-            .field("name", &self.name)
+            .field("show", &self.show)
             .field("episodes", &self.episodes)
             .finish_non_exhaustive()
     }
@@ -30,15 +31,14 @@ impl Widget for &mut ShowDetails {
             StatefulWidget::render(img, info_layout[0], buf, image);
         }
 
-        Paragraph::new(self.name.as_str())
+        Paragraph::new(self.show.name.as_str())
             .bold()
             .render(info_layout[1], buf);
 
-        let mut state = TableState::default().with_selected(None);
+        let mut state = TableState::default().with_selected(Some(self.index));
+        let block = Block::default()
+            .padding(Padding::left(2));
         self.episodes.paginated(None, 0)
-            .render(hoz[2].inner(Margin {
-                vertical: 0,
-                horizontal: 2
-            }), buf, &mut state);
+            .render(block.inner(hoz[2]), buf, &mut state);
     }
 }

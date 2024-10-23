@@ -357,7 +357,7 @@ impl State {
             .unwrap_or_default();
     }
 
-    pub fn handle_action(&mut self, action: Action, sender: ContextSender) -> Result<(), Error> {
+    pub async fn handle_action(&mut self, action: Action, sender: ContextSender) -> Result<(), Error> {
         let win = *self.inner.window.lock().unwrap();
         let modal = *self.inner.modal.lock().unwrap();
 
@@ -382,7 +382,7 @@ impl State {
                     _ => {}
                 },
                 Modal::Actions => self.inner.actions.lock().unwrap().handle(action, sender)?,
-                Modal::GoTo => GoTo::handle_action(action, sender)?
+                Modal::GoTo => GoTo::handle_action(action, self.spotify.clone(), self.inner.clone(), sender).await?
             },
             None => match win {
                 // _ => {}
@@ -394,7 +394,7 @@ impl State {
                         .handle_action(action, &self.spotify, &self.inner, sender.clone())?;
                 },
                 Window::Landing => if let Loadable::Some(landing) = self.inner.landing.lock().unwrap().as_mut() {
-                    landing.handle_action(action, &self.spotify, &self.inner, sender.clone())?;
+                    landing.handle_action(action, &self.spotify, &self.inner, sender.clone()).await?;
                 }
             },
         }
@@ -555,7 +555,8 @@ impl Widget for &mut InnerState {
 }
 
 pub trait ActionList {
-    fn action_list(&self) -> Vec<(Key, Action)>;
+    fn action_list(&self, goto: bool) -> Vec<(Key, Action)>;
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(Key, Action)>, goto: bool) -> Vec<(Key, Action)>;
 }
 
 pub fn format_duration(duration: chrono::Duration) -> String {

@@ -1,22 +1,23 @@
-use ratatui::{layout::{Constraint, Layout, Margin}, style::{Style, Stylize}, text::Span, widgets::{Cell, Paragraph, Row, StatefulWidget, Table, TableState, Widget}};
+use ratatui::{layout::{Constraint, Layout}, style::{Style, Stylize}, text::Span, widgets::{Block, Cell, Padding, Paragraph, Row, StatefulWidget, Table, TableState, Widget}};
 use ratatui_image::{protocol::StatefulProtocol, Resize, StatefulImage};
 use rspotify::model::Page;
 
-use crate::state::{model::{Album, Track}, window::{PageRow, Paginatable}};
+use crate::state::{model::{Album, Artist, Track}, window::{PageRow, Paginatable}};
 
 #[derive(Clone)]
 pub struct ArtistDetails {
     pub image: Option<Box<dyn StatefulProtocol>>,
-    pub name: String,
+    pub artist: Artist,
     pub albums: Page<Album>,
     pub top_tracks: Vec<Track>,
+    pub index: usize,
 }
 
 
 impl std::fmt::Debug for ArtistDetails {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PlaylistDetails")
-            .field("name", &self.name)
+            .field("artist", &self.artist)
             .field("top_tracks", &self.top_tracks)
             .field("albums", &self.albums)
             .finish_non_exhaustive()
@@ -34,14 +35,13 @@ impl Widget for &mut ArtistDetails {
             StatefulWidget::render(img, info_layout[0], buf, image);
         }
 
-        Paragraph::new(self.name.as_str())
+        Paragraph::new(self.artist.name.as_str())
             .bold()
             .render(info_layout[1], buf);
 
-        let list_layout = Layout::vertical([Constraint::Length(if area.height < 25 { 5 } else { 10 }), Constraint::Length(1), Constraint::Fill(1)]).split(hoz[2].inner(Margin {
-            horizontal: 2,
-            vertical: 0,
-        }));
+        let block = Block::default()
+            .padding(Padding::left(2));
+        let list_layout = Layout::vertical([Constraint::Length(if area.height < 25 { 5 } else { 10 }), Constraint::Length(1), Constraint::Fill(1)]).split(block.inner(hoz[2]));
 
         let mut widths: Vec<usize> = Vec::new();
         let lines = self.top_tracks.iter().map(|t| {
@@ -63,12 +63,12 @@ impl Widget for &mut ArtistDetails {
             }).collect::<Vec<_>>())
         }).collect::<Vec<_>>();
 
-        let mut state = TableState::default();
+        let mut state = TableState::default().with_selected(if self.index > 9 { None } else { Some(self.index) });
         let top_tracks = Table::new(lines, Track::page_widths(widths))
             .highlight_style(Style::default().yellow());
         StatefulWidget::render(top_tracks, list_layout[0], buf, &mut state);
 
-        let mut state = TableState::default().with_selected(None);
+        let mut state = TableState::default().with_selected(if self.index > 9 { Some(self.index.saturating_sub(10)) } else { None });
         self.albums.paginated(None, 0)
             .render(list_layout[2], buf, &mut state);
     }

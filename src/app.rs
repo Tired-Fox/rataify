@@ -4,11 +4,18 @@ use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use hashbrown::HashMap;
 use ratatui::{backend::CrosstermBackend, Frame};
-use rspotify::clients::OAuthClient;
+use rspotify::{clients::OAuthClient, model::{AdditionalType, PlayableId, RepeatState}};
 use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
-    action::{Action, Open, Play}, config::Config, event::Event, state::{window::{landing::LandingState, modal::Modal, Window}, InnerState, State}, Error, ErrorKind, IntoSpotifyParam, Tui
+    action::{Action, Open, Play},
+    config::Config,
+    event::Event,
+    state::{
+        window::{landing::LandingState, modal::Modal, Window},
+        InnerState, State,
+    },
+    Error, ErrorKind, IntoSpotifyParam, Tui,
 };
 
 #[derive(Clone)]
@@ -146,6 +153,35 @@ impl App {
                         }
                     });
                 }
+                Action::Shuffle => {
+                    let new = !self.state.inner.playback.lock().unwrap().as_ref().map(|p| p.shuffle_state).unwrap_or_default(); 
+                    let playback = self.state.inner.playback.clone();
+                    let spot = self.state.spotify.clone();
+                    tokio::spawn(async move {
+                        if spot.shuffle(new, None).await.is_ok() {
+                            if let Some(playback) = playback.lock().unwrap().as_mut() {
+                                playback.shuffle_state = new;
+                            }
+                        }
+                    });
+                }
+                Action::Repeat => {
+                    let new = match self.state.inner.playback.lock().unwrap().as_ref().map(|p| p.repeat_state).unwrap_or(RepeatState::Off) {
+                        RepeatState::Off => RepeatState::Context,
+                        RepeatState::Context => RepeatState::Track,
+                        RepeatState::Track => RepeatState::Off,
+                    };
+                    let playback = self.state.inner.playback.clone();
+                    let spot = self.state.spotify.clone();
+
+                    tokio::spawn(async move {
+                        if spot.repeat(new, None).await.is_ok() {
+                            if let Some(playback) = playback.lock().unwrap().as_mut() {
+                                playback.repeat_state = new;
+                            }
+                        }
+                    });
+                }
                 Action::Toggle => {
                     let spotify = self.state.spotify.clone();
                     let playback = self.state.inner.playback.clone();
@@ -182,12 +218,47 @@ impl App {
                     });
                 }
                 Action::Play(play) => match play {
-                    Play::Context { uri: id, offset, position } => {
+                    Play::Context {
+                        uri: id,
+                        offset,
+                        position,
+                    } => {
                         let spotify = self.state.spotify.clone();
                         let ctx = self.context_sender.clone();
                         tokio::spawn(async move {
                             if spotify
-                                .start_context_playback(id.play_context_id().unwrap(), None, offset.into_spotify_param(), position.into_spotify_param())
+                                .start_context_playback(
+                                    id.play_context_id().unwrap(),
+                                    None,
+                                    offset.into_spotify_param(),
+                                    position.into_spotify_param(),
+                                )
+                                .await
+                                .is_err()
+                            {
+                                ctx.send_action(Action::Open(Open::devices(Some(true))))
+                                    .unwrap();
+                            }
+                        });
+                    }
+                    Play::Uris {
+                        uris,
+                        offset,
+                        position,
+                    } => {
+                        let spotify = self.state.spotify.clone();
+                        let ctx = self.context_sender.clone();
+                        tokio::spawn(async move {
+                            if spotify
+                                .start_uris_playback(
+                                    uris.into_iter()
+                                        .map(|v| v.playable_id())
+                                        .collect::<Result<Vec<PlayableId<'_>>, Error>>()
+                                        .unwrap(),
+                                    None,
+                                    offset.into_spotify_param(),
+                                    position.into_spotify_param(),
+                                )
                                 .await
                                 .is_err()
                             {
@@ -197,60 +268,62 @@ impl App {
                         });
                     }
                 },
-                Action::Open(modal) => {
-                    match modal {
-                        Open::Devices { play } => self.open_device_modal(play).await?,
-                        Open::Actions { mappings } => self.state.open_actions(mappings),
-                        Open::GoTo => { self.state.inner.modal.lock().unwrap().replace(Modal::GoTo); },
-                        Open::Library => {
-                            self.state.inner.modal.lock().unwrap().take();
-                            *self.state.inner.window.lock().unwrap() = Window::Library;
-                        }
-                        Open::Playlist{ id, name, image } => {
-                            self.state.inner.landing.lock().unwrap().load();
-                            *self.state.inner.window.lock().unwrap() = Window::Landing;
-                            let landing = self.state.inner.landing.clone();
-                            let spot = self.state.spotify.clone();
-                            tokio::spawn(async move {
-                                let result = LandingState::get_playlist(id, name, image, spot).await.unwrap();
-                                landing.lock().unwrap().replace(result);
-                            });
-                        },
-                        Open::Artist{ id, name, image } => {
-                            self.state.inner.landing.lock().unwrap().load();
-                            *self.state.inner.window.lock().unwrap() = Window::Landing;
-                            let landing = self.state.inner.landing.clone();
-                            let spot = self.state.spotify.clone();
-                            tokio::spawn(async move {
-                                let result = LandingState::get_artist(id, name, image, spot).await.unwrap();
-                                landing.lock().unwrap().replace(result);
-                            });
-                        }
-                        Open::Album{ id, name, image } => {
-                            self.state.inner.landing.lock().unwrap().load();
-                            *self.state.inner.window.lock().unwrap() = Window::Landing;
-                            let landing = self.state.inner.landing.clone();
-                            let spot = self.state.spotify.clone();
-                            tokio::spawn(async move {
-                                let result = LandingState::get_album(id, name, image, spot).await.unwrap();
-                                landing.lock().unwrap().replace(result);
-                            });
-                        }
-                        Open::Show{ id, name, image } => {
-                            self.state.inner.landing.lock().unwrap().load();
-                            *self.state.inner.window.lock().unwrap() = Window::Landing;
-                            let landing = self.state.inner.landing.clone();
-                            let spot = self.state.spotify.clone();
-                            tokio::spawn(async move {
-                                let result = LandingState::get_show(id, name, image, spot).await.unwrap();
-                                landing.lock().unwrap().replace(result);
-                            });
-                        }
-                        other => {
-                            unimplemented!("cannot open {other:?}")
-                        },
+                Action::Open(modal) => match modal {
+                    Open::Devices { play } => self.open_device_modal(play).await?,
+                    Open::Actions { mappings } => self.state.open_actions(mappings),
+                    Open::GoTo => {
+                        self.state.inner.modal.lock().unwrap().replace(Modal::GoTo);
                     }
-                }
+                    Open::Library => {
+                        *self.state.inner.window.lock().unwrap() = Window::Library;
+                    }
+                    Open::Playlist { playlist, image } => {
+                        self.state.inner.landing.lock().unwrap().load();
+                        *self.state.inner.window.lock().unwrap() = Window::Landing;
+                        let landing = self.state.inner.landing.clone();
+                        let spot = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            let result = LandingState::get_playlist(playlist, image, spot)
+                                .await
+                                .unwrap();
+                            landing.lock().unwrap().replace(result);
+                        });
+                    }
+                    Open::Artist { artist, image } => {
+                        self.state.inner.landing.lock().unwrap().load();
+                        *self.state.inner.window.lock().unwrap() = Window::Landing;
+                        let landing = self.state.inner.landing.clone();
+                        let spot = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            let result =
+                                LandingState::get_artist(artist, image, spot).await.unwrap();
+                            landing.lock().unwrap().replace(result);
+                        });
+                    }
+                    Open::Album { album, image } => {
+                        self.state.inner.landing.lock().unwrap().load();
+                        *self.state.inner.window.lock().unwrap() = Window::Landing;
+                        let landing = self.state.inner.landing.clone();
+                        let spot = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            let result = LandingState::get_album(album, image, spot).await.unwrap();
+                            landing.lock().unwrap().replace(result);
+                        });
+                    }
+                    Open::Show { show, image } => {
+                        self.state.inner.landing.lock().unwrap().load();
+                        *self.state.inner.window.lock().unwrap() = Window::Landing;
+                        let landing = self.state.inner.landing.clone();
+                        let spot = self.state.spotify.clone();
+                        tokio::spawn(async move {
+                            let result = LandingState::get_show(show, image, spot).await.unwrap();
+                            landing.lock().unwrap().replace(result);
+                        });
+                    }
+                    other => {
+                        unimplemented!("cannot open {other:?}")
+                    }
+                },
                 Action::SetDevice { id, play } => {
                     self.state
                         .spotify
@@ -261,16 +334,18 @@ impl App {
                     let playback = self.state.inner.playback.clone();
                     tokio::spawn(async move {
                         let ctx = spot
-                            .current_playback(None, None::<Vec<_>>)
+                            .current_playback(None, Some([&AdditionalType::Track, &AdditionalType::Episode]))
                             .await
                             .unwrap()
                             .map(|v| v.into());
                         *playback.lock().unwrap() = ctx;
                     });
                 }
-                other => self
-                    .state
-                    .handle_action(other, self.context_sender.clone())?,
+                other => {
+                    self.state
+                        .handle_action(other, self.context_sender.clone())
+                        .await?
+                }
             }
         }
 

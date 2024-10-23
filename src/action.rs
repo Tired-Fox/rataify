@@ -1,9 +1,9 @@
 use crossterm::event::KeyEvent;
 
-use rspotify::model::{AlbumId, ArtistId, Id, PlaylistId, ShowId, Type};
+use rspotify::model::{Id, Type};
 use serde::{Deserialize, Serialize};
 
-use crate::{get_sized_image_url, input::Key, state::model::{Album, Artist, Playlist, Show}, uri::Uri, Error};
+use crate::{get_sized_image_url, input::Key, state::model::{Album, Artist, Playlist, Show}, uri::Uri, Error, IntoSpotifyParam};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -92,23 +92,19 @@ pub enum Open {
     Search,
 
     Playlist {
-        id: PlaylistId<'static>,
-        name: String,
+        playlist: Playlist,
         image: Option<String>
     },
     Album {
-        id: AlbumId<'static>,
-        name: String,
+        album: Album,
         image: Option<String>
     },
     Artist {
-        id: ArtistId<'static>,
-        name: String,
+        artist: Artist,
         image: Option<String>
     },
     Show {
-        id: ShowId<'static>,
-        name: String,
+        show: Show,
         image: Option<String>
     },
 }
@@ -124,29 +120,25 @@ impl Open {
 
     pub fn playlist(playlist: &Playlist) -> Self {
         Self::Playlist{
-            id: playlist.id.clone(),
-            name: playlist.name.clone(),
+            playlist: playlist.clone(),
             image: get_sized_image_url(&playlist.images, 200, true)
         }
     }
     pub fn album(album: &Album) -> Self {
         Self::Album{
-            id: album.id.clone(),
-            name: album.name.clone(),
+            album: album.clone(),
             image: get_sized_image_url(&album.images, 200, true)
         }
     }
     pub fn artist(artist: &Artist) -> Self {
         Self::Artist{
-            id: artist.id.clone(),
-            name: artist.name.clone(),
+            artist: artist.clone(),
             image: get_sized_image_url(&artist.images, 200, true)
         }
     }
     pub fn show(show: &Show) -> Self {
         Self::Show{
-            id: show.id.clone(),
-            name: show.name.clone(),
+            show: show.clone(),
             image: get_sized_image_url(&show.images, 200, true)
         }
     }
@@ -170,20 +162,51 @@ pub enum Play {
     Context {
         uri: Uri,
         #[serde(default, skip_serializing_if="Option::is_none")]
-        offset: Option<String>,
+        offset: Option<Offset>,
         #[serde(default, skip_serializing_if="Option::is_none")]
         position: Option<usize>,
+    },
+    Uris {
+        uris: Vec<Uri>,
+        offset: Option<usize>,
+        position: Option<usize>
     }
 }
 
 impl Play {
     pub fn label(&self) -> Result<String, Error> {
         Ok(match self {
-            Self::Context { uri, .. } => format!("{}", uri.ty)
+            Self::Context { uri, offset, .. } => match offset.is_some() {
+                true => "item".to_string(),
+                _ => format!("{}", uri.ty)
+            },
+            Self::Uris { uris, .. } => {
+                if uris.len() == 1 {
+                    format!("{}", uris.first().unwrap().ty)
+                } else {
+                    "Queue".to_string()
+                }
+            }
         })
     }
 
-    pub fn playlist(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self {
+    pub fn uris(uris: impl IntoIterator<Item=Uri>, offset: Option<usize>, position: Option<usize>) -> Self {
+        Self::Uris {
+            uris: uris.into_iter().collect(),
+            offset,
+            position,
+        }
+    }
+
+    pub fn single(uri: Uri, offset: Option<usize>, position: Option<usize>) -> Self {
+        Self::Uris {
+            uris: vec![uri],
+            offset,
+            position,
+        }
+    }
+
+    pub fn playlist(id: impl Id, offset: Option<Offset>, position: Option<usize>) -> Self {
         Self::Context {
             uri: Uri::new(Type::Playlist, id.id()),
             offset,
@@ -191,7 +214,7 @@ impl Play {
         }
     }
 
-    pub fn artist(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self {
+    pub fn artist(id: impl Id, offset: Option<Offset>, position: Option<usize>) -> Self {
         Self::Context {
             uri: Uri::new(Type::Artist, id.id()),
             offset,
@@ -199,7 +222,7 @@ impl Play {
         }
     }
 
-    pub fn show(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self
+    pub fn show(id: impl Id, offset: Option<Offset>, position: Option<usize>) -> Self
     {
         Self::Context {
             uri: Uri::new(Type::Show, id.id()),
@@ -208,12 +231,34 @@ impl Play {
         }
     }
 
-    pub fn album(id: impl Id, offset: Option<String>, position: Option<usize>) -> Self
+    pub fn album(id: impl Id, offset: Option<Offset>, position: Option<usize>) -> Self
     {
         Self::Context {
             uri: Uri::new(Type::Album, id.id()),
             offset,
             position,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum Offset {
+    Position(usize),
+    Uri(String),
+}
+
+impl From<Offset> for rspotify::model::Offset {
+    fn from(value: Offset) -> Self {
+        match value {
+            Offset::Position(pos) => rspotify::model::Offset::Position(chrono::Duration::milliseconds(pos as i64)),
+            Offset::Uri(uri) => rspotify::model::Offset::Uri(uri)
+        }
+    }
+}
+
+impl IntoSpotifyParam<rspotify::model::Offset> for Offset {
+    fn into_spotify_param(self) -> rspotify::model::Offset {
+        self.into()
     }
 }

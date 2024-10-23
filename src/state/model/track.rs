@@ -7,7 +7,7 @@ use ratatui::{
 };
 use rspotify::model::{FullTrack, Image, SimplifiedTrack, TrackId};
 
-use crate::state::{format_duration, window::PageRow};
+use crate::{action::{Action, Play}, state::{format_duration, window::PageRow, ActionList}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Track {
@@ -56,7 +56,7 @@ impl PageRow for Track {
         vec![
             (
                 format_duration(self.duration),
-                Some(Box::new(|data| Cell::from(data).dark_gray())),
+                Some(Box::new(|data| Cell::from(Line::from(data).right_aligned()).dark_gray())),
             ),
             (
                 if self.explicit { "E" } else { "" }.to_string(),
@@ -80,5 +80,22 @@ impl PageRow for Track {
             Constraint::Fill(1),
             Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
         ]
+    }
+}
+
+impl Track {
+    pub fn play(&self) -> Action {
+        Action::Play(Play::single(self.id.clone().unwrap().into(), None, None))
+    }
+}
+
+impl ActionList for Track {
+    fn action_list(&self, goto: bool) -> Vec<(crate::input::Key, crate::action::Action)> {
+        self.action_list_with([], goto)
+    }
+
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(crate::input::Key, Action)>, _goto: bool) -> Vec<(crate::input::Key, Action)> {
+        initial.into_iter()
+            .collect()
     }
 }

@@ -2,11 +2,12 @@ use ratatui::{
     layout::Constraint,
     style::Stylize, widgets::Cell,
 };
-use rspotify::model::{Image, Show as SpotifyShow, ShowId, SimplifiedShow};
+use rspotify::model::{FullShow, Image, Show as SpotifyShow, ShowId, SimplifiedShow};
+use serde::{Deserialize, Serialize};
 
-use crate::{action::{Action, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
+use crate::{action::{Action, Offset, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Show {
     pub description: String,
     pub explicit: bool,
@@ -31,6 +32,20 @@ impl From<SpotifyShow> for Show {
     }
 }
 
+impl From<FullShow> for Show {
+    fn from(value: FullShow) -> Self {
+        Self {
+            description: value.description,
+            explicit: value.explicit,
+            id: value.id,
+            images: value.images,
+            languages: value.languages,
+            name: value.name,
+            publisher: value.publisher,
+        }
+    }
+}
+
 impl From<SimplifiedShow> for Show {
     fn from(value: SimplifiedShow) -> Self {
         Self {
@@ -51,7 +66,7 @@ impl PageRow for Show {
         vec![
             (self.name.clone(), None),
             (if explicit { "E" } else { "" }.to_string(), Some(Box::new(move |data| Cell::from(data).red()))),
-            (self.publisher.clone(), None),
+            (self.publisher.clone(), Some(Box::new(|data| Cell::from(data).magenta()))),
         ]
     }
 
@@ -64,13 +79,31 @@ impl PageRow for Show {
     }
 }
 
+impl Show {
+    pub fn play(&self, offset: Option<Offset>) -> Action {
+        Action::Play(Play::show(self.id.clone(), offset, None))
+    }
+}
+
 impl ActionList for Show {
-    fn action_list(&self) -> Vec<(Key, Action)> {
-        Vec::from([
-            (key!(Enter), Action::Play(Play::show(self.id.clone(), None, None))),
-            (key!('o'), Action::Open(Open::show(self))),
-            // TODO: Favorite/Unfavorite
-            // TODO: Open context
-        ])
+    fn action_list(&self, goto: bool) -> Vec<(Key, Action)> {
+        self.action_list_with([], goto)
+    }
+
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(Key, Action)>, goto: bool) -> Vec<(Key, Action)> {
+        let mut maps: Vec<_> = initial.into_iter()
+            .chain([
+                (key!(Enter), self.play(None)),
+            ])
+            .collect();
+
+        if goto {
+            maps.push((key!('o'), Action::Open(Open::show(self))));
+        }
+
+        // TODO: Favorite/Unfavorite
+        // TODO: Open context
+
+        maps
     }
 }

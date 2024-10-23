@@ -1,10 +1,11 @@
 use ratatui::{layout::Constraint, widgets::Cell};
 use rspotify::model::{ArtistId, FullArtist, Image};
+use serde::{Deserialize, Serialize};
 
 use crate::{action::{Action, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Artist {
     pub followers: usize,
     pub genres: Vec<String>,
@@ -43,13 +44,31 @@ impl PageRow for Artist {
     }
 }
 
+impl Artist {
+    pub fn play(&self) -> Action {
+        Action::Play(Play::artist(self.id.clone(), None, None))
+    }
+}
+
 impl ActionList for Artist {
-    fn action_list(&self) -> Vec<(Key, Action)> {
-        Vec::from([
-            (key!(Enter), Action::Play(Play::artist(self.id.clone(), None, None))),
-            (key!('o'), Action::Open(Open::artist(self))),
-            // TODO: Favorite/Unfavorite
-            // TODO: Open context
-        ])
+    fn action_list(&self, goto: bool) -> Vec<(Key, Action)> {
+        self.action_list_with([], goto)
+    }
+
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(Key, Action)>, goto: bool) -> Vec<(Key, Action)> {
+        let mut maps: Vec<_> = initial.into_iter()
+            .chain([
+                (key!(Enter), self.play()),
+            ])
+            .collect();
+
+        if goto {
+            maps.push((key!('o'), Action::Open(Open::artist(self))))
+        }
+
+        // TODO: Favorite/Unfavorite
+        // TODO: Open context
+        
+        maps
     }
 }

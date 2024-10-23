@@ -144,14 +144,14 @@ impl LibraryState {
                         let playlist = self.featured.get(self.item).ok_or(Error::custom(
                             "failed to select item from list 'Made For You'",
                         ))?;
-                        sender.send_action(Action::Open(Open::actions(playlist.action_list())))?
+                        sender.send_action(Action::Open(Open::actions(playlist.action_list(true))))?
                     }
                     Category::Playlists => {
                         if let Loadable::Some(playlists) = self.playlists.as_ref() {
                             let playlist = playlists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'Playlists'",
                             ))?;
-                            sender.send_action(Action::Open(Open::actions(playlist.action_list())))?
+                            sender.send_action(Action::Open(Open::actions(playlist.action_list(true))))?
                         }
                     }
                     Category::Artists => {
@@ -159,7 +159,7 @@ impl LibraryState {
                             let artist = artists.items.get(self.item).ok_or(Error::custom(
                                 "failed to select item from list 'artists'",
                             ))?;
-                            sender.send_action(Action::Open(Open::actions(artist.action_list())))?
+                            sender.send_action(Action::Open(Open::actions(artist.action_list(true))))?
                         }
                     }
                     Category::Albums => {
@@ -168,7 +168,7 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'albums'"))?;
-                            sender.send_action(Action::Open(Open::actions(album.action_list())))?
+                            sender.send_action(Action::Open(Open::actions(album.action_list(true))))?
                         }
                     }
                     Category::Shows => {
@@ -177,7 +177,7 @@ impl LibraryState {
                                 .items
                                 .get(self.item)
                                 .ok_or(Error::custom("failed to select item from list 'shows'"))?;
-                            sender.send_action(Action::Open(Open::actions(show.action_list())))?
+                            sender.send_action(Action::Open(Open::actions(show.action_list(true))))?
                         }
                     }
                 }
@@ -438,7 +438,7 @@ impl Library {
                         "public"
                     } else {
                         "private"
-                    }),
+                    }).magenta(),
                 ])
             })
             .collect::<Vec<Row>>();
@@ -484,7 +484,7 @@ impl Library {
                 .render(tabs[i], buf);
         }
 
-        let block = Block::default().padding(Padding::horizontal(3));
+        let block = Block::default();
 
         match category {
             Category::MadeForYou => Self::featured(state, block.inner(layout[1]), buf),

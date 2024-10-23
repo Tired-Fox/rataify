@@ -202,7 +202,7 @@ impl<T: StatefulWidget> StatefulWidget for Paginated<T> {
 
             let page_block = Block::new().padding(Padding::top(1));
             Line::from(vec![
-                Span::from(if current > 5 { "… " } else { "" }).dark_gray(),
+                Span::from(if current > 6 { "… " } else { "" }).dark_gray(),
                 Span::from(
                     (min..current)
                         .map(|i| i.to_string())

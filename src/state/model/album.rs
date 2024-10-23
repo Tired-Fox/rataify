@@ -1,12 +1,12 @@
 use ratatui::{
-    layout::Constraint,
-    widgets::Cell,
+    layout::Constraint, style::Stylize, widgets::Cell
 };
 use rspotify::model::{AlbumId, AlbumType, FullAlbum, Image, SavedAlbum, SimplifiedAlbum};
+use serde::{Deserialize, Serialize};
 
-use crate::{action::{Action, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
+use crate::{action::{Action, Offset, Open, Play}, input::Key, key, state::{window::PageRow, ActionList}};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Album {
     pub artists: Vec<String>,
     pub album_type: AlbumType,
@@ -64,7 +64,7 @@ impl PageRow for Album {
     fn page_row(&self) -> Vec<(String, Option<Box<dyn Fn(String) -> Cell<'static>>>)> {
         vec![
             (self.name.clone(), None),
-            (self.artists.join(", "), None),
+            (self.artists.join(", "), Some(Box::new(|data| Cell::from(data).magenta()))),
         ]
     }
 
@@ -76,13 +76,31 @@ impl PageRow for Album {
     }
 }
 
+impl Album {
+    pub fn play(&self, offset: Option<Offset>) -> Action {
+        Action::Play(Play::album(self.id.clone(), offset, None))
+    }
+}
+
 impl ActionList for Album {
-    fn action_list(&self) -> Vec<(Key, Action)> {
-        Vec::from([
-            (key!(Enter), Action::Play(Play::album(self.id.clone(), None, None))),
-            (key!('o'), Action::Open(Open::album(self))),
-            // TODO: Favorite/Unfavorite
-            // TODO: Open context
-        ])
+    fn action_list(&self, goto: bool) -> Vec<(Key, Action)> {
+        self.action_list_with([], goto)
+    }
+
+    fn action_list_with(&self, initial: impl IntoIterator<Item=(Key, Action)>, goto: bool) -> Vec<(Key, Action)> {
+        let mut maps = initial.into_iter()
+            .chain([
+                (key!(Enter), self.play(None))
+            ])
+            .collect::<Vec<_>>();
+
+        if goto {
+            maps.push((key!('o'), Action::Open(Open::album(self))))
+        }
+
+        // TODO: Favorite/Unfavorite
+        // TODO: Open context
+        
+        maps
     }
 }

@@ -41,8 +41,8 @@ impl PageRow for Item {
         vec![
             Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
             Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
+            Constraint::Ratio(3, 4),
+            Constraint::Ratio(1, 4),
         ]
     }
 }

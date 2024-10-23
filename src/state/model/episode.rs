@@ -77,7 +77,7 @@ impl PageRow for Episode {
             (
                 self.publisher.clone().unwrap_or_default(),
                 Some(Box::new(|data| {
-                    Cell::from(Line::from(data).right_aligned())
+                    Cell::from(data)
                         .magenta()
                 })),
             ),
@@ -88,8 +88,8 @@ impl PageRow for Episode {
         vec![
             Constraint::Length(widths.first().copied().unwrap_or_default() as u16),
             Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(widths.get(3).copied().unwrap_or_default() as u16),
+            Constraint::Ratio(4, 5),
+            Constraint::Ratio(1, 5),
         ]
     }
 }
